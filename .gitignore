@@ -6,6 +6,9 @@ sim_reader.exe
 *.so
 *.dylib
 
+# Build output directory
+build/
+
 # Vendor directory
 vendor/
 

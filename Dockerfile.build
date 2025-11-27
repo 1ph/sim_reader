@@ -1,0 +1,20 @@
+# Multi-platform build container for sim_reader
+# Based on xgo for cross-compilation with CGO support
+
+FROM ghcr.io/crazy-max/xgo:latest AS builder
+
+# Install PC/SC development libraries
+RUN apt-get update && apt-get install -y \
+    libpcsclite-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Set working directory
+WORKDIR /src
+
+# Copy source code
+COPY . .
+
+# Download dependencies
+RUN go mod download
+
+# Build targets will be specified via xgo command
