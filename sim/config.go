@@ -15,6 +15,9 @@ type SIMConfig struct {
 	MCC  string `json:"mcc,omitempty"`
 	MNC  string `json:"mnc,omitempty"`
 
+	// HPLMN configuration
+	HPLMN []HPLMNConfig `json:"hplmn,omitempty"`
+
 	// ISIM parameters
 	ISIM *ISIMConfig `json:"isim,omitempty"`
 
@@ -23,6 +26,13 @@ type SIMConfig struct {
 
 	// PLMN options
 	ClearFPLMN bool `json:"clear_fplmn,omitempty"`
+}
+
+// HPLMNConfig represents HPLMN entry configuration
+type HPLMNConfig struct {
+	MCC string   `json:"mcc"`
+	MNC string   `json:"mnc"`
+	ACT []string `json:"act"` // e.g., ["eutran", "utran", "gsm"]
 }
 
 // ISIMConfig represents ISIM-specific configuration
@@ -123,6 +133,31 @@ func ApplyConfig(reader *card.Reader, config *SIMConfig) error {
 			errors = append(errors, fmt.Sprintf("Clear FPLMN: %v", err))
 		} else {
 			fmt.Println("✓ Forbidden PLMN list cleared")
+		}
+	}
+
+	// Write HPLMN
+	if len(config.HPLMN) > 0 {
+		entries := make([]HPLMNEntry, 0, len(config.HPLMN))
+		for _, h := range config.HPLMN {
+			actStr := ""
+			for i, a := range h.ACT {
+				if i > 0 {
+					actStr += ","
+				}
+				actStr += a
+			}
+			act := ParseACTString(actStr)
+			entries = append(entries, HPLMNEntry{
+				MCC: h.MCC,
+				MNC: h.MNC,
+				ACT: act,
+			})
+		}
+		if err := WriteHPLMNList(reader, entries); err != nil {
+			errors = append(errors, fmt.Sprintf("HPLMN: %v", err))
+		} else {
+			fmt.Printf("✓ HPLMN written (%d entries)\n", len(entries))
 		}
 	}
 
@@ -280,6 +315,9 @@ func CreateSampleConfig(filename string) error {
 		SPN:  "My Operator",
 		MCC:  "250",
 		MNC:  "88",
+		HPLMN: []HPLMNConfig{
+			{MCC: "250", MNC: "88", ACT: []string{"eutran", "utran", "gsm"}},
+		},
 		ISIM: &ISIMConfig{
 			IMPI:   "250880000000001@ims.mnc088.mcc250.3gppnetwork.org",
 			IMPU:   []string{"sip:250880000000001@ims.mnc088.mcc250.3gppnetwork.org"},
