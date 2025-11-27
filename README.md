@@ -120,6 +120,8 @@ This software is provided "AS IS", without warranty of any kind, express or impl
 
 ## Building
 
+### Option 1: Local Build (for current platform)
+
 ```bash
 # Clone or download the project
 cd sim_reader
@@ -127,15 +129,55 @@ cd sim_reader
 # Download dependencies
 go mod tidy
 
-# Build
+# Build for current platform
 go build -o sim_reader .
-
-# Or build for specific platform
-GOOS=darwin GOARCH=amd64 go build -o sim_reader_mac_amd64 .
-GOOS=darwin GOARCH=arm64 go build -o sim_reader_mac_arm64 .
-GOOS=linux GOARCH=amd64 go build -o sim_reader_linux .
-GOOS=windows GOARCH=amd64 go build -o sim_reader.exe .
 ```
+
+### Option 2: Cross-Platform Build with Docker (Recommended)
+
+The project includes a Makefile for building binaries for all platforms using Docker. This method uses `goreleaser-cross` image which contains all necessary cross-compilers.
+
+**Requirements:**
+- Docker installed and running
+
+**Available commands:**
+
+```bash
+# Pull the Docker image (once, ~3GB)
+make pull
+
+# Build for ALL platforms at once
+make build-all
+
+# Build for specific platforms
+make build-linux          # Linux amd64 + arm64
+make build-linux-amd64    # Linux x64 only
+make build-linux-arm64    # Linux ARM64 only
+
+make build-darwin         # macOS Intel + Apple Silicon
+make build-darwin-amd64   # macOS Intel only
+make build-darwin-arm64   # macOS Apple Silicon only
+
+make build-windows        # Windows x64
+
+# Show all available targets
+make help
+
+# Clean build artifacts
+make clean
+```
+
+**Output binaries** (in `build/` directory):
+
+| File | Platform |
+|------|----------|
+| `sim_reader_linux_amd64` | Linux x64 |
+| `sim_reader_linux_arm64` | Linux ARM64 |
+| `sim_reader_darwin_amd64` | macOS Intel |
+| `sim_reader_darwin_arm64` | macOS Apple Silicon |
+| `sim_reader_windows_amd64.exe` | Windows x64 |
+
+**Note:** Cross-compilation requires Docker because the `scard` library uses CGO and needs platform-specific C compilers.
 
 ## Usage
 
