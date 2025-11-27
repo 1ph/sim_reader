@@ -11,7 +11,7 @@ import (
 )
 
 var (
-	version = "2.0.0"
+	version = "2.0.1"
 )
 
 func main() {
@@ -35,6 +35,7 @@ func main() {
 	writeDomain := flag.String("write-domain", "", "Write Home Network Domain")
 	writePCSCF := flag.String("write-pcscf", "", "Write P-CSCF address")
 	writeSPN := flag.String("write-spn", "", "Write Service Provider Name")
+	writeHPLMN := flag.String("write-hplmn", "", "Write HPLMN (MCC:MNC:ACT, e.g., 250:88:eutran,utran,gsm)")
 
 	// Service enable flags
 	enableVoLTE := flag.Bool("enable-volte", false, "Enable VoLTE services")
@@ -79,6 +80,8 @@ WRITING OPTIONS (require -adm):
   -write-domain <v>  Write Home Network Domain
   -write-pcscf <val> Write P-CSCF address
   -write-spn <val>   Write Service Provider Name
+  -write-hplmn <val> Write HPLMN (format: MCC:MNC:ACT)
+                     ACT: eutran,utran,gsm,nr,ngran (comma-separated)
   
   Service toggles (enable):
   -enable-volte      Enable VoLTE (UST service 87)
@@ -159,6 +162,7 @@ EXAMPLES:
 	// Check if any write operation is requested
 	isWriteMode := *writeConfig != "" || *writeIMSI != "" || *writeIMPI != "" ||
 		*writeIMPU != "" || *writeDomain != "" || *writePCSCF != "" || *writeSPN != "" ||
+		*writeHPLMN != "" ||
 		*enableVoLTE || *enableVoWiFi || *enableSMSOverIP || *enableVoicePref ||
 		*disableVoLTE || *disableVoWiFi || *disableSMSOverIP || *disableVoicePref ||
 		*clearFPLMN
@@ -292,6 +296,14 @@ EXAMPLES:
 				output.PrintError(fmt.Sprintf("Write P-CSCF failed: %v", err))
 			} else {
 				output.PrintSuccess("P-CSCF written successfully")
+			}
+		}
+
+		if *writeHPLMN != "" {
+			if err := sim.WriteHPLMNFromString(reader, *writeHPLMN); err != nil {
+				output.PrintError(fmt.Sprintf("Write HPLMN failed: %v", err))
+			} else {
+				output.PrintSuccess("HPLMN written successfully")
 			}
 		}
 

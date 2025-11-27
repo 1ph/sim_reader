@@ -54,6 +54,7 @@ This software is provided "AS IS", without warranty of any kind, express or impl
 
 ### Writing (NEW in v2.0)
 - Write IMSI, SPN (Service Provider Name)
+- Write HPLMN (Home PLMN) with Access Technology
 - Write ISIM parameters: IMPI, IMPU, Domain, P-CSCF
 - Enable/disable services: VoLTE, VoWiFi, SMS over IP
 - Clear Forbidden PLMN list
@@ -222,6 +223,13 @@ make clean
   "spn": "My Operator",
   "mcc": "250",
   "mnc": "88",
+  "hplmn": [
+    {
+      "mcc": "250",
+      "mnc": "88",
+      "act": ["eutran", "utran", "gsm"]
+    }
+  ],
   "isim": {
     "impi": "250880000000001@ims.mnc088.mcc250.3gppnetwork.org",
     "impu": [
@@ -284,6 +292,12 @@ make clean
 
 # Clear Forbidden PLMN list
 ./sim_reader -adm 77111606 -clear-fplmn
+
+# Write HPLMN (Home PLMN) with Access Technology
+./sim_reader -adm 77111606 -write-hplmn "250:88:eutran,utran,gsm"
+
+# HPLMN with all technologies
+./sim_reader -adm 77111606 -write-hplmn "250:88:all"
 ```
 
 #### Method 3: Combined (Config + Flags)
@@ -310,6 +324,10 @@ The tool automatically detects the ADM key format:
 | `spn` | string | Service Provider Name |
 | `mcc` | string | Mobile Country Code (3 digits) |
 | `mnc` | string | Mobile Network Code (2-3 digits) |
+| `hplmn` | array | Home PLMN entries (see below) |
+| `hplmn[].mcc` | string | HPLMN Mobile Country Code |
+| `hplmn[].mnc` | string | HPLMN Mobile Network Code |
+| `hplmn[].act` | array | Access Technologies: eutran, utran, gsm, nr, ngran |
 | `isim.impi` | string | IMS Private User Identity |
 | `isim.impu` | array | IMS Public User Identities |
 | `isim.domain` | string | Home Network Domain Name |
@@ -450,5 +468,6 @@ MIT License
 
 ## Version History
 
+- **v2.0.1** - Added HPLMN (Home PLMN) write support with Access Technology
 - **v2.0.0** - Added write support (IMSI, ISIM params, services, JSON config)
 - **v1.0.0** - Initial release (read-only)

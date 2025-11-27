@@ -330,3 +330,170 @@ const (
 	ACT_NG_RAN      = 0x0004 // 5G SA
 	ACT_ALL         = ACT_UTRAN | ACT_E_UTRAN | ACT_GSM | ACT_NR | ACT_NG_RAN
 )
+
+// WriteHPLMNFromString parses string format "MCC:MNC:ACT" and writes HPLMN
+// ACT can be: eutran, utran, gsm, nr, ngran, all (comma-separated)
+// Example: "250:88:eutran,utran,gsm" or "250:88:all"
+func WriteHPLMNFromString(reader *card.Reader, hplmnStr string) error {
+	mcc, mnc, act, err := ParseHPLMNString(hplmnStr)
+	if err != nil {
+		return err
+	}
+	return WriteHPLMN(reader, mcc, mnc, act)
+}
+
+// WriteHPLMNList writes multiple HPLMN entries with Access Technology
+func WriteHPLMNList(reader *card.Reader, entries []HPLMNEntry) error {
+	// Select USIM
+	resp, err := reader.Select(AID_USIM)
+	if err != nil {
+		return fmt.Errorf("failed to select USIM: %w", err)
+	}
+	if !resp.IsOK() {
+		return fmt.Errorf("USIM selection failed: %s", card.SWToString(resp.SW()))
+	}
+
+	// Select EF_HPLMNwACT
+	resp, err = reader.Select([]byte{0x6F, 0x62})
+	if err != nil {
+		return fmt.Errorf("failed to select EF_HPLMNwACT: %w", err)
+	}
+	if !resp.IsOK() {
+		return fmt.Errorf("EF_HPLMNwACT selection failed: %s", card.SWToString(resp.SW()))
+	}
+
+	// Get file size
+	fileSize := parseFCPFileSize(resp.Data)
+	if fileSize == 0 {
+		fileSize = 5 * len(entries) // 5 bytes per entry
+	}
+
+	// Build data: each entry is 5 bytes (3 PLMN + 2 ACT)
+	data := make([]byte, fileSize)
+	for i := range data {
+		data[i] = 0xFF
+	}
+
+	offset := 0
+	for _, entry := range entries {
+		if offset+5 > fileSize {
+			break
+		}
+		plmn, err := EncodePLMN(entry.MCC, entry.MNC)
+		if err != nil {
+			continue
+		}
+		copy(data[offset:offset+3], plmn)
+		data[offset+3] = byte(entry.ACT >> 8)
+		data[offset+4] = byte(entry.ACT & 0xFF)
+		offset += 5
+	}
+
+	// Write
+	resp, err = reader.UpdateBinary(0, data)
+	if err != nil {
+		return fmt.Errorf("failed to write HPLMNwACT: %w", err)
+	}
+	if !resp.IsOK() {
+		return fmt.Errorf("HPLMNwACT write failed: %s", card.SWToString(resp.SW()))
+	}
+
+	return nil
+}
+
+// HPLMNEntry represents a single HPLMN entry
+type HPLMNEntry struct {
+	MCC string
+	MNC string
+	ACT uint16
+}
+
+// ParseHPLMNString parses "MCC:MNC:ACT" format
+func ParseHPLMNString(s string) (mcc, mnc string, act uint16, err error) {
+	parts := splitString(s, ':')
+	if len(parts) < 2 {
+		return "", "", 0, fmt.Errorf("invalid HPLMN format: expected MCC:MNC[:ACT], got %s", s)
+	}
+
+	mcc = parts[0]
+	mnc = parts[1]
+
+	if len(mcc) != 3 {
+		return "", "", 0, fmt.Errorf("invalid MCC: must be 3 digits")
+	}
+	if len(mnc) < 2 || len(mnc) > 3 {
+		return "", "", 0, fmt.Errorf("invalid MNC: must be 2-3 digits")
+	}
+
+	// Default to all technologies if not specified
+	if len(parts) < 3 || parts[2] == "" {
+		act = ACT_ALL
+	} else {
+		act = ParseACTString(parts[2])
+		if act == 0 {
+			return "", "", 0, fmt.Errorf("invalid ACT: %s", parts[2])
+		}
+	}
+
+	return mcc, mnc, act, nil
+}
+
+// ParseACTString parses comma-separated ACT names
+func ParseACTString(s string) uint16 {
+	var act uint16
+	parts := splitString(s, ',')
+	for _, p := range parts {
+		p = trimSpace(p)
+		switch toLower(p) {
+		case "eutran", "e-utran", "lte", "4g":
+			act |= ACT_E_UTRAN
+		case "utran", "umts", "3g":
+			act |= ACT_UTRAN
+		case "gsm", "2g":
+			act |= ACT_GSM
+		case "nr", "5g":
+			act |= ACT_NR
+		case "ngran", "ng-ran", "5gsa":
+			act |= ACT_NG_RAN
+		case "all":
+			act = ACT_ALL
+		}
+	}
+	return act
+}
+
+// Helper functions to avoid importing strings package again
+func splitString(s string, sep byte) []string {
+	var result []string
+	start := 0
+	for i := 0; i < len(s); i++ {
+		if s[i] == sep {
+			result = append(result, s[start:i])
+			start = i + 1
+		}
+	}
+	result = append(result, s[start:])
+	return result
+}
+
+func trimSpace(s string) string {
+	start := 0
+	end := len(s)
+	for start < end && (s[start] == ' ' || s[start] == '\t') {
+		start++
+	}
+	for end > start && (s[end-1] == ' ' || s[end-1] == '\t') {
+		end--
+	}
+	return s[start:end]
+}
+
+func toLower(s string) string {
+	b := []byte(s)
+	for i := 0; i < len(b); i++ {
+		if b[i] >= 'A' && b[i] <= 'Z' {
+			b[i] = b[i] + 32
+		}
+	}
+	return string(b)
+}
