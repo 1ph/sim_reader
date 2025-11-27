@@ -9,7 +9,7 @@ import (
 // Note: This also affects MCC/MNC as they are part of IMSI
 func WriteIMSI(reader *card.Reader, imsi string) error {
 	// Select USIM application
-	resp, err := reader.Select(AID_USIM)
+	resp, err := reader.Select(GetUSIMAID())
 	if err != nil {
 		return fmt.Errorf("failed to select USIM: %w", err)
 	}
@@ -47,7 +47,7 @@ func WriteIMSI(reader *card.Reader, imsi string) error {
 // WriteSPN writes Service Provider Name
 func WriteSPN(reader *card.Reader, spn string, displayCondition byte) error {
 	// Select USIM
-	resp, err := reader.Select(AID_USIM)
+	resp, err := reader.Select(GetUSIMAID())
 	if err != nil {
 		return fmt.Errorf("failed to select USIM: %w", err)
 	}
@@ -93,7 +93,7 @@ func WriteSPN(reader *card.Reader, spn string, displayCondition byte) error {
 // ClearForbiddenPLMN clears the Forbidden PLMN list
 func ClearForbiddenPLMN(reader *card.Reader) error {
 	// Select USIM
-	resp, err := reader.Select(AID_USIM)
+	resp, err := reader.Select(GetUSIMAID())
 	if err != nil {
 		return fmt.Errorf("failed to select USIM: %w", err)
 	}
@@ -134,7 +134,7 @@ func ClearForbiddenPLMN(reader *card.Reader) error {
 // SetUSIMServices enables or disables services in UST
 func SetUSIMServices(reader *card.Reader, services map[int]bool) error {
 	// Select USIM
-	resp, err := reader.Select(AID_USIM)
+	resp, err := reader.Select(GetUSIMAID())
 	if err != nil {
 		return fmt.Errorf("failed to select USIM: %w", err)
 	}
@@ -221,7 +221,7 @@ func UpdateMNCLength(reader *card.Reader, mncLength int) error {
 	}
 
 	// Select USIM
-	resp, err := reader.Select(AID_USIM)
+	resp, err := reader.Select(GetUSIMAID())
 	if err != nil {
 		return fmt.Errorf("failed to select USIM: %w", err)
 	}
@@ -268,7 +268,7 @@ func UpdateMNCLength(reader *card.Reader, mncLength int) error {
 // WriteHPLMN writes Home PLMN with Access Technology
 func WriteHPLMN(reader *card.Reader, mcc, mnc string, act uint16) error {
 	// Select USIM
-	resp, err := reader.Select(AID_USIM)
+	resp, err := reader.Select(GetUSIMAID())
 	if err != nil {
 		return fmt.Errorf("failed to select USIM: %w", err)
 	}
@@ -345,7 +345,7 @@ func WriteHPLMNFromString(reader *card.Reader, hplmnStr string) error {
 // WriteHPLMNList writes multiple HPLMN entries with Access Technology
 func WriteHPLMNList(reader *card.Reader, entries []HPLMNEntry) error {
 	// Select USIM
-	resp, err := reader.Select(AID_USIM)
+	resp, err := reader.Select(GetUSIMAID())
 	if err != nil {
 		return fmt.Errorf("failed to select USIM: %w", err)
 	}

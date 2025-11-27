@@ -343,6 +343,91 @@ func PrintRawData(rawFiles map[string][]byte) {
 	t.Render()
 }
 
+// PrintCardAnalysis prints card analysis results
+func PrintCardAnalysis(info *sim.CardInfo) {
+	// ATR Analysis
+	fmt.Println()
+	t := newTable()
+	t.SetTitle("CARD ANALYSIS")
+	t.SetColumnConfigs([]table.ColumnConfig{
+		{Number: 1, Colors: colorLabel, WidthMin: 20},
+		{Number: 2, Colors: colorValue, WidthMin: 55},
+	})
+
+	t.AppendRow(table.Row{"ATR", info.ATR})
+	cardType := sim.IdentifyCardByATR(info.ATR)
+	t.AppendRow(table.Row{"Card Type", cardType})
+
+	if info.ICCID != "" {
+		t.AppendRow(table.Row{"ICCID", info.ICCID})
+	}
+	t.Render()
+
+	// Applications found
+	if len(info.Applications) > 0 {
+		fmt.Println()
+		t2 := newTable()
+		t2.SetTitle("APPLICATIONS (EF_DIR)")
+		t2.AppendHeader(table.Row{"AID", "Label", "Type"})
+		t2.SetColumnConfigs([]table.ColumnConfig{
+			{Number: 1, Colors: colorValue, WidthMin: 30},
+			{Number: 2, Colors: colorValue, WidthMin: 20},
+			{Number: 3, Colors: colorLabel, WidthMin: 15},
+		})
+
+		for _, app := range info.Applications {
+			label := app.Label
+			if label == "" {
+				label = "(no label)"
+			}
+			t2.AppendRow(table.Row{app.AID, label, app.Type})
+		}
+		t2.Render()
+	} else {
+		PrintWarning("No applications found in EF_DIR (may be 2G SIM or non-standard card)")
+	}
+
+	// GSM 2G data if available
+	if info.GSMAvailable && info.GSMData != nil {
+		fmt.Println()
+		t3 := newTable()
+		t3.SetTitle("GSM 2G SIM DATA")
+		t3.SetColumnConfigs([]table.ColumnConfig{
+			{Number: 1, Colors: colorLabel, WidthMin: 20},
+			{Number: 2, Colors: colorValue, WidthMin: 55},
+		})
+
+		if info.GSMData.IMSI != "" {
+			t3.AppendRow(table.Row{"IMSI", info.GSMData.IMSI})
+		}
+		if info.GSMData.HPLMN != "" {
+			t3.AppendRow(table.Row{"HPLMN (from IMSI)", info.GSMData.HPLMN})
+		}
+		if info.GSMData.SPN != "" {
+			t3.AppendRow(table.Row{"Service Provider", info.GSMData.SPN})
+		}
+		if info.GSMData.MSISDN != "" {
+			t3.AppendRow(table.Row{"MSISDN", info.GSMData.MSISDN})
+		}
+		if len(info.GSMData.FPLMN) > 0 {
+			t3.AppendRow(table.Row{"Forbidden PLMNs", strings.Join(info.GSMData.FPLMN, ", ")})
+		}
+		t3.Render()
+
+		// Show raw IMSI if available
+		if len(info.GSMData.RawIMSI) > 0 {
+			fmt.Println()
+			PrintSuccess(fmt.Sprintf("Raw IMSI: %X", info.GSMData.RawIMSI))
+		}
+	}
+
+	// Raw EF_DIR if available and raw mode
+	if len(info.RawDIR) > 0 {
+		fmt.Println()
+		PrintSuccess(fmt.Sprintf("Raw EF_DIR: %X", info.RawDIR))
+	}
+}
+
 // PrintError prints an error message
 func PrintError(msg string) {
 	fmt.Println(colorError.Sprintf("✗ Error: %s", msg))

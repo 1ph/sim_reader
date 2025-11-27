@@ -8,7 +8,7 @@ import (
 // WriteIMPI writes IMS Private User Identity
 func WriteIMPI(reader *card.Reader, impi string) error {
 	// Select ISIM application
-	resp, err := reader.Select(AID_ISIM)
+	resp, err := reader.Select(GetISIMAID())
 	if err != nil {
 		return fmt.Errorf("failed to select ISIM: %w", err)
 	}
@@ -54,7 +54,7 @@ func WriteIMPU(reader *card.Reader, impu string) error {
 // WriteIMPURecord writes IMS Public User Identity to a specific record
 func WriteIMPURecord(reader *card.Reader, impu string, recordNum byte) error {
 	// Select ISIM application
-	resp, err := reader.Select(AID_ISIM)
+	resp, err := reader.Select(GetISIMAID())
 	if err != nil {
 		return fmt.Errorf("failed to select ISIM: %w", err)
 	}
@@ -95,7 +95,7 @@ func WriteIMPURecord(reader *card.Reader, impu string, recordNum byte) error {
 // WriteDomain writes Home Network Domain Name
 func WriteDomain(reader *card.Reader, domain string) error {
 	// Select ISIM application
-	resp, err := reader.Select(AID_ISIM)
+	resp, err := reader.Select(GetISIMAID())
 	if err != nil {
 		return fmt.Errorf("failed to select ISIM: %w", err)
 	}
@@ -141,7 +141,7 @@ func WritePCSCF(reader *card.Reader, pcscf string) error {
 // WritePCSCFRecord writes P-CSCF address to a specific record
 func WritePCSCFRecord(reader *card.Reader, pcscf string, recordNum byte) error {
 	// Select ISIM application
-	resp, err := reader.Select(AID_ISIM)
+	resp, err := reader.Select(GetISIMAID())
 	if err != nil {
 		return fmt.Errorf("failed to select ISIM: %w", err)
 	}
@@ -182,7 +182,7 @@ func WritePCSCFRecord(reader *card.Reader, pcscf string, recordNum byte) error {
 // SetISIMServices enables or disables services in IST
 func SetISIMServices(reader *card.Reader, services map[int]bool) error {
 	// Select ISIM application
-	resp, err := reader.Select(AID_ISIM)
+	resp, err := reader.Select(GetISIMAID())
 	if err != nil {
 		return fmt.Errorf("failed to select ISIM: %w", err)
 	}

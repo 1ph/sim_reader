@@ -47,13 +47,22 @@ func ReadUSIM(reader *card.Reader) (*USIMData, error) {
 		data.ICCID = iccid
 	}
 
-	// Select USIM application
-	resp, err := reader.Select(AID_USIM)
+	// Select USIM application (try detected AID first, then standard)
+	usimAID := GetUSIMAID()
+	resp, err := reader.Select(usimAID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to select USIM: %w", err)
 	}
 	if !resp.IsOK() {
-		return nil, fmt.Errorf("USIM selection failed: %s", card.SWToString(resp.SW()))
+		// If detected AID failed, try standard AID
+		if len(DetectedUSIM_AID) > 0 {
+			resp, err = reader.Select(AID_USIM)
+			if err != nil || !resp.IsOK() {
+				return nil, fmt.Errorf("USIM selection failed: %s", card.SWToString(resp.SW()))
+			}
+		} else {
+			return nil, fmt.Errorf("USIM selection failed: %s", card.SWToString(resp.SW()))
+		}
 	}
 
 	// Read IMSI

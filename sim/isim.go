@@ -37,13 +37,22 @@ func ReadISIM(reader *card.Reader) (*ISIMData, error) {
 		Available: false,
 	}
 
-	// Select ISIM application
-	resp, err := reader.Select(AID_ISIM)
+	// Select ISIM application (try detected AID first, then standard)
+	isimAID := GetISIMAID()
+	resp, err := reader.Select(isimAID)
 	if err != nil {
 		return data, fmt.Errorf("failed to select ISIM: %w", err)
 	}
 	if !resp.IsOK() {
-		return data, fmt.Errorf("ISIM not available: %s", card.SWToString(resp.SW()))
+		// If detected AID failed, try standard AID
+		if len(DetectedISIM_AID) > 0 {
+			resp, err = reader.Select(AID_ISIM)
+			if err != nil || !resp.IsOK() {
+				return data, fmt.Errorf("ISIM not available: %s", card.SWToString(resp.SW()))
+			}
+		} else {
+			return data, fmt.Errorf("ISIM not available: %s", card.SWToString(resp.SW()))
+		}
 	}
 
 	data.Available = true

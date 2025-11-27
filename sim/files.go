@@ -16,7 +16,27 @@ var (
 	AID_USIM = []byte{0xA0, 0x00, 0x00, 0x00, 0x87, 0x10, 0x02}
 	// AID for ISIM application (3GPP TS 31.103)
 	AID_ISIM = []byte{0xA0, 0x00, 0x00, 0x00, 0x87, 0x10, 0x04}
+
+	// Detected AIDs from EF_DIR (set by AnalyzeCard)
+	DetectedUSIM_AID []byte
+	DetectedISIM_AID []byte
 )
+
+// GetUSIMAID returns the best AID for USIM (detected or standard)
+func GetUSIMAID() []byte {
+	if len(DetectedUSIM_AID) > 0 {
+		return DetectedUSIM_AID
+	}
+	return AID_USIM
+}
+
+// GetISIMAID returns the best AID for ISIM (detected or standard)
+func GetISIMAID() []byte {
+	if len(DetectedISIM_AID) > 0 {
+		return DetectedISIM_AID
+	}
+	return AID_ISIM
+}
 
 // EFDefinition defines an Elementary File on the SIM
 type EFDefinition struct {

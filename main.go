@@ -23,6 +23,7 @@ func main() {
 	showAllServices := flag.Bool("services", false, "Show all UST/IST services in detail")
 	showVersion := flag.Bool("version", false, "Show version")
 	pin1 := flag.String("pin", "", "PIN1 code (if card is PIN protected)")
+	analyzeCard := flag.Bool("analyze", false, "Analyze card: show ATR, applications, try GSM access")
 
 	// Command line flags - Writing
 	writeConfig := flag.String("write", "", "Write parameters from JSON config file")
@@ -65,6 +66,7 @@ READING OPTIONS:
   -r <index>         Reader index (auto-selects if only one)
   -adm <key>         ADM1 key (hex: F38A3DEC... or decimal: 77111606)
   -pin <code>        PIN1 code if card is PIN protected
+  -analyze           Analyze card (ATR, applications, GSM 2G access)
   -services          Show all UST/IST services in detail
   -raw               Show raw hex data
   -version           Show version
@@ -384,24 +386,53 @@ EXAMPLES:
 		output.PrintSuccess("Write operations completed. Reading card to verify...")
 	}
 
+	// Always detect AIDs from EF_DIR first (silent, for non-standard cards)
+	sim.DetectApplicationAIDs(reader)
+
+	// Analyze card if requested
+	if *analyzeCard {
+		fmt.Println()
+		output.PrintSuccess("Analyzing card...")
+		cardInfo, err := sim.AnalyzeCard(reader)
+		if err != nil {
+			output.PrintError(fmt.Sprintf("Analysis failed: %v", err))
+		} else {
+			output.PrintCardAnalysis(cardInfo)
+		}
+	}
+
 	// Read USIM data
 	fmt.Println()
 	output.PrintSuccess("Reading USIM application...")
 	usimData, err := sim.ReadUSIM(reader)
 	if err != nil {
 		output.PrintError(fmt.Sprintf("Failed to read USIM: %v", err))
+		// If USIM failed and not in analyze mode, suggest it
+		if !*analyzeCard {
+			output.PrintWarning("Tip: Use -analyze flag to examine the card structure")
+			// Auto-analyze on USIM failure
+			fmt.Println()
+			output.PrintSuccess("Auto-analyzing card...")
+			cardInfo, anaErr := sim.AnalyzeCard(reader)
+			if anaErr == nil {
+				output.PrintCardAnalysis(cardInfo)
+			}
+		}
 	} else {
 		output.PrintUSIMData(usimData)
 	}
 
-	// Read ISIM data
-	fmt.Println()
-	output.PrintSuccess("Reading ISIM application...")
-	isimData, err := sim.ReadISIM(reader)
-	if err != nil {
-		output.PrintWarning(fmt.Sprintf("ISIM: %v", err))
-	} else {
-		output.PrintISIMData(isimData)
+	// Read ISIM data (only if USIM was found)
+	var isimData *sim.ISIMData
+	if usimData != nil {
+		fmt.Println()
+		output.PrintSuccess("Reading ISIM application...")
+		isimData, err = sim.ReadISIM(reader)
+		if err != nil {
+			output.PrintWarning(fmt.Sprintf("ISIM: %v", err))
+		} else {
+			output.PrintISIMData(isimData)
+		}
 	}
 
 	// Show all services if requested
