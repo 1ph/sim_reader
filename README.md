@@ -52,6 +52,14 @@ This software is provided "AS IS", without warranty of any kind, express or impl
 - Read ISIM Service Table (IST)
 - Beautiful colored console output with tables
 
+### Card Analysis (NEW in v2.0.2)
+- Analyze unknown cards with `-analyze` flag
+- Auto-detect card manufacturer by ATR (NovaCard, Sysmocom, Giesecke+Devrient)
+- Read EF_DIR to list all applications on the card
+- Support for non-standard AIDs (e.g., MegaFon cards with extended AID)
+- GSM 2G fallback for legacy SIM cards
+- Dump card data for regression testing with `-dump` flag
+
 ### Writing (NEW in v2.0)
 - Write IMSI, SPN (Service Provider Name)
 - Write HPLMN (Home PLMN) with Access Technology
@@ -66,6 +74,17 @@ This software is provided "AS IS", without warranty of any kind, express or impl
 - Standard SIM (2G)
 - USIM (3G/4G/5G)
 - ISIM (IMS/VoLTE/VoWiFi)
+
+### Tested Card Manufacturers
+
+| Manufacturer | ATR Marker | Notes |
+|--------------|------------|-------|
+| **NovaCard** | `676F` | Russian SIM card manufacturer |
+| **Sysmocom** | `674A35` | sysmoISIM-SJA5 and others |
+| **Giesecke+Devrient (G+D)** | `574A` | Used by MegaFon and others |
+| **Thales/Gemalto** | Various | Auto-detected |
+
+Cards with non-standard (extended) AIDs are automatically detected via EF_DIR.
 
 ## Prerequisites
 
@@ -202,6 +221,27 @@ make clean
 
 # If card is PIN-protected
 ./sim_reader -pin 0000 -adm 77111606
+```
+
+### Analyzing Unknown Cards
+
+```bash
+# Analyze card structure (useful for non-standard cards)
+./sim_reader -analyze
+
+# This shows:
+# - Card type (NovaCard, Sysmocom, G+D, etc.)
+# - List of applications from EF_DIR
+# - GSM 2G data if available
+```
+
+### Generating Test Data
+
+```bash
+# Dump card data as Go test code (for regression testing)
+./sim_reader -adm 77111606 -dump "MyCard"
+
+# Output can be copied directly to sim/decoder_test.go
 ```
 
 ### Writing Card Data
@@ -380,17 +420,50 @@ sim_reader/
 │   ├── usim.go          # USIM application reader
 │   ├── isim.go          # ISIM application reader
 │   ├── decoder.go       # Data decoders (BCD, PLMN, TLV)
+│   ├── decoder_test.go  # Unit tests with real card data
 │   ├── encoder.go       # Data encoders for writing
 │   ├── usim_write.go    # USIM write functions
 │   ├── isim_write.go    # ISIM write functions
-│   └── config.go        # JSON config handling
+│   ├── config.go        # JSON config handling
+│   ├── analyze.go       # Card analysis (ATR, EF_DIR, GSM)
+│   └── dump.go          # Test data generator
 ├── output/
 │   └── table.go         # Colored table output
 ├── go.mod
 ├── go.sum
+├── Makefile             # Build and test commands
 ├── sample_config.json   # Sample configuration
 └── README.md
 ```
+
+## Testing
+
+The project includes unit tests based on real SIM card data.
+
+```bash
+# Run all tests
+make test
+
+# Or directly with go
+go test ./sim/... -v
+
+# Run tests with coverage
+make test-coverage
+```
+
+### Adding Test Data from Real Cards
+
+1. Dump card data:
+   ```bash
+   ./sim_reader -adm YOUR_KEY -dump "CardName"
+   ```
+
+2. Copy the output to `sim/decoder_test.go` in the `testCards` slice
+
+3. Run tests to verify:
+   ```bash
+   make test
+   ```
 
 ## Dependencies
 
@@ -468,6 +541,13 @@ MIT License
 
 ## Version History
 
+- **v2.0.2** - Card analysis and testing improvements:
+  - Added `-analyze` flag for unknown card analysis
+  - Added `-dump` flag for generating test data
+  - Auto-detect non-standard AIDs from EF_DIR (MegaFon, etc.)
+  - Card manufacturer detection by ATR (NovaCard, Sysmocom, G+D)
+  - GSM 2G fallback for legacy SIM cards
+  - Unit tests with real card data
 - **v2.0.1** - Added HPLMN (Home PLMN) write support with Access Technology
 - **v2.0.0** - Added write support (IMSI, ISIM params, services, JSON config)
 - **v1.0.0** - Initial release (read-only)
