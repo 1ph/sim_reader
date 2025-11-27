@@ -1,0 +1,30 @@
+# Binaries
+sim_reader
+sim_reader.exe
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Vendor directory
+vendor/
+
+# Test binary
+*.test
+
+# Output of go coverage
+*.out
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Config files with sensitive data
+config.json
+*.key
