@@ -56,7 +56,7 @@ This software is provided "AS IS", without warranty of any kind, express or impl
 - Analyze unknown cards with `-analyze` flag
 - Auto-detect card manufacturer by ATR (NovaCard, Sysmocom, Giesecke+Devrient)
 - Read EF_DIR to list all applications on the card
-- Support for non-standard AIDs (e.g., MegaFon cards with extended AID)
+- Support for non-standard AIDs (e.g., Operators cards with extended AID)
 - GSM 2G fallback for legacy SIM cards
 - Dump card data for regression testing with `-dump` flag
 
