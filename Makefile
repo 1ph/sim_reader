@@ -12,6 +12,27 @@ CROSS_IMAGE = ghcr.io/goreleaser/goreleaser-cross:v1.25
 .PHONY: all
 all: build-all
 
+# ============================================================================
+# TESTING
+# ============================================================================
+
+.PHONY: test
+test:
+	@echo "Running tests..."
+	go test ./sim/... -v
+
+.PHONY: test-short
+test-short:
+	@echo "Running tests (short)..."
+	go test ./sim/... -short
+
+.PHONY: test-coverage
+test-coverage:
+	@echo "Running tests with coverage..."
+	go test ./sim/... -cover -coverprofile=coverage.out
+	go tool cover -html=coverage.out -o coverage.html
+	@echo "Coverage report: coverage.html"
+
 # Create build directory
 $(BUILD_DIR):
 	mkdir -p $(BUILD_DIR)

@@ -42,9 +42,12 @@ func ReadUSIM(reader *card.Reader) (*USIMData, error) {
 	}
 
 	// First read ICCID from MF (doesn't require USIM selection)
-	iccid, err := readICCID(reader)
+	iccid, rawICCID, err := readICCIDWithRaw(reader)
 	if err == nil {
 		data.ICCID = iccid
+		if len(rawICCID) > 0 {
+			data.RawFiles["EF_ICCID"] = rawICCID
+		}
 	}
 
 	// Select USIM application (try detected AID first, then standard)
@@ -152,28 +155,34 @@ func ReadUSIM(reader *card.Reader) (*USIMData, error) {
 
 // readICCID reads ICCID from MF
 func readICCID(reader *card.Reader) (string, error) {
+	iccid, _, err := readICCIDWithRaw(reader)
+	return iccid, err
+}
+
+// readICCIDWithRaw reads ICCID from MF and returns raw data
+func readICCIDWithRaw(reader *card.Reader) (string, []byte, error) {
 	// Select MF first
 	reader.Select([]byte{0x3F, 0x00})
 
 	// Select EF_ICCID
 	resp, err := reader.Select([]byte{0x2F, 0xE2})
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
 	if !resp.IsOK() {
-		return "", fmt.Errorf("select failed: %s", card.SWToString(resp.SW()))
+		return "", nil, fmt.Errorf("select failed: %s", card.SWToString(resp.SW()))
 	}
 
 	// Read binary
 	resp, err = reader.ReadBinary(0, 10)
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
 	if !resp.IsOK() {
-		return "", fmt.Errorf("read failed: %s", card.SWToString(resp.SW()))
+		return "", nil, fmt.Errorf("read failed: %s", card.SWToString(resp.SW()))
 	}
 
-	return DecodeICCID(resp.Data), nil
+	return DecodeICCID(resp.Data), resp.Data, nil
 }
 
 // readEF selects and reads a transparent EF file

@@ -24,6 +24,7 @@ func main() {
 	showVersion := flag.Bool("version", false, "Show version")
 	pin1 := flag.String("pin", "", "PIN1 code (if card is PIN protected)")
 	analyzeCard := flag.Bool("analyze", false, "Analyze card: show ATR, applications, try GSM access")
+	dumpTestData := flag.String("dump", "", "Dump card data as Go test code (provide card name)")
 
 	// Command line flags - Writing
 	writeConfig := flag.String("write", "", "Write parameters from JSON config file")
@@ -67,6 +68,7 @@ READING OPTIONS:
   -adm <key>         ADM1 key (hex: F38A3DEC... or decimal: 77111606)
   -pin <code>        PIN1 code if card is PIN protected
   -analyze           Analyze card (ATR, applications, GSM 2G access)
+  -dump <name>       Dump card data as Go test code (for regression tests)
   -services          Show all UST/IST services in detail
   -raw               Show raw hex data
   -version           Show version
@@ -452,6 +454,15 @@ EXAMPLES:
 			output.PrintSuccess("ISIM Raw Data:")
 			output.PrintRawData(isimData.RawFiles)
 		}
+	}
+
+	// Dump test data if requested
+	if *dumpTestData != "" {
+		fmt.Println()
+		output.PrintSuccess("Generating test data dump...")
+		fmt.Println()
+		dump := sim.DumpTestData(*dumpTestData, reader.ATRHex(), usimData, isimData)
+		fmt.Println(dump)
 	}
 
 	fmt.Println()
