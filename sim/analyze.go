@@ -1,0 +1,620 @@
+package sim
+
+import (
+	"encoding/hex"
+	"fmt"
+	"sim_reader/card"
+	"strings"
+)
+
+// CardInfo contains basic card information
+type CardInfo struct {
+	ATR           string
+	ICCID         string
+	Applications  []ApplicationInfo
+	GSMAvailable  bool
+	GSMData       *GSMData
+	RawDIR        []byte
+	IsProprietary bool                    // Card uses File ID selection instead of AID
+	UsesGSMClass  bool                    // Card requires GSM class commands (CLA=A0)
+	ADMStatus     map[string]card.ADMInfo // Status of ADM keys
+}
+
+// ApplicationInfo describes an application on the card
+type ApplicationInfo struct {
+	AID   string
+	Label string
+	Type  string
+	Path  string // File ID path for cards that don't support AID selection (e.g., "7FF0")
+}
+
+// GSMData contains data read from GSM (2G) SIM
+type GSMData struct {
+	IMSI    string
+	SPN     string
+	MSISDN  string
+	HPLMN   string
+	FPLMN   []string
+	RawIMSI []byte
+}
+
+// DetectApplicationAIDs reads EF_DIR and sets detected AIDs and paths for USIM/ISIM
+// This should be called before ReadUSIM/ReadISIM for non-standard cards
+func DetectApplicationAIDs(reader *card.Reader) {
+	apps, _ := readApplicationDirectory(reader)
+	for _, app := range apps {
+		aidBytes, _ := hex.DecodeString(app.AID)
+		pathBytes, _ := hex.DecodeString(app.Path)
+
+		if len(aidBytes) >= 7 {
+			// Check if it's USIM (starts with A0000000871002)
+			if aidBytes[0] == 0xA0 && aidBytes[5] == 0x10 && aidBytes[6] == 0x02 {
+				DetectedUSIM_AID = aidBytes
+				if len(pathBytes) >= 2 {
+					DetectedUSIM_Path = pathBytes
+				}
+			}
+			// Check if it's ISIM (starts with A0000000871004)
+			if aidBytes[0] == 0xA0 && aidBytes[5] == 0x10 && aidBytes[6] == 0x04 {
+				DetectedISIM_AID = aidBytes
+				if len(pathBytes) >= 2 {
+					DetectedISIM_Path = pathBytes
+				}
+			}
+		}
+	}
+}
+
+// AnalyzeCard performs comprehensive card analysis
+// checkADM: if true, checks ADM key slots status (sends VERIFY with Lc=0)
+func AnalyzeCard(reader *card.Reader, checkADM bool) (*CardInfo, error) {
+	info := &CardInfo{
+		ATR: reader.ATRHex(),
+	}
+
+	// Check if card uses File ID selection
+	info.IsProprietary = IsProprietaryCard(info.ATR)
+	info.UsesGSMClass = IsGSMOnlyCard(info.ATR)
+
+	// Set global flag for other packages to use
+	UseGSMCommands = info.UsesGSMClass
+
+	// Try to read ICCID from MF (works on all cards)
+	iccid, err := readICCIDWithGSMFallback(reader, info.UsesGSMClass)
+	if err == nil {
+		info.ICCID = iccid
+	}
+
+	// Try to read EF_DIR to find applications
+	apps, rawDir := readApplicationDirectoryWithGSMFallback(reader, info.UsesGSMClass)
+	info.Applications = apps
+	info.RawDIR = rawDir
+
+	// Store detected AIDs and paths for later use
+	for _, app := range apps {
+		aidBytes, _ := hex.DecodeString(app.AID)
+		pathBytes, _ := hex.DecodeString(app.Path)
+
+		if len(aidBytes) >= 7 {
+			// Check if it's USIM (starts with A0000000871002)
+			if aidBytes[0] == 0xA0 && aidBytes[5] == 0x10 && aidBytes[6] == 0x02 {
+				DetectedUSIM_AID = aidBytes
+				if len(pathBytes) >= 2 {
+					DetectedUSIM_Path = pathBytes
+				}
+			}
+			// Check if it's ISIM (starts with A0000000871004)
+			if aidBytes[0] == 0xA0 && aidBytes[5] == 0x10 && aidBytes[6] == 0x04 {
+				DetectedISIM_AID = aidBytes
+				if len(pathBytes) >= 2 {
+					DetectedISIM_Path = pathBytes
+				}
+			}
+		}
+	}
+
+	// For cards without EF_DIR entries, set default paths
+	if info.IsProprietary && len(info.Applications) == 0 {
+		DetectedUSIM_Path = []byte{0x7F, 0xF0}
+		DetectedISIM_Path = []byte{0x7F, 0xF2}
+	}
+
+	// Try GSM (2G) access
+	gsmData, err := readGSMSIMWithFallback(reader, info.UsesGSMClass)
+	if err == nil && gsmData != nil {
+		info.GSMAvailable = true
+		info.GSMData = gsmData
+	}
+
+	// Check available ADM levels (only if requested - sends VERIFY with Lc=0)
+	if checkADM {
+		info.ADMStatus = reader.GetAllADMStatus()
+	}
+
+	return info, nil
+}
+
+// readApplicationDirectory reads EF_DIR to list all applications
+func readApplicationDirectory(reader *card.Reader) ([]ApplicationInfo, []byte) {
+	return readApplicationDirectoryWithGSMFallback(reader, false)
+}
+
+// readApplicationDirectoryWithGSMFallback reads EF_DIR with GSM command fallback
+func readApplicationDirectoryWithGSMFallback(reader *card.Reader, useGSM bool) ([]ApplicationInfo, []byte) {
+	var apps []ApplicationInfo
+	var rawData []byte
+
+	// Select MF first
+	if useGSM {
+		reader.SelectGSM([]byte{0x3F, 0x00})
+	} else {
+		reader.Select([]byte{0x3F, 0x00})
+	}
+
+	// Select EF_DIR (2F00)
+	var resp *card.APDUResponse
+	var err error
+
+	if useGSM {
+		resp, err = reader.SelectGSM([]byte{0x2F, 0x00})
+	} else {
+		resp, err = reader.Select([]byte{0x2F, 0x00})
+	}
+
+	// If standard method fails, try GSM fallback
+	if (err != nil || !resp.IsOK()) && !useGSM {
+		resp, err = reader.SelectGSM([]byte{0x2F, 0x00})
+		if err == nil && resp.IsOK() {
+			useGSM = true // Switch to GSM mode for reading
+		}
+	}
+
+	if err != nil || !resp.IsOK() {
+		return apps, nil
+	}
+
+	// Get record length from response if available (for GSM response format)
+	recordLen := byte(48) // Default for EF_DIR
+	if len(resp.Data) >= 15 {
+		// GSM response format: bytes 14-15 contain record length
+		if resp.Data[13] > 0 && resp.Data[13] < 128 {
+			recordLen = resp.Data[13]
+		}
+	}
+
+	// EF_DIR is a linear fixed file, read records
+	for recNum := byte(1); recNum <= 10; recNum++ {
+		var recResp *card.APDUResponse
+
+		if useGSM {
+			recResp, err = reader.ReadRecordGSM(recNum, recordLen)
+		} else {
+			recResp, err = reader.ReadRecord(recNum, 0x00) // 0x00 = let card tell us the size
+			if err != nil {
+				// Try with specific size
+				recResp, err = reader.ReadRecord(recNum, 64)
+			}
+		}
+
+		if err != nil || !recResp.IsOK() {
+			break
+		}
+
+		rawData = append(rawData, recResp.Data...)
+
+		// Parse application template (tag 61)
+		app := parseApplicationTemplate(recResp.Data)
+		if app.AID != "" {
+			apps = append(apps, app)
+		}
+	}
+
+	return apps, rawData
+}
+
+// readICCIDWithGSMFallback reads ICCID with GSM command fallback
+func readICCIDWithGSMFallback(reader *card.Reader, useGSM bool) (string, error) {
+	// Select MF first
+	if useGSM {
+		reader.SelectGSM([]byte{0x3F, 0x00})
+	} else {
+		reader.Select([]byte{0x3F, 0x00})
+	}
+
+	// Select EF_ICCID (2FE2)
+	var resp *card.APDUResponse
+	var err error
+
+	if useGSM {
+		resp, err = reader.SelectGSM([]byte{0x2F, 0xE2})
+	} else {
+		resp, err = reader.Select([]byte{0x2F, 0xE2})
+	}
+
+	// If standard method fails, try GSM fallback
+	if (err != nil || !resp.IsOK()) && !useGSM {
+		resp, err = reader.SelectGSM([]byte{0x2F, 0xE2})
+		if err == nil && resp.IsOK() {
+			useGSM = true
+		}
+	}
+
+	if err != nil || !resp.IsOK() {
+		return "", fmt.Errorf("select failed")
+	}
+
+	// Read binary
+	if useGSM {
+		resp, err = reader.ReadBinaryGSM(0, 10)
+	} else {
+		resp, err = reader.ReadBinary(0, 10)
+	}
+
+	if err != nil || !resp.IsOK() {
+		return "", fmt.Errorf("read failed")
+	}
+
+	return DecodeICCID(resp.Data), nil
+}
+
+// readGSMSIMWithFallback reads GSM SIM data with fallback
+func readGSMSIMWithFallback(reader *card.Reader, useGSM bool) (*GSMData, error) {
+	data := &GSMData{}
+
+	// Select MF
+	var resp *card.APDUResponse
+	var err error
+
+	if useGSM {
+		resp, err = reader.SelectGSM([]byte{0x3F, 0x00})
+	} else {
+		resp, err = reader.Select([]byte{0x3F, 0x00})
+	}
+	if err != nil || !resp.IsOK() {
+		return nil, fmt.Errorf("cannot select MF")
+	}
+
+	// Select DF_GSM (7F20)
+	if useGSM {
+		resp, err = reader.SelectGSM([]byte{0x7F, 0x20})
+	} else {
+		resp, err = reader.Select([]byte{0x7F, 0x20})
+	}
+
+	// Try GSM fallback if standard fails
+	if (err != nil || !resp.IsOK()) && !useGSM {
+		resp, err = reader.SelectGSM([]byte{0x7F, 0x20})
+		if err == nil && resp.IsOK() {
+			useGSM = true
+		}
+	}
+
+	if err != nil || !resp.IsOK() {
+		return nil, fmt.Errorf("DF_GSM not found")
+	}
+
+	// Read EF_IMSI (6F07)
+	if useGSM {
+		resp, err = reader.SelectGSM([]byte{0x6F, 0x07})
+	} else {
+		resp, err = reader.Select([]byte{0x6F, 0x07})
+	}
+
+	if err == nil && resp.IsOK() {
+		var imsiData []byte
+		if useGSM {
+			imsiResp, _ := reader.ReadBinaryGSM(0, 9)
+			if imsiResp != nil && imsiResp.IsOK() {
+				imsiData = imsiResp.Data
+			}
+		} else {
+			imsiData, _ = reader.ReadAllBinary(9)
+		}
+
+		if len(imsiData) > 0 {
+			data.IMSI = DecodeIMSI(imsiData)
+			data.RawIMSI = imsiData
+			if len(data.IMSI) >= 5 {
+				data.HPLMN = data.IMSI[:5]
+			}
+		}
+	}
+
+	// Read EF_SPN (6F46)
+	if useGSM {
+		resp, err = reader.SelectGSM([]byte{0x6F, 0x46})
+	} else {
+		resp, err = reader.Select([]byte{0x6F, 0x46})
+	}
+
+	if err == nil && resp.IsOK() {
+		var spnData []byte
+		if useGSM {
+			spnResp, _ := reader.ReadBinaryGSM(0, 17)
+			if spnResp != nil && spnResp.IsOK() {
+				spnData = spnResp.Data
+			}
+		} else {
+			spnData, _ = reader.ReadAllBinary(17)
+		}
+
+		if len(spnData) > 0 {
+			data.SPN = DecodeSPN(spnData)
+		}
+	}
+
+	if data.IMSI == "" && data.SPN == "" {
+		return nil, fmt.Errorf("no GSM data found")
+	}
+
+	return data, nil
+}
+
+// parseApplicationTemplate parses a single EF_DIR record
+func parseApplicationTemplate(data []byte) ApplicationInfo {
+	app := ApplicationInfo{}
+
+	idx := 0
+	for idx < len(data) {
+		if data[idx] == 0xFF {
+			break // End of data
+		}
+
+		tag := data[idx]
+		if idx+1 >= len(data) {
+			break
+		}
+		length := int(data[idx+1])
+		if idx+2+length > len(data) {
+			break
+		}
+		value := data[idx+2 : idx+2+length]
+
+		switch tag {
+		case 0x61: // Application template
+			// Parse nested TLV
+			return parseApplicationTemplate(value)
+		case 0x4F: // AID
+			app.AID = hex.EncodeToString(value)
+			app.Type = identifyAID(value)
+		case 0x50: // Application label
+			app.Label = strings.TrimRight(string(value), "\x00\xFF")
+		case 0x51: // Path (discretionary data containing DF path)
+			// Store path as hex for fallback selection
+			if len(value) >= 2 {
+				app.Path = hex.EncodeToString(value)
+			}
+		}
+
+		idx += 2 + length
+	}
+
+	return app
+}
+
+// identifyAID identifies the application type from AID
+func identifyAID(aid []byte) string {
+	aidHex := strings.ToUpper(hex.EncodeToString(aid))
+
+	// Known AIDs
+	knownAIDs := map[string]string{
+		"A0000000871002": "USIM (3GPP)",
+		"A0000000871004": "ISIM (3GPP)",
+		"A000000087":     "3GPP",
+		"A0000000030000": "Visa",
+		"A0000000040000": "MasterCard",
+		"A00000006510":   "JCOP",
+		"D276000085":     "NFC Forum",
+		"D27600011800":   "TUAK (3GPP Auth)",
+		"D276000118":     "TUAK JavaCard",
+	}
+
+	for prefix, name := range knownAIDs {
+		if strings.HasPrefix(aidHex, prefix) {
+			return name
+		}
+	}
+
+	// Check for 3GPP RID
+	if strings.HasPrefix(aidHex, "A000000087") {
+		appCode := ""
+		if len(aid) >= 6 {
+			appCode = aidHex[10:14]
+		}
+		switch appCode {
+		case "1002":
+			return "USIM"
+		case "1004":
+			return "ISIM"
+		case "1001":
+			return "GSM"
+		case "1003":
+			return "USIM Toolkit"
+		case "1005":
+			return "Contactless"
+		default:
+			return fmt.Sprintf("3GPP App (code: %s)", appCode)
+		}
+	}
+
+	return "Unknown"
+}
+
+// readGSMSIM tries to read data as 2G GSM SIM (without USIM app)
+func readGSMSIM(reader *card.Reader) (*GSMData, error) {
+	data := &GSMData{}
+
+	// Select MF
+	resp, err := reader.Select([]byte{0x3F, 0x00})
+	if err != nil || !resp.IsOK() {
+		return nil, fmt.Errorf("cannot select MF")
+	}
+
+	// Select DF_GSM (7F20)
+	resp, err = reader.Select([]byte{0x7F, 0x20})
+	if err != nil || !resp.IsOK() {
+		return nil, fmt.Errorf("DF_GSM not found")
+	}
+
+	// Read EF_IMSI (6F07)
+	resp, err = reader.Select([]byte{0x6F, 0x07})
+	if err == nil && resp.IsOK() {
+		imsiData, err := reader.ReadAllBinary(9)
+		if err == nil {
+			data.IMSI = DecodeIMSI(imsiData)
+			data.RawIMSI = imsiData
+			// Extract HPLMN from IMSI
+			if len(data.IMSI) >= 5 {
+				data.HPLMN = data.IMSI[:5]
+			}
+		}
+	}
+
+	// Read EF_SPN (6F46)
+	resp, err = reader.Select([]byte{0x6F, 0x46})
+	if err == nil && resp.IsOK() {
+		spnData, err := reader.ReadAllBinary(17)
+		if err == nil {
+			data.SPN = DecodeSPN(spnData)
+		}
+	}
+
+	// Read EF_FPLMN (6F7B)
+	resp, err = reader.Select([]byte{0x6F, 0x7B})
+	if err == nil && resp.IsOK() {
+		fplmnData, err := reader.ReadAllBinary(12)
+		if err == nil {
+			data.FPLMN = DecodePLMNList(fplmnData)
+		}
+	}
+
+	// Check if we got any useful data
+	if data.IMSI == "" && data.SPN == "" {
+		return nil, fmt.Errorf("no GSM data found")
+	}
+
+	return data, nil
+}
+
+// TrySelectApplication attempts to select an application by AID
+func TrySelectApplication(reader *card.Reader, aid []byte) (*card.APDUResponse, error) {
+	return reader.Select(aid)
+}
+
+// ParseATR provides basic ATR analysis
+func ParseATR(atr []byte) map[string]string {
+	info := make(map[string]string)
+
+	if len(atr) < 2 {
+		return info
+	}
+
+	// TS byte
+	switch atr[0] {
+	case 0x3B:
+		info["Convention"] = "Direct"
+	case 0x3F:
+		info["Convention"] = "Inverse"
+	}
+
+	// Historical bytes (simplified)
+	if len(atr) > 2 {
+		histLen := atr[1] & 0x0F
+		if int(histLen) <= len(atr)-2 {
+			histStart := len(atr) - int(histLen) - 1 // -1 for TCK
+			if histStart > 0 && histStart < len(atr) {
+				histBytes := atr[histStart : len(atr)-1]
+				// Try to extract readable text
+				var text strings.Builder
+				for _, b := range histBytes {
+					if b >= 0x20 && b < 0x7F {
+						text.WriteByte(b)
+					}
+				}
+				if text.Len() > 0 {
+					info["Historical"] = text.String()
+				}
+			}
+		}
+	}
+
+	return info
+}
+
+// Known card types based on ATR patterns
+func IdentifyCardByATR(atr string) string {
+	atr = strings.ToUpper(atr)
+
+	// Check patterns in order: more specific (longer) patterns first!
+	// This is important because map iteration order is not guaranteed
+
+	// NovaCard - contains "676F" marker
+	if strings.Contains(atr, "676F") || strings.Contains(atr, "676FA5") {
+		return "NovaCard"
+	}
+
+	// Giesecke+Devrient (G+D) - contains "574A" (WJ) marker
+	if strings.Contains(atr, "574A") {
+		return "Giesecke+Devrient (G+D)"
+	}
+
+	// Sysmocom SJA5 - contains "674A35" marker (gJ5)
+	if strings.Contains(atr, "674A35") {
+		return "Sysmocom sysmoISIM-SJA5"
+	}
+
+	// Common ATR patterns
+	patterns := []struct {
+		prefix string
+		name   string
+	}{
+		// Sysmocom (by ATR prefix)
+		{"3B9F96801F878031E073FE211B674A35", "Sysmocom sysmoISIM-SJA5"},
+		{"3B9F96801FC78031A073", "Sysmocom sysmoUSIM-SJS1"},
+		{"3B9F96801FC7", "Sysmocom sysmoUSIM-SJS1"},
+		{"3B9F97801FC7", "Sysmocom sysmoUSIM-SJS1 4FF"},
+
+		// G+D StarSign
+		{"3BBF11008131FE45455041", "G+D StarSign"},
+
+		// Thales/Gemalto
+		{"3B9F95801FC3", "Thales/Gemalto"},
+
+		// Programmable cards (File ID selection)
+		// ATR: 3B959640F00F050A0F0A - short ATR with basic protocol
+		{"3B959640F00F050A0F0A", "Programmable card (File ID selection)"},
+		{"3B9596", "Programmable SIM"},
+
+		// Generic
+		{"3B3F9600", "Basic SIM"},
+	}
+
+	for _, p := range patterns {
+		if strings.HasPrefix(atr, p.prefix) {
+			return p.name
+		}
+	}
+
+	return "Unknown card type"
+}
+
+// IsProprietaryCard checks if the card uses File ID selection instead of AID
+func IsProprietaryCard(atr string) bool {
+	atr = strings.ToUpper(atr)
+	// Cards that use File ID selection
+	proprietaryPrefixes := []string{
+		"3B959640F00F050A0F0A",
+		"3B9596",
+	}
+	for _, prefix := range proprietaryPrefixes {
+		if strings.HasPrefix(atr, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
+// IsGSMOnlyCard checks if the card requires GSM class commands (CLA=A0)
+func IsGSMOnlyCard(atr string) bool {
+	return IsProprietaryCard(atr)
+}

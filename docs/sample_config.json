@@ -1,0 +1,30 @@
+{
+  "imsi": "250880000000001",
+  "spn": "My Operator",
+  "mcc": "250",
+  "mnc": "88",
+  "hplmn": [
+    {
+      "mcc": "250",
+      "mnc": "88",
+      "act": ["eutran", "utran", "gsm"]
+    }
+  ],
+  "isim": {
+    "impi": "250880000000001@ims.mnc088.mcc250.3gppnetwork.org",
+    "impu": [
+      "sip:250880000000001@ims.mnc088.mcc250.3gppnetwork.org"
+    ],
+    "domain": "ims.mnc088.mcc250.3gppnetwork.org",
+    "pcscf": [
+      "pcscf.ims.mnc088.mcc250.3gppnetwork.org"
+    ]
+  },
+  "services": {
+    "volte": true,
+    "vowifi": true,
+    "isim_pcscf": true,
+    "isim_voice_domain_pref": true
+  },
+  "clear_fplmn": true
+}
