@@ -35,10 +35,12 @@ type TestCard struct {
 // ============================================================================
 var testCards = []TestCard{
 	// === ATR identification tests (no raw data needed) ===
+	// Note: CardType values must match the embedded smartcard_list.txt dictionary
+	// Source: https://pcsc-tools.apdu.fr/smartcard_list.txt
 	{
-		Name:     "G+D ATR",
-		ATR:      "3B9F96801FC38031E073FE2117574A330E3F333600A5",
-		CardType: "Giesecke+Devrient (G+D)",
+		Name:     "G+D Mobile Security 5G",
+		ATR:      "3B9F96801FC78031E073F6A157574A4D020B6110005B",
+		CardType: "G+D Mobile Security for private 5G USIM (Telecommunication)",
 	},
 
 	// ============================================================================
@@ -46,10 +48,11 @@ var testCards = []TestCard{
 	// ============================================================================
 
 	// NovaCard - dumped 2025-11-27
+	// Note: This specific ATR is not in the standard smartcard_list.txt
 	{
 		Name:        "NovaCard",
 		ATR:         "3B9F96803FC7008031E073FE2113676FA5021B0000012A",
-		CardType:    "NovaCard",
+		CardType:    "Unknown card type",
 		RawICCID:    []byte{0x98, 0x07, 0x81, 0x08, 0x00, 0x00, 0x00, 0x00, 0x10, 0x67},
 		ICCID:       "89701880000000000176",
 		RawIMSI:     []byte{0x08, 0x29, 0x05, 0x88, 0x00, 0x00, 0x00, 0x00, 0x71},
@@ -71,10 +74,11 @@ var testCards = []TestCard{
 	},
 
 	// Sysmocom sysmoISIM-SJA5 - dumped 2025-11-27
+	// CardType from smartcard_list.txt: https://pcsc-tools.apdu.fr/smartcard_list.txt
 	{
 		Name:        "Sysmocom SJA5",
 		ATR:         "3B9F96801F878031E073FE211B674A357530350265F8",
-		CardType:    "Sysmocom sysmoISIM-SJA5",
+		CardType:    "sysmoISIM-SJA5 (Telecommunication)",
 		RawICCID:    []byte{0x98, 0x94, 0x44, 0x00, 0x00, 0x00, 0x11, 0x57, 0x01, 0xF6},
 		ICCID:       "8949440000001175106",
 		RawIMSI:     []byte{0x08, 0x29, 0x05, 0x88, 0x00, 0x00, 0x00, 0x00, 0x30},

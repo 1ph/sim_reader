@@ -3,6 +3,7 @@ package sim
 import (
 	"encoding/hex"
 	"fmt"
+	"sim_reader/dictionaries"
 	"strings"
 )
 
@@ -389,60 +390,15 @@ func decodeTLVString(data []byte) string {
 }
 
 // GetMCCCountry returns country name for MCC
+// Uses embedded MCC/MNC dictionary for comprehensive coverage
 func GetMCCCountry(mcc string) string {
-	countries := map[string]string{
-		"250": "Russia",
-		"255": "Ukraine",
-		"257": "Belarus",
-		"259": "Moldova",
-		"260": "Poland",
-		"262": "Germany",
-		"310": "USA",
-		"311": "USA",
-		"312": "USA",
-		"313": "USA",
-		"314": "USA",
-		"315": "USA",
-		"316": "USA",
-		"234": "UK",
-		"208": "France",
-		"222": "Italy",
-		"214": "Spain",
-		"404": "India",
-		"405": "India",
-		"460": "China",
-		"440": "Japan",
-		"450": "South Korea",
-		"505": "Australia",
-		"724": "Brazil",
-		"001": "Test Network",
-		"999": "Test Network",
-	}
-	if country, ok := countries[mcc]; ok {
-		return country
-	}
-	return ""
+	return dictionaries.GetCountry(mcc)
 }
 
 // GetOperatorName returns operator name for MCC-MNC
+// Uses embedded MCC/MNC dictionary for comprehensive coverage
 func GetOperatorName(mcc, mnc string) string {
-	operators := map[string]string{
-		// Russia
-		"25001": "MTS",
-		"25002": "MegaFon",
-		"25099": "Beeline",
-		"25020": "Tele2",
-		"25088": "SUPER",
-		// Test
-		"00101": "Test Network",
-		"99970": "Test Network",
-		"99901": "Test Network",
-	}
-	key := mcc + mnc
-	if name, ok := operators[key]; ok {
-		return name
-	}
-	return ""
+	return dictionaries.GetOperatorName(mcc, mnc)
 }
 
 // DecodeLanguages decodes EF_LI (Language Indication)

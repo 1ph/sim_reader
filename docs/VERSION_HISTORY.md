@@ -1,5 +1,35 @@
 # Version History
 
+## v2.2.1 - Embedded Dictionaries for ATR and MCC/MNC Lookup
+
+### Embedded Dictionaries
+- ATR and MCC/MNC dictionaries are now compiled into the binary using Go embed
+- Binary is fully self-contained - no external dictionary files needed
+- Lazy initialization with thread-safe loading (sync.Once)
+
+### ATR Dictionary
+- **17,000+ ATR patterns** from the PC/SC Tools project
+- Automatic card type identification by ATR
+- Regex-based pattern matching with wildcard support (`..` = any byte)
+- Source: [pcsc-tools.apdu.fr/smartcard_list.txt](https://pcsc-tools.apdu.fr/smartcard_list.txt)
+
+### MCC/MNC Dictionary  
+- **2,700+ mobile operators** worldwide
+- Country identification by MCC
+- Operator and brand names by MCC+MNC
+- Region and ISO country codes
+- Source: [csvbase.com/ilya/mcc-mnc](https://csvbase.com/ilya/mcc-mnc)
+
+### Dictionary Updates
+To update dictionaries, download fresh files to `dictionaries/` folder and rebuild:
+```bash
+curl -o dictionaries/smartcard_list.txt https://pcsc-tools.apdu.fr/smartcard_list.txt
+curl -o dictionaries/mcc-mnc.csv "https://csvbase.com/ilya/mcc-mnc.csv"
+go build .
+```
+
+---
+
 ## v2.2.0 - Authentication Testing with Milenage and TUAK
 
 ### Authentication Module

@@ -137,8 +137,31 @@ sim_reader/
 ├── card/                # PC/SC reader, APDU commands, authentication
 ├── sim/                 # USIM/ISIM readers, decoders, writers
 ├── output/              # Colored table output
+├── dictionaries/        # Embedded ATR and MCC/MNC dictionaries
 ├── docs/                # Documentation
 └── Makefile             # Build commands
+```
+
+## Embedded Dictionaries
+
+The binary includes embedded dictionaries for card identification and operator lookup. These are compiled into the executable using Go embed - no external files needed at runtime.
+
+| Dictionary | Records | Description | Source |
+|------------|---------|-------------|--------|
+| ATR | 17,000+ | Smart card identification by ATR | [PC/SC Tools](https://pcsc-tools.apdu.fr/smartcard_list.txt) |
+| MCC/MNC | 2,700+ | Mobile operators worldwide | [csvbase.com](https://csvbase.com/ilya/mcc-mnc) |
+
+### Updating Dictionaries
+
+To update dictionaries with the latest data:
+
+```bash
+# Download fresh dictionary files
+curl -o dictionaries/smartcard_list.txt https://pcsc-tools.apdu.fr/smartcard_list.txt
+curl -o dictionaries/mcc-mnc.csv "https://csvbase.com/ilya/mcc-mnc.csv"
+
+# Rebuild to embed updated dictionaries
+go build .
 ```
 
 ## Dependencies

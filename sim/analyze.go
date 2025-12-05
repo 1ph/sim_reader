@@ -4,6 +4,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"sim_reader/card"
+	"sim_reader/dictionaries"
 	"strings"
 )
 
@@ -541,58 +542,13 @@ func ParseATR(atr []byte) map[string]string {
 	return info
 }
 
-// Known card types based on ATR patterns
+// IdentifyCardByATR identifies card type based on ATR using embedded dictionary
 func IdentifyCardByATR(atr string) string {
 	atr = strings.ToUpper(atr)
 
-	// Check patterns in order: more specific (longer) patterns first!
-	// This is important because map iteration order is not guaranteed
-
-	// NovaCard - contains "676F" marker
-	if strings.Contains(atr, "676F") || strings.Contains(atr, "676FA5") {
-		return "NovaCard"
-	}
-
-	// Giesecke+Devrient (G+D) - contains "574A" (WJ) marker
-	if strings.Contains(atr, "574A") {
-		return "Giesecke+Devrient (G+D)"
-	}
-
-	// Sysmocom SJA5 - contains "674A35" marker (gJ5)
-	if strings.Contains(atr, "674A35") {
-		return "Sysmocom sysmoISIM-SJA5"
-	}
-
-	// Common ATR patterns
-	patterns := []struct {
-		prefix string
-		name   string
-	}{
-		// Sysmocom (by ATR prefix)
-		{"3B9F96801F878031E073FE211B674A35", "Sysmocom sysmoISIM-SJA5"},
-		{"3B9F96801FC78031A073", "Sysmocom sysmoUSIM-SJS1"},
-		{"3B9F96801FC7", "Sysmocom sysmoUSIM-SJS1"},
-		{"3B9F97801FC7", "Sysmocom sysmoUSIM-SJS1 4FF"},
-
-		// G+D StarSign
-		{"3BBF11008131FE45455041", "G+D StarSign"},
-
-		// Thales/Gemalto
-		{"3B9F95801FC3", "Thales/Gemalto"},
-
-		// Programmable cards (File ID selection)
-		// ATR: 3B959640F00F050A0F0A - short ATR with basic protocol
-		{"3B959640F00F050A0F0A", "Programmable card (File ID selection)"},
-		{"3B9596", "Programmable SIM"},
-
-		// Generic
-		{"3B3F9600", "Basic SIM"},
-	}
-
-	for _, p := range patterns {
-		if strings.HasPrefix(atr, p.prefix) {
-			return p.name
-		}
+	// Use embedded ATR dictionary for identification
+	if cardType := dictionaries.LookupATRFirst(atr); cardType != "" {
+		return cardType
 	}
 
 	return "Unknown card type"
