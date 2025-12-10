@@ -73,6 +73,12 @@ func main() {
 	// Other flags
 	clearFPLMN := flag.Bool("clear-fplmn", false, "Clear Forbidden PLMN list")
 
+	// ADM key change flags
+	changeADM1 := flag.String("change-adm1", "", "Change ADM1 key to new value (requires -adm with current key)")
+	changeADM2 := flag.String("change-adm2", "", "Change ADM2 key to new value (requires -adm2 with current key)")
+	changeADM3 := flag.String("change-adm3", "", "Change ADM3 key to new value (requires -adm3 with current key)")
+	changeADM4 := flag.String("change-adm4", "", "Change ADM4 key to new value (requires -adm4 with current key)")
+
 	// Authentication flags
 	authMode := flag.Bool("auth", false, "Run authentication test mode")
 	authK := flag.String("auth-k", "", "Subscriber key K (32 hex chars for 128-bit, 64 for 256-bit)")
@@ -152,6 +158,12 @@ WRITING OPTIONS (require -adm):
   Other:
   -clear-fplmn       Clear Forbidden PLMN list
 
+ADM KEY CHANGE (use with caution - wrong key will decrement counter!):
+  -change-adm1 <new> Change ADM1 key (requires -adm with current key)
+  -change-adm2 <new> Change ADM2 key (requires -adm2 with current key)
+  -change-adm3 <new> Change ADM3 key (requires -adm3 with current key)
+  -change-adm4 <new> Change ADM4 key (requires -adm4 with current key)
+
 AUTHENTICATION OPTIONS:
   -auth              Run authentication test mode
   -auth-k <hex>      Subscriber key K (32 hex chars for 128-bit)
@@ -217,7 +229,13 @@ EXAMPLES:
   # Process AUTS from dump to extract SQNms
   %s -auth -auth-k F2464E3293019A7E51ABAA7B1262B7D8 -auth-opc B10B351A0CCD8BE31E0C9F088945A812 -auth-rand 7D6AF2DF993240BA9B191B68F1750C43 -auth-auts AABBCCDDEEFF00112233445566778899 -auth-no-card
 
-`, os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0])
+  # Change ADM1 key (sysmoUSIM default key example)
+  %s -adm 4444444444444444 -change-adm1 1122334455667788
+
+  # Change ADM1 key (decimal format)
+  %s -adm 88888888 -change-adm1 12345678
+
+`, os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0])
 	}
 
 	flag.Parse()
@@ -285,7 +303,8 @@ EXAMPLES:
 		*writeHPLMN != "" || *writeUserPLMN != "" || *writeOPLMN != "" || *setOpMode != "" ||
 		*enableVoLTE || *enableVoWiFi || *enableSMSOverIP || *enableVoicePref ||
 		*disableVoLTE || *disableVoWiFi || *disableSMSOverIP || *disableVoicePref ||
-		*clearFPLMN
+		*clearFPLMN ||
+		*changeADM1 != "" || *changeADM2 != "" || *changeADM3 != "" || *changeADM4 != ""
 
 	// Require ADM key for write operations
 	if isWriteMode && *admKey == "" {
@@ -657,6 +676,83 @@ EXAMPLES:
 				output.PrintError(fmt.Sprintf("Clear FPLMN failed: %v", err))
 			} else {
 				output.PrintSuccess("Forbidden PLMN list cleared")
+			}
+		}
+
+		// ADM key change operations
+		if *changeADM1 != "" {
+			if *admKey == "" {
+				output.PrintError("Change ADM1 requires -adm with current ADM1 key")
+			} else {
+				oldKey, _ := card.ParseADMKey(*admKey)
+				newKey, err := card.ParseADMKey(*changeADM1)
+				if err != nil {
+					output.PrintError(fmt.Sprintf("Invalid new ADM1 key: %v", err))
+				} else {
+					output.PrintWarning(fmt.Sprintf("Changing ADM1: %s -> %s", card.KeyToHex(oldKey), card.KeyToHex(newKey)))
+					if err := reader.ChangeADM1(oldKey, newKey); err != nil {
+						output.PrintError(fmt.Sprintf("Change ADM1 failed: %v", err))
+					} else {
+						output.PrintSuccess("ADM1 key changed successfully")
+					}
+				}
+			}
+		}
+
+		if *changeADM2 != "" {
+			if *admKey2 == "" {
+				output.PrintError("Change ADM2 requires -adm2 with current ADM2 key")
+			} else {
+				oldKey, _ := card.ParseADMKey(*admKey2)
+				newKey, err := card.ParseADMKey(*changeADM2)
+				if err != nil {
+					output.PrintError(fmt.Sprintf("Invalid new ADM2 key: %v", err))
+				} else {
+					output.PrintWarning(fmt.Sprintf("Changing ADM2: %s -> %s", card.KeyToHex(oldKey), card.KeyToHex(newKey)))
+					if err := reader.ChangeADM2(oldKey, newKey); err != nil {
+						output.PrintError(fmt.Sprintf("Change ADM2 failed: %v", err))
+					} else {
+						output.PrintSuccess("ADM2 key changed successfully")
+					}
+				}
+			}
+		}
+
+		if *changeADM3 != "" {
+			if *admKey3 == "" {
+				output.PrintError("Change ADM3 requires -adm3 with current ADM3 key")
+			} else {
+				oldKey, _ := card.ParseADMKey(*admKey3)
+				newKey, err := card.ParseADMKey(*changeADM3)
+				if err != nil {
+					output.PrintError(fmt.Sprintf("Invalid new ADM3 key: %v", err))
+				} else {
+					output.PrintWarning(fmt.Sprintf("Changing ADM3: %s -> %s", card.KeyToHex(oldKey), card.KeyToHex(newKey)))
+					if err := reader.ChangeADM3(oldKey, newKey); err != nil {
+						output.PrintError(fmt.Sprintf("Change ADM3 failed: %v", err))
+					} else {
+						output.PrintSuccess("ADM3 key changed successfully")
+					}
+				}
+			}
+		}
+
+		if *changeADM4 != "" {
+			if *admKey4 == "" {
+				output.PrintError("Change ADM4 requires -adm4 with current ADM4 key")
+			} else {
+				oldKey, _ := card.ParseADMKey(*admKey4)
+				newKey, err := card.ParseADMKey(*changeADM4)
+				if err != nil {
+					output.PrintError(fmt.Sprintf("Invalid new ADM4 key: %v", err))
+				} else {
+					output.PrintWarning(fmt.Sprintf("Changing ADM4: %s -> %s", card.KeyToHex(oldKey), card.KeyToHex(newKey)))
+					if err := reader.ChangeADM4(oldKey, newKey); err != nil {
+						output.PrintError(fmt.Sprintf("Change ADM4 failed: %v", err))
+					} else {
+						output.PrintSuccess("ADM4 key changed successfully")
+					}
+				}
 			}
 		}
 

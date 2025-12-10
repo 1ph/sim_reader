@@ -21,15 +21,16 @@ const (
 
 // APDU instruction bytes
 const (
-	INS_SELECT        = 0xA4
-	INS_READ_BINARY   = 0xB0
-	INS_READ_RECORD   = 0xB2
-	INS_UPDATE_BINARY = 0xD6
-	INS_UPDATE_RECORD = 0xDC
-	INS_GET_RESPONSE  = 0xC0
-	INS_VERIFY        = 0x20
-	INS_STATUS        = 0xF2
-	INS_AUTHENTICATE  = 0x88
+	INS_SELECT                = 0xA4
+	INS_READ_BINARY           = 0xB0
+	INS_READ_RECORD           = 0xB2
+	INS_UPDATE_BINARY         = 0xD6
+	INS_UPDATE_RECORD         = 0xDC
+	INS_GET_RESPONSE          = 0xC0
+	INS_VERIFY                = 0x20
+	INS_CHANGE_REFERENCE_DATA = 0x24 // Change PIN/ADM key
+	INS_STATUS                = 0xF2
+	INS_AUTHENTICATE          = 0x88
 )
 
 // Authentication context types (P2 for AUTHENTICATE command)
@@ -526,10 +527,10 @@ func (r *Reader) Authenticate(rand, autn []byte, context byte) (*AuthenticateRes
 
 	// Build APDU: CLA INS P1 P2 Lc Data Le
 	apdu := make([]byte, 5+len(authData)+1)
-	apdu[0] = 0x00              // CLA
-	apdu[1] = INS_AUTHENTICATE  // INS
-	apdu[2] = 0x00              // P1
-	apdu[3] = context           // P2: authentication context
+	apdu[0] = 0x00             // CLA
+	apdu[1] = INS_AUTHENTICATE // INS
+	apdu[2] = 0x00             // P1
+	apdu[3] = context          // P2: authentication context
 	apdu[4] = byte(len(authData))
 	copy(apdu[5:], authData)
 	apdu[5+len(authData)] = 0x00 // Le: expect response
@@ -616,8 +617,8 @@ func parseAuthResponse(data []byte, context byte, result *AuthenticateResult) er
 		if len(data) < 12 {
 			return fmt.Errorf("GSM response too short: %d bytes", len(data))
 		}
-		result.RES = data[:4]   // SRES
-		result.Kc = data[4:12]  // Kc
+		result.RES = data[:4]  // SRES
+		result.Kc = data[4:12] // Kc
 		return nil
 	}
 

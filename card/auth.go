@@ -230,3 +230,80 @@ func (r *Reader) GetAllADMStatus() map[string]ADMInfo {
 		"ADM4": r.CheckADM(PIN_ADM4),
 	}
 }
+
+// ChangeADM changes an ADM key using CHANGE REFERENCE DATA command (ISO 7816-4)
+// oldKey: current ADM key (8 bytes)
+// newKey: new ADM key (8 bytes)
+// pinType: PIN_ADM1, PIN_ADM2, PIN_ADM3, or PIN_ADM4
+func (r *Reader) ChangeADM(pinType byte, oldKey, newKey []byte) error {
+	// Pad keys to 8 bytes with 0xFF
+	paddedOld := make([]byte, 8)
+	paddedNew := make([]byte, 8)
+	for i := range paddedOld {
+		paddedOld[i] = 0xFF
+		paddedNew[i] = 0xFF
+	}
+	copy(paddedOld, oldKey)
+	copy(paddedNew, newKey)
+
+	// CHANGE REFERENCE DATA: CLA=00, INS=24, P1=00, P2=pinType, Lc=10, Data=oldKey||newKey
+	apdu := make([]byte, 21)
+	apdu[0] = 0x00                      // CLA
+	apdu[1] = INS_CHANGE_REFERENCE_DATA // INS
+	apdu[2] = 0x00                      // P1: verification data present
+	apdu[3] = pinType                   // P2: PIN/ADM reference
+	apdu[4] = 0x10                      // Lc: 16 bytes (8 + 8)
+	copy(apdu[5:13], paddedOld)         // Old key
+	copy(apdu[13:21], paddedNew)        // New key
+
+	resp, err := r.SendAPDU(apdu)
+	if err != nil {
+		return fmt.Errorf("change ADM command failed: %w", err)
+	}
+
+	if !resp.IsOK() {
+		sw := resp.SW()
+		if resp.SW1 == 0x63 && (resp.SW2&0xF0) == 0xC0 {
+			attempts := resp.SW2 & 0x0F
+			return fmt.Errorf("change ADM failed: wrong old key, %d attempts remaining", attempts)
+		}
+		if sw == 0x6983 {
+			return fmt.Errorf("change ADM failed: key is blocked")
+		}
+		return fmt.Errorf("change ADM failed: %s (SW=%04X)", SWToString(sw), sw)
+	}
+
+	return nil
+}
+
+// ChangeADM1 changes ADM1 key
+func (r *Reader) ChangeADM1(oldKey, newKey []byte) error {
+	if err := r.ChangeADM(PIN_ADM1, oldKey, newKey); err != nil {
+		return fmt.Errorf("ADM1: %w", err)
+	}
+	return nil
+}
+
+// ChangeADM2 changes ADM2 key
+func (r *Reader) ChangeADM2(oldKey, newKey []byte) error {
+	if err := r.ChangeADM(PIN_ADM2, oldKey, newKey); err != nil {
+		return fmt.Errorf("ADM2: %w", err)
+	}
+	return nil
+}
+
+// ChangeADM3 changes ADM3 key
+func (r *Reader) ChangeADM3(oldKey, newKey []byte) error {
+	if err := r.ChangeADM(PIN_ADM3, oldKey, newKey); err != nil {
+		return fmt.Errorf("ADM3: %w", err)
+	}
+	return nil
+}
+
+// ChangeADM4 changes ADM4 key
+func (r *Reader) ChangeADM4(oldKey, newKey []byte) error {
+	if err := r.ChangeADM(PIN_ADM4, oldKey, newKey); err != nil {
+		return fmt.Errorf("ADM4: %w", err)
+	}
+	return nil
+}
