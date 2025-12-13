@@ -12,7 +12,7 @@ import (
 )
 
 var (
-	version = "2.2.0"
+	version = "2.2.2"
 )
 
 func main() {
@@ -72,6 +72,8 @@ func main() {
 
 	// Other flags
 	clearFPLMN := flag.Bool("clear-fplmn", false, "Clear Forbidden PLMN list")
+	showCardAlgo := flag.Bool("show-card-algo", false, "Show current USIM auth algorithm (EF 8F90) if supported")
+	setCardAlgo := flag.String("set-card-algo", "", "Set USIM auth algorithm (EF 8F90): milenage, s3g-128, tuak, s3g-256 (requires -adm)")
 
 	// ADM key change flags
 	changeADM1 := flag.String("change-adm1", "", "Change ADM1 key to new value (requires -adm with current key)")
@@ -157,6 +159,8 @@ WRITING OPTIONS (require -adm):
   
   Other:
   -clear-fplmn       Clear Forbidden PLMN list
+  -show-card-algo    Show current USIM auth algorithm (EF 8F90)
+  -set-card-algo <a> Set USIM auth algorithm (milenage, s3g-128, tuak, s3g-256)
 
 ADM KEY CHANGE (use with caution - wrong key will decrement counter!):
   -change-adm1 <new> Change ADM1 key (requires -adm with current key)
@@ -304,7 +308,8 @@ EXAMPLES:
 		*enableVoLTE || *enableVoWiFi || *enableSMSOverIP || *enableVoicePref ||
 		*disableVoLTE || *disableVoWiFi || *disableSMSOverIP || *disableVoicePref ||
 		*clearFPLMN ||
-		*changeADM1 != "" || *changeADM2 != "" || *changeADM3 != "" || *changeADM4 != ""
+		*changeADM1 != "" || *changeADM2 != "" || *changeADM3 != "" || *changeADM4 != "" ||
+		*setCardAlgo != ""
 
 	// Require ADM key for write operations
 	if isWriteMode && *admKey == "" {
@@ -346,6 +351,9 @@ EXAMPLES:
 	if !*outputJSON {
 		output.PrintReaderInfo(reader.Name(), reader.ATRHex())
 	}
+
+	// Set global card mode early (affects selection + some GSM class fallbacks)
+	sim.UseGSMCommands = sim.IsGSMOnlyCard(reader.ATRHex())
 
 	// Verify PIN1 if provided
 	if *pin1 != "" {
@@ -462,6 +470,39 @@ EXAMPLES:
 	// Always detect AIDs from EF_DIR first (silent, for non-standard cards)
 	// This MUST be done before any write operations!
 	sim.DetectApplicationAIDs(reader)
+
+	// Show/set proprietary USIM authentication algorithm (EF 8F90) if requested
+	if *showCardAlgo || *setCardAlgo != "" {
+		// Guardrails: only allow this operation on supported proprietary card families.
+		// This avoids probing vendor-standard SIMs with non-standard EFs.
+		if !sim.SupportsProprietaryNAA(reader.ATRHex()) {
+			output.PrintWarning("This card does not support proprietary USIM algorithm selector (EF 8F90).")
+		} else {
+			if *setCardAlgo != "" {
+				algo, err := sim.SetUSIMAuthAlgorithmFromString(reader, *setCardAlgo)
+				if err != nil {
+					if err == sim.ErrNotSupported {
+						output.PrintWarning("Set USIM auth algorithm: not supported by this card.")
+					} else {
+						output.PrintError(fmt.Sprintf("Failed to set USIM auth algorithm: %v", err))
+					}
+				} else {
+					output.PrintSuccess(fmt.Sprintf("USIM auth algorithm updated: 0x%02X (%s)", algo, sim.USIMAuthAlgoName(algo)))
+				}
+			}
+
+			algo, err := sim.ReadUSIMAuthAlgorithm(reader)
+			if err != nil {
+				if err == sim.ErrNotSupported {
+					output.PrintWarning("Read USIM auth algorithm: not supported by this card.")
+				} else {
+					output.PrintWarning(fmt.Sprintf("USIM auth algorithm read failed: %v", err))
+				}
+			} else {
+				output.PrintSuccess(fmt.Sprintf("USIM auth algorithm: 0x%02X (%s)", algo, sim.USIMAuthAlgoName(algo)))
+			}
+		}
+	}
 
 	// Handle authentication mode
 	if *authMode {

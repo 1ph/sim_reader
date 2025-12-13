@@ -179,8 +179,16 @@ func (r *Reader) CheckADM(pinType byte) ADMInfo {
 	if err != nil {
 		return ADMInfo{Exists: false, Attempts: -1}
 	}
-
+	// Retry with GSM class if needed
 	sw := resp.SW()
+	if sw == SW_CLA_NOT_SUPPORTED || sw == SW_INS_NOT_SUPPORTED {
+		apdu[0] = 0xA0
+		resp2, err2 := r.SendAPDU(apdu)
+		if err2 == nil {
+			resp = resp2
+			sw = resp.SW()
+		}
+	}
 
 	// 63CX - PIN exists, X attempts remaining
 	if resp.SW1 == 0x63 && (resp.SW2&0xF0) == 0xC0 {
@@ -259,6 +267,15 @@ func (r *Reader) ChangeADM(pinType byte, oldKey, newKey []byte) error {
 	resp, err := r.SendAPDU(apdu)
 	if err != nil {
 		return fmt.Errorf("change ADM command failed: %w", err)
+	}
+
+	// Retry with GSM class (CLA=A0) if needed
+	if sw := resp.SW(); sw == SW_CLA_NOT_SUPPORTED || sw == SW_INS_NOT_SUPPORTED {
+		apdu[0] = 0xA0
+		resp2, err2 := r.SendAPDU(apdu)
+		if err2 == nil {
+			resp = resp2
+		}
 	}
 
 	if !resp.IsOK() {

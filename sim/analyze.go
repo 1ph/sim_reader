@@ -64,6 +64,17 @@ func DetectApplicationAIDs(reader *card.Reader) {
 			}
 		}
 	}
+
+	// For proprietary cards that don't expose EF_DIR properly, set default DF paths
+	// so that other operations (writes, auth algo read/write) can still select ADFs.
+	if IsProprietaryCard(reader.ATRHex()) && len(apps) == 0 {
+		if len(DetectedUSIM_Path) == 0 {
+			DetectedUSIM_Path = []byte{0x7F, 0xF0}
+		}
+		if len(DetectedISIM_Path) == 0 {
+			DetectedISIM_Path = []byte{0x7F, 0xF2}
+		}
+	}
 }
 
 // AnalyzeCard performs comprehensive card analysis

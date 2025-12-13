@@ -75,11 +75,35 @@ func ClearADMKey() {
 // SelectUSIMWithAuth selects USIM application and re-authenticates with all ADM keys
 // Returns the response from SELECT for FCP parsing if needed
 func SelectUSIMWithAuth(reader *card.Reader) (*card.APDUResponse, error) {
-	resp, err := reader.Select(GetUSIMAID())
+	var resp *card.APDUResponse
+	var err error
+
+	// Try selecting by AID first (ISO CLA=00)
+	resp, err = reader.Select(GetUSIMAID())
+	if err != nil || !(resp.IsOK() || resp.HasMoreData()) {
+		// Try standard USIM AID (7 bytes) if detected AID differs
+		resp, err = reader.Select(AID_USIM)
+	}
+
+	// Fallback: select by DF path (for proprietary cards that don't support AID selection)
+	if err != nil || !(resp.IsOK() || resp.HasMoreData()) {
+		if HasUSIMPath() {
+			if UseGSMCommands {
+				// GSM class selection
+				_, _ = reader.SelectGSM([]byte{0x3F, 0x00}) // MF
+				resp, err = reader.SelectGSM(GetUSIMPath())
+			} else {
+				// ISO selection
+				_, _ = reader.Select([]byte{0x3F, 0x00}) // MF
+				resp, err = reader.SelectDF(GetUSIMPath())
+			}
+		}
+	}
+
 	if err != nil {
 		return nil, fmt.Errorf("failed to select USIM: %w", err)
 	}
-	if !resp.IsOK() {
+	if !(resp.IsOK() || resp.HasMoreData()) {
 		return nil, fmt.Errorf("USIM selection failed: %s", card.SWToString(resp.SW()))
 	}
 
@@ -104,11 +128,33 @@ func SelectUSIMWithAuth(reader *card.Reader) (*card.APDUResponse, error) {
 // SelectISIMWithAuth selects ISIM application and re-authenticates with all ADM keys
 // Returns the response from SELECT for FCP parsing if needed
 func SelectISIMWithAuth(reader *card.Reader) (*card.APDUResponse, error) {
-	resp, err := reader.Select(GetISIMAID())
+	var resp *card.APDUResponse
+	var err error
+
+	// Try selecting by AID first (ISO CLA=00)
+	resp, err = reader.Select(GetISIMAID())
+	if err != nil || !(resp.IsOK() || resp.HasMoreData()) {
+		// Try standard ISIM AID (7 bytes)
+		resp, err = reader.Select(AID_ISIM)
+	}
+
+	// Fallback: select by DF path (for proprietary cards that don't support AID selection)
+	if err != nil || !(resp.IsOK() || resp.HasMoreData()) {
+		if HasISIMPath() {
+			if UseGSMCommands {
+				_, _ = reader.SelectGSM([]byte{0x3F, 0x00}) // MF
+				resp, err = reader.SelectGSM(GetISIMPath())
+			} else {
+				_, _ = reader.Select([]byte{0x3F, 0x00}) // MF
+				resp, err = reader.SelectDF(GetISIMPath())
+			}
+		}
+	}
+
 	if err != nil {
 		return nil, fmt.Errorf("failed to select ISIM: %w", err)
 	}
-	if !resp.IsOK() {
+	if !(resp.IsOK() || resp.HasMoreData()) {
 		return nil, fmt.Errorf("ISIM selection failed: %s", card.SWToString(resp.SW()))
 	}
 

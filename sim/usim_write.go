@@ -500,12 +500,12 @@ func toLower(s string) string {
 
 // UE Operation Mode constants (3GPP TS 31.102, EF_AD byte 1)
 const (
-	OP_MODE_NORMAL                = 0x00 // Normal operation
-	OP_MODE_TYPE_APPROVAL         = 0x01 // Type approval operations
-	OP_MODE_NORMAL_SPECIFIC       = 0x02 // Normal operation + specific facilities
+	OP_MODE_NORMAL                 = 0x00 // Normal operation
+	OP_MODE_TYPE_APPROVAL          = 0x01 // Type approval operations
+	OP_MODE_NORMAL_SPECIFIC        = 0x02 // Normal operation + specific facilities
 	OP_MODE_TYPE_APPROVAL_SPECIFIC = 0x04 // Type approval + specific facilities
-	OP_MODE_MAINTENANCE           = 0x08 // Maintenance (off-line)
-	OP_MODE_CELL_TEST             = 0x80 // Cell test operation
+	OP_MODE_MAINTENANCE            = 0x08 // Maintenance (off-line)
+	OP_MODE_CELL_TEST              = 0x80 // Cell test operation
 )
 
 // OperationModeNames maps mode codes to human-readable names

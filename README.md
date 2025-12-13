@@ -42,6 +42,7 @@ This software is provided "AS IS", without warranty of any kind, express or impl
 - **Card Analysis**: Auto-detect card type by ATR, read EF_DIR, file access conditions
 - **Multiple ADM Keys**: Support for up to 4 ADM keys (`-adm`, `-adm2`, `-adm3`, `-adm4`)
 - **PCOM Scripts**: Execute personalization scripts for programmable cards
+- **Programmable / Proprietary Profiles (Guarded)**: Optional support for switching USIM authentication algorithm via proprietary EF `8F90` (NAA selector) on supported programmable card families. This feature is **ATR-gated** to avoid probing unrelated vendor cards.
 
 ## Supported Card Types
 
@@ -114,6 +115,11 @@ make build-windows
 
 # Test authentication with card
 ./sim_reader -auth -auth-k YOUR_K -auth-opc YOUR_OPC -auth-mcc 250 -auth-mnc 88
+
+# (Programmable cards only) Show / set proprietary USIM algorithm selector (EF 8F90)
+# Supported values: milenage, s3g-128, tuak, s3g-256
+./sim_reader -adm YOUR_ADM_KEY -show-card-algo
+./sim_reader -adm YOUR_ADM_KEY -set-card-algo milenage -show-card-algo
 ```
 
 ## Documentation

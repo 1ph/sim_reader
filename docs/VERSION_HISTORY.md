@@ -1,5 +1,31 @@
 # Version History
 
+## v2.2.2 - Programmable Card Guardrails and Proprietary NAA (EF 8F90) Support
+
+### Proprietary USIM Algorithm Selector (EF 8F90)
+- Added optional support for reading and writing the proprietary USIM authentication algorithm selector EF `8F90` (NAA byte)
+- Supported values:
+  - `0x1F` = Milenage
+  - `0x2E` = S3G-128
+  - `0x3D` = TUAK
+  - `0x4C` = S3G-256
+
+### Safety Guardrails (No Impact on Standard Cards)
+- The `8F90` feature is **ATR-gated** and is only enabled for supported programmable/proprietary card families
+- Standard vendor USIM/ISIM cards are not probed for this proprietary EF
+
+### New Command Line Flags
+| Flag | Description |
+|------|-------------|
+| `-show-card-algo` | Show current proprietary USIM algorithm selector (EF `8F90`) when supported |
+| `-set-card-algo` | Set proprietary USIM algorithm selector (EF `8F90`) when supported |
+
+### Compatibility Improvements
+- Improved USIM/ISIM selection logic: fallback to DF path (`7FF0`/`7FF2`) for cards that do not reliably expose EF_DIR/AID selection
+- Added GSM class (`CLA=A0`) fallback for administrative operations on cards that require legacy GSM class APDUs
+
+---
+
 ## v2.2.1 - Embedded Dictionaries for ATR and MCC/MNC Lookup
 
 ### Embedded Dictionaries

@@ -383,7 +383,23 @@ func (r *Reader) VerifyPIN(pinType byte, pin []byte) (*APDUResponse, error) {
 	apdu[4] = 0x08
 	copy(apdu[5:], paddedPIN)
 
-	return r.SendAPDU(apdu)
+	resp, err := r.SendAPDU(apdu)
+	if err != nil {
+		return nil, err
+	}
+
+	// Some SIM/UICC implementations require GSM class (CLA=A0).
+	// If CLA/INS is not supported, retry with CLA=A0.
+	sw := resp.SW()
+	if sw == SW_CLA_NOT_SUPPORTED || sw == SW_INS_NOT_SUPPORTED {
+		apdu[0] = 0xA0
+		resp2, err2 := r.SendAPDU(apdu)
+		if err2 == nil {
+			return resp2, nil
+		}
+	}
+
+	return resp, nil
 }
 
 // ReadAllBinary reads all binary data from currently selected file
@@ -436,6 +452,23 @@ func (r *Reader) UpdateBinary(offset uint16, data []byte) (*APDUResponse, error)
 	return r.SendAPDU(apdu)
 }
 
+// UpdateBinaryGSM writes binary data using GSM class command (CLA=A0)
+func (r *Reader) UpdateBinaryGSM(offset uint16, data []byte) (*APDUResponse, error) {
+	if len(data) > 255 {
+		return nil, fmt.Errorf("data too long: %d bytes (max 255)", len(data))
+	}
+
+	apdu := make([]byte, 5+len(data))
+	apdu[0] = 0xA0
+	apdu[1] = INS_UPDATE_BINARY
+	apdu[2] = byte(offset >> 8)
+	apdu[3] = byte(offset & 0xFF)
+	apdu[4] = byte(len(data))
+	copy(apdu[5:], data)
+
+	return r.SendAPDU(apdu)
+}
+
 // UpdateRecord writes a record to the currently selected file
 func (r *Reader) UpdateRecord(recordNum byte, data []byte) (*APDUResponse, error) {
 	if len(data) > 255 {
@@ -447,6 +480,23 @@ func (r *Reader) UpdateRecord(recordNum byte, data []byte) (*APDUResponse, error
 	apdu[1] = INS_UPDATE_RECORD
 	apdu[2] = recordNum
 	apdu[3] = 0x04 // P2: record number in P1, absolute mode
+	apdu[4] = byte(len(data))
+	copy(apdu[5:], data)
+
+	return r.SendAPDU(apdu)
+}
+
+// UpdateRecordGSM writes a record using GSM class command (CLA=A0)
+func (r *Reader) UpdateRecordGSM(recordNum byte, data []byte) (*APDUResponse, error) {
+	if len(data) > 255 {
+		return nil, fmt.Errorf("data too long: %d bytes (max 255)", len(data))
+	}
+
+	apdu := make([]byte, 5+len(data))
+	apdu[0] = 0xA0
+	apdu[1] = INS_UPDATE_RECORD
+	apdu[2] = recordNum
+	apdu[3] = 0x04 // absolute mode
 	apdu[4] = byte(len(data))
 	copy(apdu[5:], data)
 
