@@ -87,34 +87,53 @@ func ListApplets(reader *card.Reader) ([]Applet, error) {
 	}
 
 	// GET STATUS for ISD (P1=0x80)
-	isdApps, _ := getStatus(reader, 0x80)
+	isdApps, err := getStatus(reader, 0x80)
+	if err != nil {
+		return nil, err
+	}
 	for _, a := range isdApps {
 		a.Type = "ISD"
 		applets = append(applets, a)
 	}
 
 	// GET STATUS for Applications (P1=0x40)
-	apps, _ := getStatus(reader, 0x40)
+	apps, err := getStatus(reader, 0x40)
+	if err != nil {
+		return nil, err
+	}
 	for _, a := range apps {
 		a.Type = "App"
 		applets = append(applets, a)
 	}
 
 	// GET STATUS for Executable Load Files (P1=0x20)
-	pkgs, _ := getStatus(reader, 0x20)
+	pkgs, err := getStatus(reader, 0x20)
+	if err != nil {
+		return nil, err
+	}
 	for _, a := range pkgs {
 		a.Type = "Package"
 		applets = append(applets, a)
 	}
 
 	// GET STATUS for Executable Load Files and Modules (P1=0x10)
-	modules, _ := getStatus(reader, 0x10)
+	modules, err := getStatus(reader, 0x10)
+	if err != nil {
+		return nil, err
+	}
 	for _, a := range modules {
 		a.Type = "Module"
 		applets = append(applets, a)
 	}
 
 	return applets, nil
+}
+
+func isGPSecureChannelRequired(sw uint16) bool {
+	// Common cases when ISD exists but requires a secure channel for registry access
+	// 6982: Security status not satisfied
+	// 6985: Conditions of use not satisfied
+	return sw == 0x6982 || sw == 0x6985
 }
 
 // getStatus sends GET STATUS command
@@ -142,7 +161,11 @@ func getStatus(reader *card.Reader, p1 byte) ([]Applet, error) {
 
 		if !resp.IsOK() && resp.SW() != 0x6310 {
 			// 6310 = more data available
-			break
+			sw := resp.SW()
+			if isGPSecureChannelRequired(sw) {
+				return applets, fmt.Errorf("GlobalPlatform GET STATUS requires a Secure Channel (ISD is secured): %s (SW=%04X)", card.SWToString(sw), sw)
+			}
+			return applets, fmt.Errorf("GlobalPlatform GET STATUS failed: %s (SW=%04X)", card.SWToString(sw), sw)
 		}
 
 		// Parse TLV response
@@ -270,13 +293,13 @@ func parseAppletEntry(data []byte) *Applet {
 func IdentifyAppletByAID(aid string) string {
 	// Common AIDs
 	knownAIDs := map[string]string{
-		"A0000000871002":     "USIM (3GPP)",
-		"A0000000871004":     "ISIM (3GPP)",
-		"A000000003000000":   "Visa",
-		"A0000000041010":     "MasterCard",
-		"A0000001510000":     "GlobalPlatform ISD",
-		"D276000118":         "TUAK Auth",
-		"A0000005591010":     "JCOP Identify",
+		"A0000000871002":   "USIM (3GPP)",
+		"A0000000871004":   "ISIM (3GPP)",
+		"A000000003000000": "Visa",
+		"A0000000041010":   "MasterCard",
+		"A0000001510000":   "GlobalPlatform ISD",
+		"D276000118":       "TUAK Auth",
+		"A0000005591010":   "JCOP Identify",
 	}
 
 	for prefix, name := range knownAIDs {
@@ -287,4 +310,3 @@ func IdentifyAppletByAID(aid string) string {
 
 	return ""
 }
-

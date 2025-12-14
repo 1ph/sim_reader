@@ -42,6 +42,21 @@ func main() {
 	pcomStop := flag.Bool("pcom-stop-on-error", false, "Stop .pcom script on first error")
 	outputJSON := flag.Bool("json", false, "Output data in JSON config format (can be edited and loaded back)")
 
+	// GlobalPlatform (secured cards) flags
+	gpList := flag.Bool("gp-list", false, "GlobalPlatform: list applets/packages via Secure Channel (SCP02)")
+	gpKVN := flag.Int("gp-kvn", 0, "GlobalPlatform: Key Version Number (KVN) for INITIALIZE UPDATE (0-255)")
+	gpSec := flag.String("gp-sec", "mac", "GlobalPlatform: security level (mac or mac+enc)")
+	gpKeyENC := flag.String("gp-key-enc", "", "GlobalPlatform: static ENC key (hex, 16 or 24 bytes)")
+	gpKeyMAC := flag.String("gp-key-mac", "", "GlobalPlatform: static MAC key (hex, 16 or 24 bytes)")
+	gpKeyDEK := flag.String("gp-key-dek", "", "GlobalPlatform: static DEK key (hex, 16 or 24 bytes, optional)")
+	gpSDAID := flag.String("gp-sd-aid", "A000000003000000", "GlobalPlatform: Security Domain / Card Manager AID to select (hex)")
+	gpDelete := flag.String("gp-delete", "", "GlobalPlatform: DELETE by AID (comma-separated hex AIDs) - DANGEROUS")
+	gpLoadCAP := flag.String("gp-load-cap", "", "GlobalPlatform: path to .cap (ZIP) to LOAD+INSTALL")
+	gpPackageAID := flag.String("gp-package-aid", "", "GlobalPlatform: package (load file) AID for INSTALL [for load] (hex)")
+	gpAppletAID := flag.String("gp-applet-aid", "", "GlobalPlatform: applet class AID for INSTALL [for install] (hex)")
+	gpInstanceAID := flag.String("gp-instance-aid", "", "GlobalPlatform: applet instance AID (hex). Defaults to -gp-applet-aid if empty.")
+	gpVerifyAID := flag.String("gp-verify-aid", "", "GlobalPlatform: SELECT AID and show SW (hex)")
+
 	// Command line flags - Writing
 	writeConfig := flag.String("write", "", "Write parameters from JSON config file")
 	createSample := flag.String("create-sample", "", "Create sample config file")
@@ -117,6 +132,19 @@ READING OPTIONS:
   -phonebook         Show phonebook entries (ADN)
   -sms               Show SMS messages
   -applets           Show GlobalPlatform applets
+  -gp-list           GlobalPlatform list via Secure Channel (SCP02)
+  -gp-key-enc <hex>  GlobalPlatform ENC key (required for -gp-* ops)
+  -gp-key-mac <hex>  GlobalPlatform MAC key (required for -gp-* ops)
+  -gp-key-dek <hex>  GlobalPlatform DEK key (optional)
+  -gp-kvn <n>        GlobalPlatform KVN (default: 0)
+  -gp-sec <lvl>      GlobalPlatform security level: mac or mac+enc
+  -gp-sd-aid <hex>   GlobalPlatform SD/Card Manager AID (default: A000000003000000)
+  -gp-delete <aids>  GlobalPlatform DELETE (comma-separated AIDs) - DANGEROUS
+  -gp-load-cap <p>   GlobalPlatform LOAD+INSTALL from .cap ZIP (requires -gp-package-aid and -gp-applet-aid)
+  -gp-package-aid <h> GlobalPlatform package AID (hex) for install-for-load
+  -gp-applet-aid <h>  GlobalPlatform applet AID (hex) for install-for-install
+  -gp-instance-aid <h> GlobalPlatform instance AID (hex, default: applet AID)
+  -gp-verify-aid <h> GlobalPlatform SELECT verify (hex)
   -script <file>     Run APDU script file (simple format)
   -pcom <file>       Run .pcom personalization script (RuSIM/OX24 format)
   -pcom-verbose      Verbose output for .pcom scripts (default: true)
@@ -470,6 +498,143 @@ EXAMPLES:
 	// Always detect AIDs from EF_DIR first (silent, for non-standard cards)
 	// This MUST be done before any write operations!
 	sim.DetectApplicationAIDs(reader)
+
+	// GlobalPlatform secure operations (SCP02) - independent of SIM/USIM reading.
+	// If any -gp-* operation is requested, run it and exit.
+	gpRequested := *gpList || *gpDelete != "" || *gpLoadCAP != "" || *gpVerifyAID != ""
+	if gpRequested {
+		// Validate keys
+		if *gpKeyENC == "" || *gpKeyMAC == "" {
+			output.PrintError("GlobalPlatform operations require -gp-key-enc and -gp-key-mac")
+			os.Exit(1)
+		}
+
+		encKey, err := sim.ParseHexBytes(*gpKeyENC)
+		if err != nil {
+			output.PrintError(fmt.Sprintf("Invalid -gp-key-enc: %v", err))
+			os.Exit(1)
+		}
+		macKey, err := sim.ParseHexBytes(*gpKeyMAC)
+		if err != nil {
+			output.PrintError(fmt.Sprintf("Invalid -gp-key-mac: %v", err))
+			os.Exit(1)
+		}
+		var dekKey []byte
+		if *gpKeyDEK != "" {
+			dekKey, err = sim.ParseHexBytes(*gpKeyDEK)
+			if err != nil {
+				output.PrintError(fmt.Sprintf("Invalid -gp-key-dek: %v", err))
+				os.Exit(1)
+			}
+		}
+
+		sec, err := sim.ParseGPSecurityLevel(*gpSec)
+		if err != nil {
+			output.PrintError(err.Error())
+			os.Exit(1)
+		}
+
+		sdAID, err := sim.ParseAIDHex(*gpSDAID)
+		if err != nil {
+			output.PrintError(fmt.Sprintf("Invalid -gp-sd-aid: %v", err))
+			os.Exit(1)
+		}
+
+		cfg := sim.GPConfig{
+			KVN:      byte(*gpKVN & 0xFF),
+			Security: sec,
+			StaticKeys: card.GPKeySet{
+				ENC: encKey,
+				MAC: macKey,
+				DEK: dekKey,
+			},
+			SDAID:     sdAID,
+			BlockSize: 200,
+		}
+
+		// gp-verify-aid
+		if *gpVerifyAID != "" {
+			aid, err := sim.ParseAIDHex(*gpVerifyAID)
+			if err != nil {
+				output.PrintError(fmt.Sprintf("Invalid -gp-verify-aid: %v", err))
+				os.Exit(1)
+			}
+			sw, err := sim.GPSelectVerify(reader, aid)
+			if err != nil {
+				output.PrintError(fmt.Sprintf("GP SELECT failed: %v", err))
+				os.Exit(1)
+			}
+			output.PrintSuccess(fmt.Sprintf("GP SELECT SW=%04X (%s)", sw, card.SWToString(sw)))
+		}
+
+		// gp-list
+		if *gpList {
+			output.PrintSuccess("GlobalPlatform: listing registry via Secure Channel (SCP02)...")
+			applets, err := sim.ListAppletsSecure(reader, cfg)
+			if err != nil {
+				output.PrintError(fmt.Sprintf("GP list failed: %v", err))
+				os.Exit(1)
+			}
+			output.PrintApplets(applets)
+		}
+
+		// gp-delete
+		if *gpDelete != "" {
+			aids, err := sim.ParseAIDList(*gpDelete)
+			if err != nil {
+				output.PrintError(fmt.Sprintf("Invalid -gp-delete: %v", err))
+				os.Exit(1)
+			}
+			if len(aids) == 0 {
+				output.PrintError("-gp-delete provided but no AIDs parsed")
+				os.Exit(1)
+			}
+			output.PrintWarning("GlobalPlatform DELETE is dangerous and may brick the card.")
+			if err := sim.DeleteAIDs(reader, cfg, aids); err != nil {
+				output.PrintError(fmt.Sprintf("GP delete failed: %v", err))
+				os.Exit(1)
+			}
+			output.PrintSuccess("GP delete completed")
+		}
+
+		// gp-load-cap (+ install)
+		if *gpLoadCAP != "" {
+			if err := sim.EnsureFileExists(*gpLoadCAP); err != nil {
+				output.PrintError(fmt.Sprintf("CAP file error: %v", err))
+				os.Exit(1)
+			}
+			if *gpPackageAID == "" || *gpAppletAID == "" {
+				output.PrintError("GP load requires -gp-package-aid and -gp-applet-aid")
+				os.Exit(1)
+			}
+			pkgAID, err := sim.ParseAIDHex(*gpPackageAID)
+			if err != nil {
+				output.PrintError(fmt.Sprintf("Invalid -gp-package-aid: %v", err))
+				os.Exit(1)
+			}
+			appAID, err := sim.ParseAIDHex(*gpAppletAID)
+			if err != nil {
+				output.PrintError(fmt.Sprintf("Invalid -gp-applet-aid: %v", err))
+				os.Exit(1)
+			}
+			instAID := appAID
+			if *gpInstanceAID != "" {
+				instAID, err = sim.ParseAIDHex(*gpInstanceAID)
+				if err != nil {
+					output.PrintError(fmt.Sprintf("Invalid -gp-instance-aid: %v", err))
+					os.Exit(1)
+				}
+			}
+			output.PrintWarning("GlobalPlatform LOAD/INSTALL modifies card content. Ensure you have correct keys and a backup.")
+			if err := sim.InstallLoadAndApplet(reader, cfg, *gpLoadCAP, sdAID, pkgAID, appAID, instAID); err != nil {
+				output.PrintError(fmt.Sprintf("GP load/install failed: %v", err))
+				os.Exit(1)
+			}
+			output.PrintSuccess("GP load/install completed")
+		}
+
+		os.Exit(0)
+	}
 
 	// Show/set proprietary USIM authentication algorithm (EF 8F90) if requested
 	if *showCardAlgo || *setCardAlgo != "" {
