@@ -1,10 +1,13 @@
 package main
 
 import (
+	"bytes"
+	"crypto/rand"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
+	"strings"
 
 	"sim_reader/card"
 	"sim_reader/output"
@@ -44,11 +47,13 @@ func main() {
 
 	// GlobalPlatform (secured cards) flags
 	gpList := flag.Bool("gp-list", false, "GlobalPlatform: list applets/packages via Secure Channel (SCP02)")
+	gpProbe := flag.Bool("gp-probe", false, "GlobalPlatform: check if provided KVN+keys are correct (INITIALIZE UPDATE + cryptogram verify only)")
 	gpKVN := flag.Int("gp-kvn", 0, "GlobalPlatform: Key Version Number (KVN) for INITIALIZE UPDATE (0-255)")
 	gpSec := flag.String("gp-sec", "mac", "GlobalPlatform: security level (mac or mac+enc)")
 	gpKeyENC := flag.String("gp-key-enc", "", "GlobalPlatform: static ENC key (hex, 16 or 24 bytes)")
 	gpKeyMAC := flag.String("gp-key-mac", "", "GlobalPlatform: static MAC key (hex, 16 or 24 bytes)")
 	gpKeyDEK := flag.String("gp-key-dek", "", "GlobalPlatform: static DEK key (hex, 16 or 24 bytes, optional)")
+	gpKeyPSK := flag.String("gp-key-psk", "", "GlobalPlatform: convenience key (hex) to set ENC=MAC=PSK (optional)")
 	gpSDAID := flag.String("gp-sd-aid", "A000000003000000", "GlobalPlatform: Security Domain / Card Manager AID to select (hex)")
 	gpDelete := flag.String("gp-delete", "", "GlobalPlatform: DELETE by AID (comma-separated hex AIDs) - DANGEROUS")
 	gpLoadCAP := flag.String("gp-load-cap", "", "GlobalPlatform: path to .cap (ZIP) to LOAD+INSTALL")
@@ -56,6 +61,13 @@ func main() {
 	gpAppletAID := flag.String("gp-applet-aid", "", "GlobalPlatform: applet class AID for INSTALL [for install] (hex)")
 	gpInstanceAID := flag.String("gp-instance-aid", "", "GlobalPlatform: applet instance AID (hex). Defaults to -gp-applet-aid if empty.")
 	gpVerifyAID := flag.String("gp-verify-aid", "", "GlobalPlatform: SELECT AID and show SW (hex)")
+
+	// GlobalPlatform: load keys from DMS-style "var_out" file
+	gpDMSFile := flag.String("gp-dms", "", "GlobalPlatform: path to DMS var_out key file (e.g. DMS72100_decr.out)")
+	gpDMSICCID := flag.String("gp-dms-iccid", "", "GlobalPlatform: ICCID to select row in -gp-dms")
+	gpDMSIMSI := flag.String("gp-dms-imsi", "", "GlobalPlatform: IMSI to select row in -gp-dms (alternative to -gp-dms-iccid)")
+	gpDMSKeyset := flag.String("gp-dms-keyset", "cm", "GlobalPlatform: keyset name in -gp-dms (cm, psk40, psk41, a..h, auto)")
+	gpAuto := flag.Bool("gp-auto", false, "GlobalPlatform: auto-probe KVN+keyset (requires -gp-dms). Finds working combination for the card.")
 
 	// Command line flags - Writing
 	writeConfig := flag.String("write", "", "Write parameters from JSON config file")
@@ -501,31 +513,100 @@ EXAMPLES:
 
 	// GlobalPlatform secure operations (SCP02) - independent of SIM/USIM reading.
 	// If any -gp-* operation is requested, run it and exit.
-	gpRequested := *gpList || *gpDelete != "" || *gpLoadCAP != "" || *gpVerifyAID != ""
+	gpRequested := *gpList || *gpProbe || *gpDelete != "" || *gpLoadCAP != "" || *gpVerifyAID != ""
 	if gpRequested {
-		// Validate keys
-		if *gpKeyENC == "" || *gpKeyMAC == "" {
-			output.PrintError("GlobalPlatform operations require -gp-key-enc and -gp-key-mac")
-			os.Exit(1)
+		// Resolve keys (explicit flags override DMS file)
+		var encKey, macKey, dekKey []byte
+		var err error
+		var dmsRow map[string]string
+
+		// Optional: load from DMS file
+		if *gpDMSFile != "" {
+			db, e := sim.LoadDMSKeyDB(*gpDMSFile)
+			if e != nil {
+				output.PrintError(fmt.Sprintf("Failed to load -gp-dms: %v", e))
+				os.Exit(1)
+			}
+			var row map[string]string
+
+			// If ICCID/IMSI not explicitly provided, try to read ICCID from the card and use it.
+			if *gpDMSICCID == "" && *gpDMSIMSI == "" {
+				cardICCID, iccErr := sim.ReadICCIDQuick(reader)
+				if iccErr != nil {
+					output.PrintError("When using -gp-dms, provide -gp-dms-iccid/-gp-dms-imsi or ensure ICCID can be read from the card.")
+					output.PrintError(fmt.Sprintf("ICCID read failed: %v", iccErr))
+					os.Exit(1)
+				}
+				*gpDMSICCID = cardICCID
+				if !*outputJSON {
+					output.PrintSuccess(fmt.Sprintf("DMS: using ICCID from card: %s", cardICCID))
+				}
+			} else if *gpDMSICCID != "" {
+				// If user provided ICCID, warn if it doesn't match the card currently in reader.
+				if cardICCID, iccErr := sim.ReadICCIDQuick(reader); iccErr == nil && cardICCID != "" && cardICCID != *gpDMSICCID {
+					if !*outputJSON {
+						output.PrintWarning(fmt.Sprintf("DMS: provided ICCID (%s) does not match card ICCID (%s). Keys may not fit this card.", *gpDMSICCID, cardICCID))
+					}
+				}
+			}
+
+			if *gpDMSICCID != "" {
+				row, e = db.FindByICCID(*gpDMSICCID)
+			} else {
+				row, e = db.FindByIMSI(*gpDMSIMSI)
+			}
+			if e != nil {
+				output.PrintError(fmt.Sprintf("DMS row select failed: %v", e))
+				os.Exit(1)
+			}
+			dmsRow = row
+			// If not auto mode, extract immediately
+			if !*gpAuto && strings.ToLower(strings.TrimSpace(*gpDMSKeyset)) != "auto" {
+				encKey, macKey, dekKey, e = sim.GPKeysFromDMS(row, *gpDMSKeyset)
+				if e != nil {
+					output.PrintError(fmt.Sprintf("Failed to extract GP keys from -gp-dms: %v", e))
+					os.Exit(1)
+				}
+			}
 		}
 
-		encKey, err := sim.ParseHexBytes(*gpKeyENC)
-		if err != nil {
-			output.PrintError(fmt.Sprintf("Invalid -gp-key-enc: %v", err))
-			os.Exit(1)
+		// Optional: PSK convenience (ENC=MAC)
+		if *gpKeyPSK != "" {
+			psk, e := sim.ParseHexBytes(*gpKeyPSK)
+			if e != nil {
+				output.PrintError(fmt.Sprintf("Invalid -gp-key-psk: %v", e))
+				os.Exit(1)
+			}
+			encKey, macKey = psk, psk
 		}
-		macKey, err := sim.ParseHexBytes(*gpKeyMAC)
-		if err != nil {
-			output.PrintError(fmt.Sprintf("Invalid -gp-key-mac: %v", err))
-			os.Exit(1)
+
+		// Explicit keys override everything
+		if *gpKeyENC != "" {
+			encKey, err = sim.ParseHexBytes(*gpKeyENC)
+			if err != nil {
+				output.PrintError(fmt.Sprintf("Invalid -gp-key-enc: %v", err))
+				os.Exit(1)
+			}
 		}
-		var dekKey []byte
+		if *gpKeyMAC != "" {
+			macKey, err = sim.ParseHexBytes(*gpKeyMAC)
+			if err != nil {
+				output.PrintError(fmt.Sprintf("Invalid -gp-key-mac: %v", err))
+				os.Exit(1)
+			}
+		}
 		if *gpKeyDEK != "" {
 			dekKey, err = sim.ParseHexBytes(*gpKeyDEK)
 			if err != nil {
 				output.PrintError(fmt.Sprintf("Invalid -gp-key-dek: %v", err))
 				os.Exit(1)
 			}
+		}
+
+		// Validate keys
+		if (len(encKey) == 0 || len(macKey) == 0) && !(*gpAuto || strings.ToLower(strings.TrimSpace(*gpDMSKeyset)) == "auto") {
+			output.PrintError("GlobalPlatform operations require ENC and MAC keys. Provide -gp-key-enc/-gp-key-mac, or -gp-key-psk, or -gp-dms + -gp-dms-keyset.")
+			os.Exit(1)
 		}
 
 		sec, err := sim.ParseGPSecurityLevel(*gpSec)
@@ -552,6 +633,110 @@ EXAMPLES:
 			BlockSize: 200,
 		}
 
+		// gp-auto: find working combination using DMS row (ICCID/IMSI-selected)
+		if (*gpAuto || strings.ToLower(strings.TrimSpace(*gpDMSKeyset)) == "auto") && *gpDMSFile != "" {
+			if dmsRow == nil {
+				output.PrintError("GP auto requires a DMS row; provide -gp-dms and ensure ICCID/IMSI can be resolved")
+				os.Exit(1)
+			}
+
+			output.PrintSuccess("GlobalPlatform: auto-probing keyset/KVN (safe INIT UPDATE verify)...")
+
+			// Keyset candidates
+			keysets := []string{"cm", "psk40", "psk41", "a", "b", "c", "d", "e", "f", "g", "h"}
+
+			// KVN candidates (common in the wild): 0, small ints, SCP02 reserved range 0x20..0x2F, PSK ranges 0x40/0x41, and 0xFF.
+			var kvns []int
+			kvns = append(kvns, *gpKVN)
+			for _, v := range []int{0, 1, 2, 3} {
+				kvns = append(kvns, v)
+			}
+			for v := 0x20; v <= 0x2F; v++ {
+				kvns = append(kvns, v)
+			}
+			kvns = append(kvns, 0x40, 0x41, 0xFF)
+			// de-dup while preserving order
+			seenKVN := map[int]bool{}
+			var kvnList []int
+			for _, v := range kvns {
+				if v < 0 || v > 255 {
+					continue
+				}
+				if seenKVN[v] {
+					continue
+				}
+				seenKVN[v] = true
+				kvnList = append(kvnList, v)
+			}
+
+			// SD AID candidates: user-provided + common GP ISD AID
+			sdCandidates := [][]byte{sdAID}
+			commonISD := []byte{0xA0, 0x00, 0x00, 0x01, 0x51, 0x00, 0x00}
+			if !bytes.Equal(sdAID, commonISD) {
+				sdCandidates = append(sdCandidates, commonISD)
+			}
+
+			found := false
+			for _, candSDAID := range sdCandidates {
+				_, _ = reader.Select(candSDAID)
+
+				for _, ks := range keysets {
+					enc, mac, dek, e := sim.GPKeysFromDMS(dmsRow, ks)
+					if e != nil {
+						continue
+					}
+					for _, kvn := range kvnList {
+						hostChallenge := make([]byte, 8)
+						if _, e := rand.Read(hostChallenge); e != nil {
+							output.PrintError(fmt.Sprintf("Failed to generate host challenge: %v", e))
+							os.Exit(1)
+						}
+						e = card.ProbeSecureChannelAuto(reader, card.GPKeySet{ENC: enc, MAC: mac, DEK: dek}, byte(kvn), hostChallenge)
+						if e == nil {
+							cfg.KVN = byte(kvn)
+							cfg.SDAID = candSDAID
+							cfg.StaticKeys = card.GPKeySet{ENC: enc, MAC: mac, DEK: dek}
+							if !*outputJSON {
+								output.PrintSuccess(fmt.Sprintf("GP auto matched: keyset=%s kvn=%d sd-aid=%X", ks, kvn, candSDAID))
+							}
+							found = true
+							break
+						}
+					}
+					if found {
+						break
+					}
+				}
+				if found {
+					break
+				}
+			}
+			if !found {
+				output.PrintError("GP auto failed: no working keyset/KVN found for this card (from provided DMS row).")
+				output.PrintWarning("Возможные причины: DMS файл не содержит правильных GP ключей для этой карты, другой SD AID, или карта требует SCP03 S16/другие параметры.")
+				os.Exit(1)
+			}
+		}
+
+		// gp-probe (safe key check without EXTERNAL AUTH)
+		if *gpProbe {
+			output.PrintSuccess("GlobalPlatform: probing KVN+keys (INITIALIZE UPDATE + cryptogram verify)...")
+			hostChallenge := make([]byte, 8)
+			if _, err := rand.Read(hostChallenge); err != nil {
+				output.PrintError(fmt.Sprintf("Failed to generate host challenge: %v", err))
+				os.Exit(1)
+			}
+			// Select SD/CM before probe (same as OpenGPSCP02 behaviour)
+			if len(cfg.SDAID) > 0 {
+				_, _ = reader.Select(cfg.SDAID)
+			}
+			if err := card.ProbeSecureChannelAuto(reader, cfg.StaticKeys, cfg.KVN, hostChallenge); err != nil {
+				output.PrintError(fmt.Sprintf("GP probe failed: %v", err))
+				os.Exit(1)
+			}
+			output.PrintSuccess("GP probe OK: keys/KVN match this card")
+		}
+
 		// gp-verify-aid
 		if *gpVerifyAID != "" {
 			aid, err := sim.ParseAIDHex(*gpVerifyAID)
@@ -569,7 +754,7 @@ EXAMPLES:
 
 		// gp-list
 		if *gpList {
-			output.PrintSuccess("GlobalPlatform: listing registry via Secure Channel (SCP02)...")
+			output.PrintSuccess("GlobalPlatform: listing registry via Secure Channel (auto SCP02/SCP03)...")
 			applets, err := sim.ListAppletsSecure(reader, cfg)
 			if err != nil {
 				output.PrintError(fmt.Sprintf("GP list failed: %v", err))

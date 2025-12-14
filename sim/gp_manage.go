@@ -81,12 +81,43 @@ func OpenGPSCP02(reader *card.Reader, cfg GPConfig) (*card.SCP02Session, error) 
 	if _, err := rand.Read(hostChallenge); err != nil {
 		return nil, fmt.Errorf("failed to generate host challenge: %w", err)
 	}
-	return card.OpenSCP02(reader, cfg.StaticKeys, cfg.KVN, cfg.Security, hostChallenge)
+	sess, err := card.OpenSecureChannelAuto(reader, cfg.StaticKeys, cfg.KVN, cfg.Security, hostChallenge)
+	if err != nil {
+		return nil, err
+	}
+	// For backward compatibility with existing callers, we only return SCP02Session here.
+	// New code paths should avoid OpenGPSCP02 and use OpenGPSessionAuto below.
+	if s2, ok := sess.(*card.SCP02Session); ok {
+		return s2, nil
+	}
+	return nil, fmt.Errorf("card requires SCP03; use secure operations via auto session (SCP03 support enabled)")
+}
+
+func OpenGPSessionAuto(reader *card.Reader, cfg GPConfig) (card.GPSession, error) {
+	// Same pre-select logic as OpenGPSCP02
+	if len(cfg.SDAID) > 0 {
+		resp, err := reader.Select(cfg.SDAID)
+		if err != nil || !(resp.IsOK() || resp.HasMoreData()) {
+			alt := []byte{0xA0, 0x00, 0x00, 0x01, 0x51, 0x00, 0x00}
+			resp2, err2 := reader.Select(alt)
+			if err2 != nil || !(resp2.IsOK() || resp2.HasMoreData()) {
+				if err != nil {
+					return nil, fmt.Errorf("failed to select SD/CM AID before secure channel: %w", err)
+				}
+				return nil, fmt.Errorf("failed to select SD/CM AID before secure channel: %s (SW=%04X)", card.SWToString(resp.SW()), resp.SW())
+			}
+		}
+	}
+	hostChallenge := make([]byte, 8)
+	if _, err := rand.Read(hostChallenge); err != nil {
+		return nil, fmt.Errorf("failed to generate host challenge: %w", err)
+	}
+	return card.OpenSecureChannelAuto(reader, cfg.StaticKeys, cfg.KVN, cfg.Security, hostChallenge)
 }
 
 // ListAppletsSecure lists GP registry via SCP02 secure channel.
 func ListAppletsSecure(reader *card.Reader, cfg GPConfig) ([]Applet, error) {
-	sess, err := OpenGPSCP02(reader, cfg)
+	sess, err := OpenGPSessionAuto(reader, cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -117,7 +148,7 @@ func ListAppletsSecure(reader *card.Reader, cfg GPConfig) ([]Applet, error) {
 	return applets, nil
 }
 
-func gpGetStatusSecure(sess *card.SCP02Session, p1 byte) ([]Applet, error) {
+func gpGetStatusSecure(sess card.GPSession, p1 byte) ([]Applet, error) {
 	// There are cards that reject some GET STATUS data formats with SW=6A80/6985.
 	// pySim uses TLV format (P2=0x02) and includes a tag list (5C...) by default, but we
 	// auto-fallback to simpler forms to maximize compatibility.
@@ -157,7 +188,7 @@ func gpGetStatusSecure(sess *card.SCP02Session, p1 byte) ([]Applet, error) {
 	return nil, lastErr
 }
 
-func gpGetStatusSecureVariant(sess *card.SCP02Session, p1 byte, p2Base byte, cmdData []byte) ([]Applet, error) {
+func gpGetStatusSecureVariant(sess card.GPSession, p1 byte, p2Base byte, cmdData []byte) ([]Applet, error) {
 	var applets []Applet
 	le := byte(0x00)
 
@@ -186,7 +217,7 @@ func gpGetStatusSecureVariant(sess *card.SCP02Session, p1 byte, p2Base byte, cmd
 // DeleteAIDs deletes apps/packages/SDs by AID using SCP02 secure channel.
 // WARNING: This can permanently remove card functionality. Use with caution.
 func DeleteAIDs(reader *card.Reader, cfg GPConfig, aids [][]byte) error {
-	sess, err := OpenGPSCP02(reader, cfg)
+	sess, err := OpenGPSessionAuto(reader, cfg)
 	if err != nil {
 		return err
 	}
@@ -212,7 +243,7 @@ func InstallLoadAndApplet(reader *card.Reader, cfg GPConfig, capZipPath string, 
 	if cfg.BlockSize <= 0 {
 		cfg.BlockSize = 200
 	}
-	sess, err := OpenGPSCP02(reader, cfg)
+	sess, err := OpenGPSessionAuto(reader, cfg)
 	if err != nil {
 		return err
 	}

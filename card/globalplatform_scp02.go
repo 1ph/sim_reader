@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/des"
 	"fmt"
+	"strings"
 )
 
 // Minimal GlobalPlatform SCP02 implementation (3DES).
@@ -193,20 +194,183 @@ type SCP02Session struct {
 	icvEncrypt bool
 }
 
-func sendInitializeUpdate(r *Reader, kvn byte, hostChallenge8 []byte) (*APDUResponse, error) {
+// ProbeSCP02 performs INITIALIZE UPDATE and verifies the Card Cryptogram with the provided static keys.
+// It does NOT send EXTERNAL AUTHENTICATE (so it is safer for checking whether KVN+keys are correct).
+func ProbeSCP02(r *Reader, static GPKeySet, kvn byte, hostChallenge8 []byte) error {
+	if r == nil {
+		return fmt.Errorf("nil reader")
+	}
+	enc, err := ExpandTo3DESKey(static.ENC)
+	if err != nil {
+		return fmt.Errorf("ENC key: %w", err)
+	}
+	// MAC/DEK are not required for cryptogram verification, but we validate sizes if provided.
+	if len(static.MAC) > 0 {
+		if _, err := ExpandTo3DESKey(static.MAC); err != nil {
+			return fmt.Errorf("MAC key: %w", err)
+		}
+	}
+	if len(static.DEK) > 0 {
+		if _, err := ExpandTo3DESKey(static.DEK); err != nil {
+			return fmt.Errorf("DEK key: %w", err)
+		}
+	}
+	if len(hostChallenge8) != 8 {
+		return fmt.Errorf("host challenge must be 8 bytes, got %d", len(hostChallenge8))
+	}
+
+	resp, err := sendInitializeUpdate(r, kvn, hostChallenge8)
+	if err != nil {
+		return err
+	}
+	if resp == nil {
+		return fmt.Errorf("INITIALIZE UPDATE failed: no response")
+	}
+	if !resp.IsOK() {
+		return fmt.Errorf("INITIALIZE UPDATE failed: %s (SW=%04X)", SWToString(resp.SW()), resp.SW())
+	}
+	if len(resp.Data) < 28 {
+		return fmt.Errorf("INITIALIZE UPDATE response too short: %d bytes", len(resp.Data))
+	}
+	seq := resp.Data[12:14]
+	cardChal := resp.Data[14:20]
+	cardCrypt := resp.Data[20:28]
+
+	senc, err := scp02Derive(enc, []byte{0x01, 0x82}, seq)
+	if err != nil {
+		return err
+	}
+	expectedCardCrypt, err := scp02CardCryptogram(senc, seq, hostChallenge8, cardChal)
+	if err != nil {
+		return err
+	}
+	if !bytes.Equal(expectedCardCrypt, cardCrypt) {
+		return fmt.Errorf("card cryptogram mismatch (SCP02). Expected %X, got %X", expectedCardCrypt, cardCrypt)
+	}
+	return nil
+}
+
+// OpenSecureChannelAuto opens a secure channel based on card's INITIALIZE UPDATE response.
+// It supports SCP02 (3DES) and SCP03 (AES-128, S8 mode).
+func OpenSecureChannelAuto(r *Reader, static GPKeySet, kvn byte, sec GPSecurityLevel, hostChallenge []byte) (GPSession, error) {
+	if r == nil {
+		return nil, fmt.Errorf("nil reader")
+	}
+	if len(hostChallenge) == 0 {
+		return nil, fmt.Errorf("host challenge is empty")
+	}
+
+	resp, err := sendInitializeUpdate(r, kvn, hostChallenge)
+	if err != nil {
+		return nil, err
+	}
+	if resp == nil {
+		return nil, fmt.Errorf("INITIALIZE UPDATE failed: no response")
+	}
+	if !resp.IsOK() {
+		return nil, fmt.Errorf("INITIALIZE UPDATE failed: %s (SW=%04X)", SWToString(resp.SW()), resp.SW())
+	}
+	if len(resp.Data) < 12 {
+		return nil, fmt.Errorf("INITIALIZE UPDATE response too short: %d bytes", len(resp.Data))
+	}
+	scpID := resp.Data[11]
+	switch scpID {
+	case 0x02:
+		if len(hostChallenge) != 8 {
+			return nil, fmt.Errorf("card reports SCP02 but host challenge is %d bytes (expected 8)", len(hostChallenge))
+		}
+		return openSCP02FromInitUpdate(r, static, kvn, sec, hostChallenge, resp.Data)
+	case 0x03:
+		// If card returned S16 but we sent S8 host challenge, retry with S16.
+		if len(hostChallenge) == 8 {
+			if _, _, _, e := parseInitUpdateSCP03(resp.Data); e != nil && strings.Contains(e.Error(), "S16 mode") {
+				// Re-run INIT UPDATE with 16-byte host challenge
+				hc16 := make([]byte, 16)
+				copy(hc16[:8], hostChallenge)
+				resp2, err2 := sendInitializeUpdate(r, kvn, hc16)
+				if err2 == nil && resp2 != nil && resp2.IsOK() {
+					return OpenSCP03FromInitUpdate(r, kvn, sec, static, hc16, resp2.Data)
+				}
+			}
+		}
+		return OpenSCP03FromInitUpdate(r, kvn, sec, static, hostChallenge, resp.Data)
+	default:
+		return nil, fmt.Errorf("unsupported secure channel protocol in INITIALIZE UPDATE: scp_id=0x%02X", scpID)
+	}
+}
+
+// ProbeSecureChannelAuto checks whether provided KVN+keys match the card by verifying card cryptogram.
+// It auto-detects SCP02 vs SCP03 based on INITIALIZE UPDATE response.
+func ProbeSecureChannelAuto(r *Reader, static GPKeySet, kvn byte, hostChallenge []byte) error {
+	if r == nil {
+		return fmt.Errorf("nil reader")
+	}
+	if len(hostChallenge) == 0 {
+		return fmt.Errorf("host challenge is empty")
+	}
+	resp, err := sendInitializeUpdate(r, kvn, hostChallenge)
+	if err != nil {
+		return err
+	}
+	if resp == nil {
+		return fmt.Errorf("INITIALIZE UPDATE failed: no response")
+	}
+	if !resp.IsOK() {
+		return fmt.Errorf("INITIALIZE UPDATE failed: %s (SW=%04X)", SWToString(resp.SW()), resp.SW())
+	}
+	if len(resp.Data) < 12 {
+		return fmt.Errorf("INITIALIZE UPDATE response too short: %d bytes", len(resp.Data))
+	}
+	scpID := resp.Data[11]
+	switch scpID {
+	case 0x02:
+		if len(hostChallenge) != 8 {
+			return fmt.Errorf("card reports SCP02 but host challenge is %d bytes (expected 8)", len(hostChallenge))
+		}
+		return ProbeSCP02(r, static, kvn, hostChallenge)
+	case 0x03:
+		enc, err := expandAESKey(static.ENC)
+		if err != nil {
+			return fmt.Errorf("ENC key: %w", err)
+		}
+		mac, err := expandAESKey(static.MAC)
+		if err != nil {
+			return fmt.Errorf("MAC key: %w", err)
+		}
+		// If card returned S16 but we sent S8 host challenge, retry with S16.
+		if len(hostChallenge) == 8 {
+			if _, _, _, e := parseInitUpdateSCP03(resp.Data); e != nil && strings.Contains(e.Error(), "S16 mode") {
+				hc16 := make([]byte, 16)
+				copy(hc16[:8], hostChallenge)
+				resp2, err2 := sendInitializeUpdate(r, kvn, hc16)
+				if err2 == nil && resp2 != nil && resp2.IsOK() {
+					return probeSCP03(enc, mac, hc16, resp2.Data)
+				}
+			}
+		}
+		return probeSCP03(enc, mac, hostChallenge, resp.Data)
+	default:
+		return fmt.Errorf("unsupported secure channel protocol in INITIALIZE UPDATE: scp_id=0x%02X", scpID)
+	}
+}
+
+func sendInitializeUpdate(r *Reader, kvn byte, hostChallenge []byte) (*APDUResponse, error) {
 	// Try common variants used by different stacks/cards:
 	// - CLA=80, INS=50 with Le=00 (case 4)
 	// - CLA=80, INS=50 without Le (case 3)
 	// - CLA=00, INS=50 with Le=00 (rare but seen on some stacks)
 	// - CLA=00, INS=50 without Le
 	var variants [][]byte
-	base80 := []byte{0x80, 0x50, kvn, 0x00, 0x08}
-	base80 = append(base80, hostChallenge8...)
+	if len(hostChallenge) == 0 || len(hostChallenge) > 255 {
+		return nil, fmt.Errorf("invalid host challenge length %d", len(hostChallenge))
+	}
+	base80 := []byte{0x80, 0x50, kvn, 0x00, byte(len(hostChallenge))}
+	base80 = append(base80, hostChallenge...)
 	variants = append(variants, append(append([]byte{}, base80...), 0x00)) // with Le
 	variants = append(variants, append([]byte{}, base80...))               // without Le
 
-	base00 := []byte{0x00, 0x50, kvn, 0x00, 0x08}
-	base00 = append(base00, hostChallenge8...)
+	base00 := []byte{0x00, 0x50, kvn, 0x00, byte(len(hostChallenge))}
+	base00 = append(base00, hostChallenge...)
 	variants = append(variants, append(append([]byte{}, base00...), 0x00)) // with Le
 	variants = append(variants, append([]byte{}, base00...))               // without Le
 
@@ -272,15 +436,37 @@ func OpenSCP02(r *Reader, static GPKeySet, kvn byte, sec GPSecurityLevel, hostCh
 	if !resp.IsOK() {
 		return nil, fmt.Errorf("INITIALIZE UPDATE failed: %s (SW=%04X)", SWToString(resp.SW()), resp.SW())
 	}
+	return openSCP02FromInitUpdate(r, GPKeySet{ENC: enc, MAC: mac, DEK: dek}, kvn, sec, hostChallenge8, resp.Data)
+}
+
+func openSCP02FromInitUpdate(r *Reader, static GPKeySet, kvn byte, sec GPSecurityLevel, hostChallenge8 []byte, initUpdateData []byte) (*SCP02Session, error) {
+	enc, err := ExpandTo3DESKey(static.ENC)
+	if err != nil {
+		return nil, fmt.Errorf("ENC key: %w", err)
+	}
+	mac, err := ExpandTo3DESKey(static.MAC)
+	if err != nil {
+		return nil, fmt.Errorf("MAC key: %w", err)
+	}
+	var dek []byte
+	if len(static.DEK) > 0 {
+		dek, err = ExpandTo3DESKey(static.DEK)
+		if err != nil {
+			return nil, fmt.Errorf("DEK key: %w", err)
+		}
+	}
 
 	// Parse SCP02 response (typical 28 bytes):
 	// keyDivers(10) | keyInfo(2) | seqCounter(2) | cardChallenge(6) | cardCryptogram(8)
-	if len(resp.Data) < 28 {
-		return nil, fmt.Errorf("INITIALIZE UPDATE response too short: %d bytes", len(resp.Data))
+	if len(initUpdateData) < 28 {
+		return nil, fmt.Errorf("INITIALIZE UPDATE response too short: %d bytes", len(initUpdateData))
 	}
-	seq := resp.Data[12:14]
-	cardChal := resp.Data[14:20]
-	cardCrypt := resp.Data[20:28]
+	if initUpdateData[11] != 0x02 {
+		return nil, fmt.Errorf("card did not report SCP02 (scp_id=0x%02X)", initUpdateData[11])
+	}
+	seq := initUpdateData[12:14]
+	cardChal := initUpdateData[14:20]
+	cardCrypt := initUpdateData[20:28]
 
 	// Derive session keys (SCP02): 3DES-CBC(StaticKey, derivationData, IV=0)
 	// derivationData = constant(2) || seqCounter(2) || 12*00
@@ -340,7 +526,7 @@ func OpenSCP02(r *Reader, static GPKeySet, kvn byte, sec GPSecurityLevel, hostCh
 	ext = append(ext, hostCrypt...)
 	ext = append(ext, macBytes...)
 	ext = append(ext, 0x00) // Le
-	resp, err = r.SendAPDU(ext)
+	resp, err := r.SendAPDU(ext)
 	if err != nil {
 		return nil, err
 	}

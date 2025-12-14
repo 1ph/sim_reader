@@ -155,22 +155,57 @@ func (r *Reader) Select(fileID []byte) (*APDUResponse, error) {
 		p2 = 0x04
 	}
 
-	apdu := make([]byte, 5+len(fileID))
-	apdu[0] = 0x00 // CLA
-	apdu[1] = INS_SELECT
-	apdu[2] = p1
-	apdu[3] = p2
-	apdu[4] = byte(len(fileID))
-	copy(apdu[5:], fileID)
+	tryOnce := func(p1, p2 byte, withLe bool) (*APDUResponse, error) {
+		apdu := make([]byte, 5+len(fileID), 6+len(fileID))
+		apdu[0] = 0x00 // CLA
+		apdu[1] = INS_SELECT
+		apdu[2] = p1
+		apdu[3] = p2
+		apdu[4] = byte(len(fileID))
+		copy(apdu[5:], fileID)
+		if withLe {
+			apdu = append(apdu, 0x00) // Le
+		}
 
-	resp, err := r.SendAPDU(apdu)
+		resp, err := r.SendAPDU(apdu)
+		if err != nil {
+			return nil, err
+		}
+		// Handle GET RESPONSE if needed
+		if resp.HasMoreData() {
+			return r.GetResponse(resp.SW2)
+		}
+		return resp, nil
+	}
+
+	resp, err := tryOnce(p1, p2, false)
 	if err != nil {
 		return nil, err
 	}
 
-	// Handle GET RESPONSE if needed
-	if resp.HasMoreData() {
-		return r.GetResponse(resp.SW2)
+	// Compatibility fallbacks: some SIM/UICC stacks reject certain "return data" options (P2) and/or
+	// require an explicit Le byte. Try common variants on 6A86 for file-id selection.
+	if len(fileID) == 2 && resp != nil && resp.SW() == SW_WRONG_P1P2 {
+		// Try different P2 values: 00 (FCI), 0C (no response data)
+		for _, p2cand := range []byte{0x00, 0x0C} {
+			resp2, err2 := tryOnce(p1, p2cand, false)
+			if err2 == nil && resp2 != nil && resp2.SW() != SW_WRONG_P1P2 {
+				return resp2, nil
+			}
+			if err2 == nil && resp2 != nil && resp2.IsOK() {
+				return resp2, nil
+			}
+		}
+		// Try with Le for the same P2 values (including original)
+		for _, p2cand := range []byte{p2, 0x00, 0x0C} {
+			resp2, err2 := tryOnce(p1, p2cand, true)
+			if err2 == nil && resp2 != nil && resp2.SW() != SW_WRONG_P1P2 {
+				return resp2, nil
+			}
+			if err2 == nil && resp2 != nil && resp2.IsOK() {
+				return resp2, nil
+			}
+		}
 	}
 
 	return resp, nil

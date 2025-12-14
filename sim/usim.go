@@ -254,6 +254,49 @@ func readICCID(reader *card.Reader) (string, error) {
 	return iccid, err
 }
 
+// ReadICCIDQuick reads ICCID (EF_ICCID 2FE2) without reading USIM application.
+// Useful for mapping a physical card to an external key database (DMS var_out).
+func ReadICCIDQuick(reader *card.Reader) (string, error) {
+	// Fast path: normal ISO SELECT + READ BINARY.
+	iccid, err := readICCID(reader)
+	if err == nil && iccid != "" {
+		return iccid, nil
+	}
+
+	// Compatibility path: try GSM-class (CLA=A0) selection/read if ISO path fails.
+	// Some SIMs reject ISO SELECT parameters (6A86) but accept GSM commands.
+	iccid2, err2 := readICCIDWithGSMFallback(reader, false)
+	if err2 == nil && iccid2 != "" {
+		return iccid2, nil
+	}
+
+	// If the environment already considers this a GSM-only card, try that mode explicitly.
+	if UseGSMCommands {
+		if iccid3, err3 := readICCIDWithGSMFallback(reader, true); err3 == nil && iccid3 != "" {
+			return iccid3, nil
+		}
+	}
+
+	// Last-resort: brute-force pure GSM flow without mixing ISO SELECT at all.
+	// Some cards behave poorly if you mix CLA=00 and CLA=A0 in the same selection chain.
+	if resp, e := reader.SelectGSM([]byte{0x3F, 0x00}); e == nil && resp != nil && resp.IsOK() {
+		if resp2, e2 := reader.SelectGSM([]byte{0x2F, 0xE2}); e2 == nil && resp2 != nil && resp2.IsOK() {
+			if resp3, e3 := reader.ReadBinaryGSM(0, 10); e3 == nil && resp3 != nil && resp3.IsOK() {
+				iccid4 := DecodeICCID(resp3.Data)
+				if iccid4 != "" {
+					return iccid4, nil
+				}
+			}
+		}
+	}
+
+	// Preserve the original error if present, as it likely has the best SW context.
+	if err != nil {
+		return "", err
+	}
+	return "", err2
+}
+
 // readICCIDWithRaw reads ICCID from MF and returns raw data
 func readICCIDWithRaw(reader *card.Reader) (string, []byte, error) {
 	var resp *card.APDUResponse
