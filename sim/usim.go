@@ -455,38 +455,100 @@ func readMSISDN(reader *card.Reader) (string, []byte) {
 	return DecodeMSISDN(resp.Data), resp.Data
 }
 
+// parseTLVLength parses TLV length field (handles extended length format)
+// Returns the length value and number of bytes consumed
+func parseTLVLength(data []byte, offset int) (int, int) {
+	if offset >= len(data) {
+		return 0, 0
+	}
+
+	firstByte := data[offset]
+	if firstByte < 0x80 {
+		// Short form: length is in single byte
+		return int(firstByte), 1
+	}
+
+	if firstByte == 0x81 {
+		// Extended form: 1 byte follows
+		if offset+1 >= len(data) {
+			return 0, 0
+		}
+		return int(data[offset+1]), 2
+	}
+
+	if firstByte == 0x82 {
+		// Extended form: 2 bytes follow
+		if offset+2 >= len(data) {
+			return 0, 0
+		}
+		return int(data[offset+1])<<8 | int(data[offset+2]), 3
+	}
+
+	if firstByte == 0x83 {
+		// Extended form: 3 bytes follow
+		if offset+3 >= len(data) {
+			return 0, 0
+		}
+		return int(data[offset+1])<<16 | int(data[offset+2])<<8 | int(data[offset+3]), 4
+	}
+
+	// Unsupported length format
+	return 0, 0
+}
+
 // parseFCPFileSize extracts file size from FCP template
+// Supports both tag 0x80 (standard) and 0x81 (some card variants)
+// Handles extended length format
 func parseFCPFileSize(fcp []byte) int {
 	// FCP Template: 62 Len [TLV...]
-	// File size tag: 80
+	// File size tag: 80 or 81
 	if len(fcp) < 4 {
 		return 0
 	}
 
 	idx := 0
 	if fcp[0] == 0x62 {
-		idx = 2 // Skip template tag and length
+		// Parse template length (may be extended)
+		_, lenBytes := parseTLVLength(fcp, 1)
+		if lenBytes == 0 {
+			idx = 2 // Fallback to simple length
+		} else {
+			idx = 1 + lenBytes
+		}
 	}
 
-	for idx < len(fcp)-2 {
+	for idx < len(fcp)-1 {
 		tag := fcp[idx]
-		length := int(fcp[idx+1])
-		if idx+2+length > len(fcp) {
+
+		// Parse length (handles extended format)
+		length, lenBytes := parseTLVLength(fcp, idx+1)
+		if lenBytes == 0 {
 			break
 		}
 
-		if tag == 0x80 && length >= 2 {
-			// File size
-			return int(fcp[idx+2])<<8 | int(fcp[idx+3])
+		valueStart := idx + 1 + lenBytes
+		if valueStart+length > len(fcp) {
+			break
 		}
 
-		idx += 2 + length
+		// Tag 0x80: File size (standard ETSI TS 102 221)
+		if tag == 0x80 && length >= 2 {
+			return int(fcp[valueStart])<<8 | int(fcp[valueStart+1])
+		}
+
+		// Tag 0x81: File size (used by some cards, e.g., proprietary)
+		if tag == 0x81 && length >= 2 {
+			return int(fcp[valueStart])<<8 | int(fcp[valueStart+1])
+		}
+
+		idx = valueStart + length
 	}
 
 	return 0
 }
 
 // parseFCPRecordSize extracts record size from FCP template
+// Handles extended length format
 func parseFCPRecordSize(fcp []byte) int {
 	// Record size is in tag 82 (File Descriptor)
 	if len(fcp) < 4 {
@@ -495,25 +557,47 @@ func parseFCPRecordSize(fcp []byte) int {
 
 	idx := 0
 	if fcp[0] == 0x62 {
-		idx = 2
+		// Parse template length (may be extended)
+		_, lenBytes := parseTLVLength(fcp, 1)
+		if lenBytes == 0 {
+			idx = 2 // Fallback to simple length
+		} else {
+			idx = 1 + lenBytes
+		}
 	}
 
-	for idx < len(fcp)-2 {
+	for idx < len(fcp)-1 {
 		tag := fcp[idx]
-		length := int(fcp[idx+1])
-		if idx+2+length > len(fcp) {
+
+		// Parse length (handles extended format)
+		length, lenBytes := parseTLVLength(fcp, idx+1)
+		if lenBytes == 0 {
 			break
 		}
 
+		valueStart := idx + 1 + lenBytes
+		if valueStart+length > len(fcp) {
+			break
+		}
+
+		// Tag 0x82: File descriptor (ETSI TS 102 221)
+		// Format: file_desc_byte | data_coding | record_len(2) | num_records
 		if tag == 0x82 && length >= 5 {
-			// File descriptor byte, data coding, record length (2 bytes), num records
-			recordLen := int(fcp[idx+4])<<8 | int(fcp[idx+5])
+			recordLen := int(fcp[valueStart+2])<<8 | int(fcp[valueStart+3])
 			if recordLen > 0 {
 				return recordLen
 			}
 		}
 
-		idx += 2 + length
+		// Some cards use shorter format: file_desc_byte | record_len(2)
+		if tag == 0x82 && length == 3 {
+			recordLen := int(fcp[valueStart+1])<<8 | int(fcp[valueStart+2])
+			if recordLen > 0 {
+				return recordLen
+			}
+		}
+
+		idx = valueStart + length
 	}
 
 	return 0

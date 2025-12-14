@@ -34,12 +34,15 @@ const (
 )
 
 // Authentication context types (P2 for AUTHENTICATE command)
+// Reference: 3GPP TS 31.102 Section 7.1.2, ETSI TS 102 221
 const (
-	AUTH_CONTEXT_GSM      = 0x80 // GSM context (2G)
-	AUTH_CONTEXT_3G       = 0x81 // 3G/UMTS context (USIM)
+	AUTH_CONTEXT_GSM      = 0x80 // GSM context (2G) - returns SRES + Kc
+	AUTH_CONTEXT_3G       = 0x81 // 3G/UMTS context (USIM) - returns RES + CK + IK
 	AUTH_CONTEXT_VGCS_VBS = 0x82 // VGCS/VBS context
-	AUTH_CONTEXT_GBA      = 0x84 // GBA context (bootstrapping)
-	AUTH_CONTEXT_MBMS     = 0x85 // MBMS context
+	AUTH_CONTEXT_GBA_NAF  = 0x83 // GBA context for NAF derivation (Ks_NAF)
+	AUTH_CONTEXT_GBA      = 0x84 // GBA context (bootstrapping) - returns Ks
+	AUTH_CONTEXT_MBMS     = 0x85 // MBMS context - for multicast/broadcast keys
+	AUTH_CONTEXT_LOCAL    = 0x86 // Local key establishment
 	AUTH_CONTEXT_IMS      = 0x81 // IMS context (same as 3G for ISIM)
 )
 
@@ -377,13 +380,54 @@ func (r *Reader) ReadBinary(offset uint16, length byte) (*APDUResponse, error) {
 	return resp, nil
 }
 
+// ReadBinaryExtended reads binary data using extended APDU format (ISO 7816-4)
+// Supports reading up to 65535 bytes
+func (r *Reader) ReadBinaryExtended(offset uint16, length uint16) (*APDUResponse, error) {
+	// Extended APDU format: CLA INS P1 P2 00 Le(high) Le(low)
+	apdu := []byte{
+		0x00,
+		INS_READ_BINARY,
+		byte(offset >> 8),
+		byte(offset & 0xFF),
+		0x00, // Extended length indicator
+		byte(length >> 8),
+		byte(length & 0xFF),
+	}
+
+	resp, err := r.SendAPDU(apdu)
+	if err != nil {
+		return nil, err
+	}
+
+	// Handle GET RESPONSE if needed
+	if resp.HasMoreData() {
+		return r.GetResponse(resp.SW2)
+	}
+
+	return resp, nil
+}
+
+// Record mode constants for READ RECORD command (P2 lower 3 bits)
+const (
+	RecordModeAbsolute = 0x04 // P1 contains record number (absolute addressing)
+	RecordModeNext     = 0x02 // Read next record from current position
+	RecordModePrevious = 0x03 // Read previous record from current position
+	RecordModeCurrent  = 0x04 // Read current record (when P1=0)
+)
+
 // ReadRecord reads a record from the currently selected file
 func (r *Reader) ReadRecord(recordNum, length byte) (*APDUResponse, error) {
+	return r.ReadRecordWithMode(recordNum, length, RecordModeAbsolute)
+}
+
+// ReadRecordWithMode reads a record using specified addressing mode
+// mode: RecordModeAbsolute (0x04), RecordModeNext (0x02), RecordModePrevious (0x03)
+func (r *Reader) ReadRecordWithMode(recordNum, length, mode byte) (*APDUResponse, error) {
 	apdu := []byte{
 		0x00,
 		INS_READ_RECORD,
 		recordNum,
-		0x04, // P2: record number in P1, absolute mode
+		mode, // P2: addressing mode
 		length,
 	}
 
@@ -399,6 +443,16 @@ func (r *Reader) ReadRecord(recordNum, length byte) (*APDUResponse, error) {
 	}
 
 	return resp, nil
+}
+
+// ReadNextRecord reads the next record from current position
+func (r *Reader) ReadNextRecord(length byte) (*APDUResponse, error) {
+	return r.ReadRecordWithMode(0x00, length, RecordModeNext)
+}
+
+// ReadPreviousRecord reads the previous record from current position
+func (r *Reader) ReadPreviousRecord(length byte) (*APDUResponse, error) {
+	return r.ReadRecordWithMode(0x00, length, RecordModePrevious)
 }
 
 // VerifyPIN verifies a PIN or ADM key
@@ -471,9 +525,11 @@ func (r *Reader) ReadAllBinary(fileSize int) ([]byte, error) {
 }
 
 // UpdateBinary writes binary data to the currently selected file
+// For data > 255 bytes, use UpdateBinaryExtended or WriteAllBinary
 func (r *Reader) UpdateBinary(offset uint16, data []byte) (*APDUResponse, error) {
 	if len(data) > 255 {
-		return nil, fmt.Errorf("data too long: %d bytes (max 255)", len(data))
+		// Try extended APDU first
+		return r.UpdateBinaryExtended(offset, data)
 	}
 
 	apdu := make([]byte, 5+len(data))
@@ -485,6 +541,39 @@ func (r *Reader) UpdateBinary(offset uint16, data []byte) (*APDUResponse, error)
 	copy(apdu[5:], data)
 
 	return r.SendAPDU(apdu)
+}
+
+// UpdateBinaryExtended writes binary data using extended APDU format (ISO 7816-4)
+// Supports data up to 65535 bytes
+func (r *Reader) UpdateBinaryExtended(offset uint16, data []byte) (*APDUResponse, error) {
+	if len(data) > 65535 {
+		return nil, fmt.Errorf("data too long: %d bytes (max 65535)", len(data))
+	}
+
+	// Extended APDU format: CLA INS P1 P2 00 Lc(high) Lc(low) Data
+	// Lc = 0x00 followed by 2 bytes length
+	apdu := make([]byte, 7+len(data))
+	apdu[0] = 0x00
+	apdu[1] = INS_UPDATE_BINARY
+	apdu[2] = byte(offset >> 8)
+	apdu[3] = byte(offset & 0xFF)
+	apdu[4] = 0x00 // Extended length indicator
+	apdu[5] = byte(len(data) >> 8)
+	apdu[6] = byte(len(data) & 0xFF)
+	copy(apdu[7:], data)
+
+	resp, err := r.SendAPDU(apdu)
+	if err != nil {
+		return nil, err
+	}
+
+	// If extended APDU not supported, fall back to chunked writes
+	if resp.SW() == SW_WRONG_LENGTH || resp.SW() == SW_CLA_NOT_SUPPORTED {
+		// Extended APDU not supported, use chunked approach
+		return nil, fmt.Errorf("extended APDU not supported by card, use WriteAllBinary for large data")
+	}
+
+	return resp, nil
 }
 
 // UpdateBinaryGSM writes binary data using GSM class command (CLA=A0)
@@ -539,10 +628,55 @@ func (r *Reader) UpdateRecordGSM(recordNum byte, data []byte) (*APDUResponse, er
 }
 
 // WriteAllBinary writes all data to currently selected file (handles chunking)
+// Automatically reduces chunk size if card returns SW=6700 (Wrong Length)
 func (r *Reader) WriteAllBinary(data []byte) error {
 	offset := uint16(0)
 	chunkSize := 255
+	minChunkSize := 16 // Minimum chunk size to try
 
+	for int(offset) < len(data) {
+		remaining := len(data) - int(offset)
+		writeLen := chunkSize
+		if remaining < chunkSize {
+			writeLen = remaining
+		}
+
+		chunk := data[offset : int(offset)+writeLen]
+		resp, err := r.UpdateBinary(offset, chunk)
+		if err != nil {
+			return fmt.Errorf("update binary at offset %d failed: %w", offset, err)
+		}
+
+		// Handle SW=6700 (Wrong Length) by reducing chunk size
+		if resp.SW() == SW_WRONG_LENGTH {
+			if chunkSize > minChunkSize {
+				// Try halving chunk size
+				chunkSize = chunkSize / 2
+				if chunkSize < minChunkSize {
+					chunkSize = minChunkSize
+				}
+				continue // Retry with smaller chunk
+			}
+			return fmt.Errorf("update binary at offset %d failed: card rejects chunk size %d", offset, writeLen)
+		}
+
+		if !resp.IsOK() {
+			return fmt.Errorf("update binary at offset %d failed: %s", offset, SWToString(resp.SW()))
+		}
+
+		offset += uint16(writeLen)
+	}
+
+	return nil
+}
+
+// WriteAllBinaryWithChunkSize writes all data with specified chunk size
+func (r *Reader) WriteAllBinaryWithChunkSize(data []byte, chunkSize int) error {
+	if chunkSize <= 0 || chunkSize > 255 {
+		chunkSize = 255
+	}
+
+	offset := uint16(0)
 	for int(offset) < len(data) {
 		remaining := len(data) - int(offset)
 		writeLen := chunkSize
@@ -580,22 +714,77 @@ type AuthenticateResult struct {
 // Authenticate sends AUTHENTICATE command to USIM/ISIM
 // rand: 16 bytes random challenge
 // autn: 16 bytes authentication token (for 3G/4G context)
-// context: authentication context (AUTH_CONTEXT_3G, AUTH_CONTEXT_GSM, etc.)
+// context: authentication context (AUTH_CONTEXT_3G, AUTH_CONTEXT_GSM, AUTH_CONTEXT_GBA, etc.)
 // Returns RES, CK, IK for success, or AUTS for sync failure
 func (r *Reader) Authenticate(rand, autn []byte, context byte) (*AuthenticateResult, error) {
+	return r.AuthenticateWithData(rand, autn, nil, context)
+}
+
+// AuthenticateWithData sends AUTHENTICATE command with optional additional data
+// This supports GBA, MBMS and other contexts that may require extra parameters
+// rand: 16 bytes random challenge
+// autn: 16 bytes authentication token (for 3G/4G/GBA context)
+// nafId: NAF_Id for GBA_NAF context (optional, nil for other contexts)
+// context: authentication context
+func (r *Reader) AuthenticateWithData(rand, autn, nafId []byte, context byte) (*AuthenticateResult, error) {
 	result := &AuthenticateResult{}
 
-	// Build authentication data
-	// For 3G context: length || RAND || length || AUTN
+	// Build authentication data based on context
 	var authData []byte
-	if context == AUTH_CONTEXT_GSM {
+
+	switch context {
+	case AUTH_CONTEXT_GSM:
 		// GSM context: just RAND (16 bytes)
 		if len(rand) != 16 {
 			return nil, fmt.Errorf("RAND must be 16 bytes for GSM context")
 		}
 		authData = rand
-	} else {
-		// 3G/4G context: TLV format
+
+	case AUTH_CONTEXT_GBA_NAF:
+		// GBA NAF context: length(RAND) || RAND || length(NAF_Id) || NAF_Id
+		if len(rand) != 16 {
+			return nil, fmt.Errorf("RAND must be 16 bytes for GBA context")
+		}
+		if len(nafId) == 0 {
+			return nil, fmt.Errorf("NAF_Id is required for GBA_NAF context")
+		}
+		authData = make([]byte, 0, 2+len(rand)+len(nafId))
+		authData = append(authData, byte(len(rand)))
+		authData = append(authData, rand...)
+		authData = append(authData, byte(len(nafId)))
+		authData = append(authData, nafId...)
+
+	case AUTH_CONTEXT_GBA:
+		// GBA Bootstrap context: length(RAND) || RAND || length(AUTN) || AUTN
+		if len(rand) != 16 {
+			return nil, fmt.Errorf("RAND must be 16 bytes for GBA context")
+		}
+		if len(autn) != 16 {
+			return nil, fmt.Errorf("AUTN must be 16 bytes for GBA context")
+		}
+		authData = make([]byte, 0, 34)
+		authData = append(authData, byte(len(rand)))
+		authData = append(authData, rand...)
+		authData = append(authData, byte(len(autn)))
+		authData = append(authData, autn...)
+
+	case AUTH_CONTEXT_MBMS:
+		// MBMS context: length(RAND) || RAND || length(AUTN) || AUTN
+		// Similar to 3G but may include additional MBMS-specific data
+		if len(rand) != 16 {
+			return nil, fmt.Errorf("RAND must be 16 bytes for MBMS context")
+		}
+		if len(autn) != 16 {
+			return nil, fmt.Errorf("AUTN must be 16 bytes for MBMS context")
+		}
+		authData = make([]byte, 0, 34)
+		authData = append(authData, byte(len(rand)))
+		authData = append(authData, rand...)
+		authData = append(authData, byte(len(autn)))
+		authData = append(authData, autn...)
+
+	default:
+		// 3G/4G/IMS context: TLV format
 		// Format: length(RAND) || RAND || length(AUTN) || AUTN
 		if len(rand) != 16 {
 			return nil, fmt.Errorf("RAND must be 16 bytes")

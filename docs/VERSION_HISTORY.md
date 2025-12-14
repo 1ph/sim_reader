@@ -1,5 +1,55 @@
 # Version History
 
+## v2.3.0 - Extended APDU, Improved FCP Parsing, Full JSON Export
+
+### Extended APDU Support (ISO 7816-4)
+- Added `ReadBinaryExtended()` for reading files up to 65535 bytes
+- Added `UpdateBinaryExtended()` for writing files up to 65535 bytes
+- Automatic fallback to chunked mode if card doesn't support extended APDU
+
+### Improved READ RECORD Command
+- Added `ReadRecordWithMode()` with addressing mode parameter
+- New modes: Absolute (0x04), Next (0x02), Previous (0x03)
+- Added helper functions: `ReadNextRecord()`, `ReadPreviousRecord()`
+
+### Improved UPDATE BINARY Command
+- Automatic chunk size reduction on SW=6700 (Wrong Length)
+- `WriteAllBinary()` now handles cards with smaller buffer sizes
+- Added `WriteAllBinaryWithChunkSize()` for explicit chunk control
+
+### Enhanced FCP Parsing (ETSI TS 102 221)
+- Added support for extended length format (0x81, 0x82, 0x83 length bytes)
+- Added support for tag 0x81 as alternative file size tag
+- Fixed record size parsing for various card formats
+- Improved robustness for proprietary card implementations
+
+### GBA/MBMS Authentication Context Support
+- Added `AUTH_CONTEXT_GBA_NAF` (0x83) for NAF key derivation
+- Added `AUTH_CONTEXT_LOCAL` (0x86) for local key establishment
+- New `AuthenticateWithData()` function supporting NAF_Id parameter
+- Enhanced MBMS context handling
+
+### Full JSON Export/Import Parity
+- JSON export (`-json`) now includes all readable parameters:
+  - ICCID, MSISDN (read-only, for reference)
+  - Languages preference (EF_LI)
+  - Access Control Classes (read-only)
+  - HPLMN search period
+  - Forbidden PLMNs list (read-only, use `clear_fplmn` to clear)
+- Complete round-trip: read card → edit JSON → write back
+
+### New JSON Config Fields
+| Field | Type | Description |
+|-------|------|-------------|
+| `iccid` | string | Card ID (read-only) |
+| `msisdn` | string | Phone number (read-only) |
+| `languages` | []string | Language preferences |
+| `acc` | []int | Access Control Classes (read-only) |
+| `hplmn_period` | int | HPLMN search period in minutes |
+| `fplmn` | []string | Forbidden PLMNs (read-only) |
+
+---
+
 ## v2.2.2 - Programmable Card Guardrails and Proprietary NAA (EF 8F90) Support
 
 ### Proprietary USIM Algorithm Selector (EF 8F90)

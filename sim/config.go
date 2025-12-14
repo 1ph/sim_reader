@@ -9,7 +9,11 @@ import (
 
 // SIMConfig represents the configuration for writing to a SIM card
 type SIMConfig struct {
-	// USIM parameters
+	// Read-only identity fields (for reference, not writable)
+	ICCID  string `json:"iccid,omitempty"`  // Read-only: Card ID
+	MSISDN string `json:"msisdn,omitempty"` // Read-only: Phone number
+
+	// USIM parameters (writable)
 	IMSI string `json:"imsi,omitempty"`
 	SPN  string `json:"spn,omitempty"`
 	MCC  string `json:"mcc,omitempty"`
@@ -19,6 +23,15 @@ type SIMConfig struct {
 	// Values: normal, type-approval, normal-specific, type-approval-specific, maintenance, cell-test
 	OperationMode string `json:"operation_mode,omitempty"`
 
+	// Languages preference (EF_LI)
+	Languages []string `json:"languages,omitempty"`
+
+	// Access Control Classes (read-only)
+	ACC []int `json:"acc,omitempty"`
+
+	// HPLMN search period in minutes (EF_HPPLMN, 0x6F31)
+	HPLMNPeriod int `json:"hplmn_period,omitempty"`
+
 	// HPLMN configuration (EF_HPLMNwACT, 0x6F62)
 	HPLMN []HPLMNConfig `json:"hplmn,omitempty"`
 
@@ -27,6 +40,9 @@ type SIMConfig struct {
 
 	// User Controlled PLMN configuration (EF_PLMNwAcT, 0x6F60)
 	UserPLMN []HPLMNConfig `json:"user_plmn,omitempty"`
+
+	// Forbidden PLMNs (read-only, use clear_fplmn to clear)
+	FPLMN []string `json:"fplmn,omitempty"`
 
 	// ISIM parameters
 	ISIM *ISIMConfig `json:"isim,omitempty"`
@@ -415,14 +431,40 @@ func CreateSampleConfig(filename string) error {
 
 // ExportToConfig creates a SIMConfig from current card data
 // This can be saved to JSON and edited, then loaded back with -write
+// All readable parameters are exported to ensure full round-trip capability
 func ExportToConfig(usimData *USIMData, isimData *ISIMData) *SIMConfig {
 	config := &SIMConfig{}
 
 	if usimData != nil {
+		// Read-only identity fields (for reference)
+		config.ICCID = usimData.ICCID
+		config.MSISDN = usimData.MSISDN
+
+		// Writable identity fields
 		config.IMSI = usimData.IMSI
 		config.SPN = usimData.SPN
 		config.MCC = usimData.MCC
 		config.MNC = usimData.MNC
+
+		// Languages preference
+		if len(usimData.Languages) > 0 {
+			config.Languages = usimData.Languages
+		}
+
+		// Access Control Classes (read-only, for reference)
+		if len(usimData.ACC) > 0 {
+			config.ACC = usimData.ACC
+		}
+
+		// HPLMN search period
+		if usimData.HPLMNPeriod > 0 {
+			config.HPLMNPeriod = usimData.HPLMNPeriod
+		}
+
+		// Forbidden PLMNs (read-only, use clear_fplmn to clear)
+		if len(usimData.FPLMN) > 0 {
+			config.FPLMN = usimData.FPLMN
+		}
 
 		// Operation mode from AdminData
 		switch usimData.AdminData.UEMode {
@@ -438,6 +480,11 @@ func ExportToConfig(usimData *USIMData, isimData *ISIMData) *SIMConfig {
 			config.OperationMode = "maintenance"
 		case "Cell Test":
 			config.OperationMode = "cell-test"
+		default:
+			// Store raw value if not recognized
+			if usimData.AdminData.UEMode != "" {
+				config.OperationMode = usimData.AdminData.UEMode
+			}
 		}
 
 		// HPLMN
@@ -467,7 +514,7 @@ func ExportToConfig(usimData *USIMData, isimData *ISIMData) *SIMConfig {
 			})
 		}
 
-		// Services from UST
+		// Services from UST - export all known services
 		if usimData.UST != nil {
 			config.Services = &ServicesConfig{}
 			volte := usimData.HasVoLTE()

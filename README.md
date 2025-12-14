@@ -2,6 +2,8 @@
 
 A command-line tool written in Go for reading and writing SIM/USIM/ISIM card parameters using PC/SC smart card readers.
 
+**Version 2.3.0**
+
 ---
 
 ## ⚠️ DISCLAIMER
@@ -15,6 +17,7 @@ A command-line tool written in Go for reading and writing SIM/USIM/ISIM card par
 - 3GPP TS 31.103 - ISIM Application  
 - ETSI TS 102 221 - UICC-Terminal Interface
 - ISO/IEC 7816-4 - Smart Card Commands
+- GlobalPlatform Card Specification
 
 **The author(s) do not have access to any proprietary, confidential, or non-public information from any smart card manufacturer, mobile operator, or other organization.** All functionality is implemented based solely on publicly available 3GPP/ETSI/ISO standards and open documentation.
 
@@ -38,10 +41,13 @@ This software is provided "AS IS", without warranty of any kind, express or impl
 
 - **Reading**: ICCID, IMSI, MSISDN, PLMN lists, Service Tables, ISIM parameters
 - **Writing**: IMSI, SPN, PLMN lists, ISIM parameters, service configuration
-- **Authentication**: Test 3G/4G authentication with Milenage and TUAK algorithms
+- **JSON Export/Import**: Full round-trip support (`-json` → edit → `-write`)
+- **Authentication**: Test 3G/4G/5G authentication with Milenage and TUAK algorithms
 - **Card Analysis**: Auto-detect card type by ATR, read EF_DIR, file access conditions
 - **Multiple ADM Keys**: Support for up to 4 ADM keys (`-adm`, `-adm2`, `-adm3`, `-adm4`)
 - **PCOM Scripts**: Execute personalization scripts for programmable cards
+- **GlobalPlatform**: Secure channel (SCP02/SCP03) for applet management
+- **Extended APDU**: Support for large file operations (up to 64KB)
 - **Programmable / Proprietary Profiles (Guarded)**: Optional support for switching USIM authentication algorithm via proprietary EF `8F90` (NAA selector) on supported programmable card families. This feature is **ATR-gated** to avoid probing unrelated vendor cards.
 
 ## Supported Card Types
@@ -101,14 +107,17 @@ make build-windows
 # Read card
 ./sim_reader -adm YOUR_ADM_KEY
 
+# Export card data to JSON (for editing and re-importing)
+./sim_reader -adm YOUR_ADM_KEY -json > card_config.json
+
+# Write configuration from JSON
+./sim_reader -adm YOUR_ADM_KEY -write card_config.json
+
 # Analyze card
 ./sim_reader -analyze
 
 # Check file access conditions
 ./sim_reader -adm-check
-
-# Write configuration
-./sim_reader -adm YOUR_ADM_KEY -write config.json
 
 # Test authentication (compute vectors)
 ./sim_reader -auth -auth-k YOUR_K -auth-opc YOUR_OPC -auth-mcc 250 -auth-mnc 88 -auth-no-card
@@ -122,6 +131,158 @@ make build-windows
 ./sim_reader -adm YOUR_ADM_KEY -set-card-algo milenage -show-card-algo
 ```
 
+## Command Line Reference
+
+### Reading Options
+
+| Flag | Description |
+|------|-------------|
+| `-list` | List available smart card readers |
+| `-r N` | Use reader index N (default: auto-select if only one) |
+| `-adm KEY` | ADM1 key (hex or decimal format) |
+| `-adm2 KEY` | ADM2 key for higher access level |
+| `-adm3 KEY` | ADM3 key for even higher access level |
+| `-adm4 KEY` | ADM4 key |
+| `-pin CODE` | PIN1 code (if card is PIN-protected) |
+| `-raw` | Show raw hex data |
+| `-services` | Show all UST/IST services in detail |
+| `-phonebook` | Show phonebook entries (EF_ADN) |
+| `-json` | Output in JSON format (for editing and re-importing with -write) |
+| `-analyze` | Analyze card structure and applications |
+| `-adm-check` | Show file access conditions (which key is needed for each file) |
+| `-debug-fcp` | Debug FCP (File Control Parameters) parsing |
+
+### Writing Options
+
+| Flag | Description |
+|------|-------------|
+| `-write FILE` | Write configuration from JSON file |
+| `-sample FILE` | Create sample configuration file |
+| `-write-imsi VALUE` | Write IMSI |
+| `-write-spn VALUE` | Write Service Provider Name |
+| `-write-hplmn MCC:MNC:ACT` | Write Home PLMN with Access Technology |
+| `-write-oplmn MCC:MNC:ACT` | Write Operator PLMN |
+| `-write-user-plmn MCC:MNC:ACT` | Write User Controlled PLMN |
+| `-set-op-mode MODE` | Set UE Operation Mode (normal, cell-test, etc.) |
+| `-clear-fplmn` | Clear Forbidden PLMN list |
+| `-enable-volte` | Enable VoLTE services |
+| `-disable-volte` | Disable VoLTE services |
+| `-enable-vowifi` | Enable VoWiFi services |
+| `-disable-vowifi` | Disable VoWiFi services |
+
+### Authentication Options
+
+| Flag | Description |
+|------|-------------|
+| `-auth` | Enable authentication mode |
+| `-auth-k KEY` | Subscriber key K (hex) |
+| `-auth-op OP` | Operator key OP (hex) |
+| `-auth-opc OPC` | Pre-computed OPc (hex) |
+| `-auth-sqn SQN` | Sequence number (hex, default: 000000000000) |
+| `-auth-amf AMF` | Authentication Management Field (hex, default: 8000) |
+| `-auth-rand RAND` | Random challenge (hex, auto-generated if not provided) |
+| `-auth-autn AUTN` | Pre-computed AUTN (for card-only mode) |
+| `-auth-auts AUTS` | AUTS for SQN resynchronization |
+| `-auth-algo ALGO` | Algorithm: milenage or tuak (default: milenage) |
+| `-auth-mcc MCC` | Mobile Country Code (for KASME) |
+| `-auth-mnc MNC` | Mobile Network Code (for KASME) |
+| `-auth-no-card` | Compute vectors without card |
+
+### GlobalPlatform Options
+
+| Flag | Description |
+|------|-------------|
+| `-applets` | List GlobalPlatform applets |
+| `-gp-key KEY` | GlobalPlatform key (hex) |
+| `-gp-key-enc` | Separate ENC key |
+| `-gp-key-mac` | Separate MAC key |
+| `-gp-key-dek` | Separate DEK key |
+| `-gp-kvn N` | Key Version Number (0-255) |
+| `-gp-scp VER` | Secure Channel Protocol (auto, 02, 03) |
+
+### Script Execution
+
+| Flag | Description |
+|------|-------------|
+| `-pcom FILE` | Execute PCOM personalization script |
+| `-pcom-verbose` | Show detailed script execution |
+| `-pcom-stop-on-error` | Stop on first error |
+| `-script FILE` | Execute APDU script (pysim format) |
+
+### Programmable Card Options
+
+| Flag | Description |
+|------|-------------|
+| `-show-card-algo` | Show current USIM algorithm selector (EF 8F90) |
+| `-set-card-algo ALGO` | Set USIM algorithm (milenage, s3g-128, tuak, s3g-256) |
+
+### Other Options
+
+| Flag | Description |
+|------|-------------|
+| `-version` | Show version |
+| `-dump NAME` | Dump card data as Go test code |
+
+## JSON Configuration Format
+
+The `-json` flag exports all readable card parameters. Edit and re-import with `-write`:
+
+```bash
+# Export current card configuration
+./sim_reader -adm YOUR_KEY -json > config.json
+
+# Edit config.json, then write back
+./sim_reader -adm YOUR_KEY -write config.json
+```
+
+### JSON Fields
+
+| Field | Type | Writable | Description |
+|-------|------|----------|-------------|
+| `iccid` | string | No | Card identifier (read-only) |
+| `msisdn` | string | No | Phone number (read-only) |
+| `imsi` | string | Yes | International Mobile Subscriber Identity |
+| `spn` | string | Yes | Service Provider Name |
+| `mcc` | string | Yes | Mobile Country Code |
+| `mnc` | string | Yes | Mobile Network Code |
+| `operation_mode` | string | Yes | UE mode: normal, cell-test, type-approval, etc. |
+| `languages` | []string | No | Language preferences (read-only) |
+| `acc` | []int | No | Access Control Classes (read-only) |
+| `hplmn_period` | int | No | HPLMN search period in minutes (read-only) |
+| `hplmn` | []object | Yes | Home PLMN with Access Technology |
+| `oplmn` | []object | Yes | Operator PLMN list |
+| `user_plmn` | []object | Yes | User Controlled PLMN list |
+| `fplmn` | []string | No | Forbidden PLMNs (use `clear_fplmn` to clear) |
+| `clear_fplmn` | bool | Yes | Clear Forbidden PLMN list on write |
+| `isim` | object | Yes | ISIM parameters (IMPI, IMPU, Domain, PCSCF) |
+| `services` | object | Yes | Service flags (VoLTE, VoWiFi, GBA, etc.) |
+
+### Example JSON
+
+```json
+{
+  "iccid": "89701880000000000176",
+  "imsi": "250880000000017",
+  "spn": "My Operator",
+  "mcc": "250",
+  "mnc": "88",
+  "operation_mode": "normal",
+  "hplmn": [
+    {"mcc": "250", "mnc": "88", "act": ["eutran", "utran", "gsm"]}
+  ],
+  "isim": {
+    "impi": "250880000000017@ims.mnc088.mcc250.3gppnetwork.org",
+    "impu": ["sip:250880000000017@ims.mnc088.mcc250.3gppnetwork.org"],
+    "domain": "ims.mnc088.mcc250.3gppnetwork.org"
+  },
+  "services": {
+    "volte": true,
+    "vowifi": true
+  },
+  "clear_fplmn": true
+}
+```
+
 ## Documentation
 
 | Document | Description |
@@ -129,6 +290,7 @@ make build-windows
 | [docs/USAGE.md](docs/USAGE.md) | Detailed usage guide |
 | [docs/WRITING.md](docs/WRITING.md) | Writing card data |
 | [docs/AUTHENTICATION.md](docs/AUTHENTICATION.md) | Authentication testing (Milenage/TUAK) |
+| [docs/GLOBALPLATFORM.md](docs/GLOBALPLATFORM.md) | GlobalPlatform secure channels |
 | [docs/PCOM.md](docs/PCOM.md) | PCOM script execution |
 | [docs/EF_FILES.md](docs/EF_FILES.md) | EF file reference |
 | [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) | Problem solving |
