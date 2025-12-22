@@ -61,6 +61,11 @@ func main() {
 	gpAppletAID := flag.String("gp-applet-aid", "", "GlobalPlatform: applet class AID for INSTALL [for install] (hex)")
 	gpInstanceAID := flag.String("gp-instance-aid", "", "GlobalPlatform: applet instance AID (hex). Defaults to -gp-applet-aid if empty.")
 	gpVerifyAID := flag.String("gp-verify-aid", "", "GlobalPlatform: SELECT AID and show SW (hex)")
+	gpAramAddRule := flag.Bool("gp-aram-add-rule", false, "GlobalPlatform: add ARA-M access rule via STORE DATA (requires Secure Channel)")
+	gpAramAID := flag.String("gp-aram-aid", "A00000015141434C00", "GlobalPlatform: ARA-M applet AID (hex)")
+	gpAramRuleAID := flag.String("gp-aram-rule-aid", "FFFFFFFFFFFF", "GlobalPlatform: target applet AID for rule (hex), use FFFFFFFFFFFF for wildcard")
+	gpAramCertHash := flag.String("gp-aram-cert-hash", "", "GlobalPlatform: Android app certificate hash (SHA-1=20 bytes or SHA-256=32 bytes, hex)")
+	gpAramPerm := flag.String("gp-aram-perm", "0000000000000001", "GlobalPlatform: PERM-AR-DO value (hex, commonly 8 bytes)")
 
 	// GlobalPlatform: load keys from DMS-style "var_out" file
 	gpDMSFile := flag.String("gp-dms", "", "GlobalPlatform: path to DMS var_out key file (e.g. DMS72100_decr.out)")
@@ -513,7 +518,7 @@ EXAMPLES:
 
 	// GlobalPlatform secure operations (SCP02) - independent of SIM/USIM reading.
 	// If any -gp-* operation is requested, run it and exit.
-	gpRequested := *gpList || *gpProbe || *gpDelete != "" || *gpLoadCAP != "" || *gpVerifyAID != ""
+	gpRequested := *gpList || *gpProbe || *gpAramAddRule || *gpDelete != "" || *gpLoadCAP != "" || *gpVerifyAID != ""
 	if gpRequested {
 		// Resolve keys (explicit flags override DMS file)
 		var encKey, macKey, dekKey []byte
@@ -761,6 +766,47 @@ EXAMPLES:
 				os.Exit(1)
 			}
 			output.PrintApplets(applets)
+		}
+
+		// gp-aram-add-rule
+		if *gpAramAddRule {
+			if *gpAramCertHash == "" {
+				output.PrintError("ARA-M add rule requires -gp-aram-cert-hash")
+				os.Exit(1)
+			}
+			aramAID, err := sim.ParseAIDHex(*gpAramAID)
+			if err != nil {
+				output.PrintError(fmt.Sprintf("Invalid -gp-aram-aid: %v", err))
+				os.Exit(1)
+			}
+			ruleAID, err := sim.ParseHexBytes(*gpAramRuleAID)
+			if err != nil {
+				output.PrintError(fmt.Sprintf("Invalid -gp-aram-rule-aid: %v", err))
+				os.Exit(1)
+			}
+			certHash, err := sim.ParseHexBytes(*gpAramCertHash)
+			if err != nil {
+				output.PrintError(fmt.Sprintf("Invalid -gp-aram-cert-hash: %v", err))
+				os.Exit(1)
+			}
+			perm, err := sim.ParseHexBytes(*gpAramPerm)
+			if err != nil {
+				output.PrintError(fmt.Sprintf("Invalid -gp-aram-perm: %v", err))
+				os.Exit(1)
+			}
+
+			output.PrintWarning("ARA-M STORE DATA modifies access-control rules on the card. Wrong rules may break expected device behavior.")
+			err = sim.GPAramAddRule(reader, cfg, aramAID, sim.GPARAMRule{
+				TargetAID: ruleAID,
+				CertHash:  certHash,
+				Perm:      perm,
+				ApduRule:  0x01, // ALWAYS allow
+			})
+			if err != nil {
+				output.PrintError(fmt.Sprintf("GP ARA-M add rule failed: %v", err))
+				os.Exit(1)
+			}
+			output.PrintSuccess("GP ARA-M rule added successfully")
 		}
 
 		// gp-delete
