@@ -1,5 +1,120 @@
 # Version History
 
+## v2.4.0 - Programmable SIM Card Support
+
+### Full Programmable Card Support
+- Complete support for programming blank/writable SIM cards
+- Supported card types:
+  - **Grcard v2 (GRv2)**: open5gs, Gialer, OYEITIMES cards with proprietary APDU protocol
+  - **Grcard v1 (GRv1)**: Generic programmable cards with standard USIM commands
+  - **sysmocom sysmoUSIM-GR1**: Professional programmable cards
+- Automatic card type detection by ATR pattern matching
+
+### Cryptographic Key Programming
+- **Ki (Subscriber Key)**: Write 128-bit authentication key
+- **OPc/OP**: Write operator code or compute OPc from OP automatically
+- **Milenage Parameters**: Write R and C constants according to 3GPP TS 35.206
+- **Algorithm Selection**: Set authentication algorithm (Milenage/XOR) for GRv2 cards
+
+### Standard File Programming
+- **ICCID**: Write card identifier (18-20 digits)
+- **MSISDN**: Write phone number
+- **ACC**: Write Access Control Class
+- **PIN/PUK Codes**: Set PIN1/PUK1 and PIN2/PUK2 (GRv2)
+
+### JSON Configuration
+- New `programmable` section in JSON config:
+```json
+{
+  "programmable": {
+    "ki": "F2464E3293019A7E51ABAA7B1262B7D8",
+    "op": "CDC202D5123E20F62B6D676AC72CB318",
+    "iccid": "89860061100000000123",
+    "msisdn": "+1234567890",
+    "pin1": "1234",
+    "puk1": "12345678",
+    "algorithm": "milenage"
+  },
+  "imsi": "250880000000001",
+  "spn": "My Network"
+}
+```
+- Single unified config file for all card parameters
+- Combine programmable and standard parameters in one JSON
+
+### Safety Features
+- **Dry Run Mode** (`-prog-dry-run`): Test all operations without writing to card
+- **Card Type Detection**: Automatic identification of programmable cards by ATR
+- **Force Override** (`-prog-force`): Option to program unrecognized cards (dangerous!)
+- **Interactive Warnings**: Clear warnings about permanent nature of operations
+- **Validation**: All parameters validated before writing
+
+### New Command Line Flags
+| Flag | Description |
+|------|-------------|
+| `-prog-info` | Show programmable card information (card type, File IDs) |
+| `-prog-dry-run` | Simulate programming without writing (safe test mode) |
+| `-prog-force` | Force programming on unrecognized cards (DANGEROUS!) |
+
+### Low-Level APDU Support
+- **GRv2 Handshake**: Proprietary activation command for GRv2 cards
+- **GRv2 File Selection**: Low-level SELECT commands with proprietary class byte (A0)
+- **GRv2 Binary Update**: Direct binary writes to proprietary files
+- **GRv2 Record Update**: Record-based writes for Milenage constants
+
+### Proprietary File IDs
+#### GRv1 Cards
+- Ki: `7FF0 FF02`
+- OPc: `7FF0 FF01`
+- Milenage R: `7FF0 FF03`
+- Milenage C: `7FF0 FF04`
+
+#### GRv2 Cards
+- Ki: `0001`
+- OPc: `6002`
+- Algorithm Type: `2FD0`
+- Milenage R/C: `2FE6`
+- ADM Key: `0B00`
+- PIN1/PUK1: `0100`
+- PIN2/PUK2: `0200`
+
+### Documentation
+- New [docs/PROGRAMMABLE_CARDS.md](PROGRAMMABLE_CARDS.md) with comprehensive guide (English)
+- Example configuration file: [docs/programmable_custom_example.json](programmable_custom_example.json)
+- Safety warnings and best practices
+- ATR patterns for known programmable cards
+- Troubleshooting guide for common issues
+
+### Internal Architecture
+- New `sim/programmable.go`: High-level programming functions
+- New `sim/programmable_info.go`: Card information display
+- Enhanced `card/programmable.go`: Low-level GRv2 protocol implementation
+- New `card.FileInfo` type for file metadata
+- New `card.GetFileInfo()` method for reading file parameters
+- OPc computation using existing Milenage implementation
+
+### Usage Examples
+```bash
+# Show card info
+./sim_reader -prog-info
+
+# Safe test (dry run)
+./sim_reader -adm 4444444444444444 -write config.json -prog-dry-run
+
+# Program card
+./sim_reader -adm 4444444444444444 -write config.json
+```
+
+### Breaking Changes
+- None - all changes are additions
+
+### Compatibility
+- Fully backward compatible with v2.3.0
+- Standard USIM/ISIM cards unaffected
+- ATR-gated detection prevents accidental probing of non-programmable cards
+
+---
+
 ## v2.3.0 - Extended APDU, Improved FCP Parsing, Full JSON Export
 
 ### Extended APDU Support (ISO 7816-4)

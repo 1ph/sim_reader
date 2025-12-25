@@ -15,7 +15,7 @@ import (
 )
 
 var (
-	version = "2.3.0"
+	version = "2.4.0"
 )
 
 func main() {
@@ -128,6 +128,11 @@ func main() {
 	authMNC := flag.Int("auth-mnc", 0, "Mobile Network Code for KASME computation")
 	authNoCard := flag.Bool("auth-no-card", false, "Run auth computation without sending to card")
 
+	// Programmable card flags (use -write with "programmable" section in JSON)
+	progInfo := flag.Bool("prog-info", false, "Show programmable card information and supported operations")
+	progDryRun := flag.Bool("prog-dry-run", false, "Simulate programming without writing (test mode)")
+	progForce := flag.Bool("prog-force", false, "Force programming on unrecognized cards (DANGEROUS!)")
+
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, `SIM Card Reader/Writer v%s
 Read and write SIM/USIM/ISIM card parameters
@@ -228,6 +233,20 @@ AUTHENTICATION OPTIONS:
   -auth-mnc <int>    Mobile Network Code (for KASME)
   -auth-no-card      Compute auth vectors without sending to card
 
+PROGRAMMABLE CARD OPTIONS (⚠️  DANGEROUS - CAN PERMANENTLY BRICK CARD!):
+  -prog-info           Show programmable card information (card type, File IDs)
+  -prog-dry-run        Simulate without writing (SAFE - test your commands!)
+  -prog-force          Force on unrecognized cards (EXTREMELY DANGEROUS!)
+
+  ⚠️  READ BEFORE USE:
+  • Programmable operations are PERMANENT and CANNOT BE UNDONE
+  • ALWAYS use -prog-dry-run first to test your commands
+  • Wrong keys will PERMANENTLY BRICK the card
+  • Only for blank/programmable SIM cards (Grcard, open5gs, etc.)
+  • Regular operator SIM cards are NOT programmable
+  • Use -write <config.json> with "programmable" section to program card
+  • See docs/programmable_custom_example.json for example config
+
 EXAMPLES:
   # List readers
   %s -list
@@ -284,7 +303,18 @@ EXAMPLES:
   # Change ADM1 key (decimal format)
   %s -adm 88888888 -change-adm1 12345678
 
-`, os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0])
+  # Programmable card: show info
+  %s -prog-info
+
+  # Programmable card: DRY RUN (test without writing)
+  %s -adm 4444444444444444 -write programmable_config.json -prog-dry-run
+
+  # Programmable card: program card from JSON config (PERMANENT!)
+  %s -adm 4444444444444444 -write programmable_config.json
+
+  # See docs/programmable_custom_example.json for example config
+
+`, os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0])
 	}
 
 	flag.Parse()
@@ -945,6 +975,14 @@ EXAMPLES:
 		os.Exit(0)
 	}
 
+	// Handle programmable card info request
+	if *progInfo {
+		cardTypeName := sim.ShowProgrammableCardInfo(reader)
+		atrHex := fmt.Sprintf("%X", reader.ATR())
+		output.PrintProgrammableCardInfo(cardTypeName, atrHex)
+		os.Exit(0)
+	}
+
 	// Handle write operations
 	if isWriteMode {
 		fmt.Println()
@@ -957,8 +995,23 @@ EXAMPLES:
 				output.PrintError(fmt.Sprintf("Failed to load config: %v", err))
 				os.Exit(1)
 			}
-			if err := sim.ApplyConfig(reader, config); err != nil {
+
+			// Show programmable card info and warnings if present
+			if config.Programmable != nil {
+				cardType := card.DetectProgrammableCardType(reader.ATR())
+				cardTypeName := sim.GetProgrammableCardTypeName(cardType)
+				atrHex := fmt.Sprintf("%X", reader.ATR())
+				output.PrintProgrammableCardInfo(cardTypeName, atrHex)
+				output.PrintProgrammableWriteWarning(*progDryRun)
+			}
+
+			if err := sim.ApplyConfig(reader, config, *progDryRun, *progForce); err != nil {
 				output.PrintError(fmt.Sprintf("Config apply failed: %v", err))
+			}
+
+			// Exit after dry run
+			if *progDryRun && config.Programmable != nil {
+				os.Exit(0)
 			}
 		}
 

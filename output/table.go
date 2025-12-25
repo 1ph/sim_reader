@@ -5,6 +5,7 @@ import (
 	"os"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/jedib0t/go-pretty/v6/table"
 	"github.com/jedib0t/go-pretty/v6/text"
@@ -749,6 +750,63 @@ func PrintScriptResults(results []sim.ScriptResult) {
 	t.Render()
 	fmt.Printf("\nExecuted: %d commands, Success: %d, Failed: %d\n",
 		len(results), successCount, len(results)-successCount)
+}
+
+// PrintProgrammableCardInfo prints programmable card information
+func PrintProgrammableCardInfo(cardType, atr string) {
+	fmt.Println()
+	t := newTable()
+	t.SetTitle("PROGRAMMABLE CARD INFORMATION")
+	t.SetColumnConfigs([]table.ColumnConfig{
+		{Number: 1, Colors: colorLabel, WidthMin: 25},
+		{Number: 2, Colors: colorValue, WidthMin: 50},
+	})
+
+	t.AppendRow(table.Row{"Card Type", cardType})
+	t.AppendRow(table.Row{"ATR", atr})
+	
+	// Add file IDs based on card type
+	if cardType == "GRv2" || cardType == "Grcard v2 / open5gs (GRv2)" {
+		t.AppendRow(table.Row{"", ""})
+		t.AppendRow(table.Row{"Proprietary Files", ""})
+		t.AppendRow(table.Row{"Ki (Subscriber Key)", "0001"})
+		t.AppendRow(table.Row{"OPc (Operator Code)", "6002"})
+		t.AppendRow(table.Row{"Milenage R Constants", "2FE6"})
+		t.AppendRow(table.Row{"Algorithm Type", "2FD0"})
+		t.AppendRow(table.Row{"ADM Key", "0B00"})
+		t.AppendRow(table.Row{"PIN1/PUK1", "0100"})
+		t.AppendRow(table.Row{"PIN2/PUK2", "0200"})
+	} else if cardType == "GRv1" || cardType == "Grcard v1 (GRv1)" {
+		t.AppendRow(table.Row{"", ""})
+		t.AppendRow(table.Row{"Proprietary Files", ""})
+		t.AppendRow(table.Row{"Ki (Subscriber Key)", "7FF0 FF02"})
+		t.AppendRow(table.Row{"OPc (Operator Code)", "7FF0 FF01"})
+		t.AppendRow(table.Row{"Milenage R Constants", "7FF0 FF03"})
+		t.AppendRow(table.Row{"Milenage C Constants", "7FF0 FF04"})
+	} else if cardType == "Unknown" {
+		t.AppendRow(table.Row{"", ""})
+		t.AppendRow(table.Row{"Status", colorWarn.Sprint("Not recognized as programmable")})
+		t.AppendRow(table.Row{"Note", "Use -prog-force to override (DANGEROUS!)"})
+	}
+	
+	t.Render()
+	fmt.Println()
+}
+
+// PrintProgrammableWriteWarning prints warning before actual write operations
+func PrintProgrammableWriteWarning(dryRun bool) {
+	fmt.Println()
+	if dryRun {
+		PrintWarning("DRY RUN MODE: No data will be written")
+		PrintWarning("Remove -prog-dry-run to actually program the card")
+	} else {
+		PrintWarning("WARNING: Programmable card operations are PERMANENT and CANNOT BE UNDONE!")
+		PrintWarning("Press Ctrl+C now if you want to cancel.")
+		fmt.Println()
+		PrintWarning("Waiting 3 seconds...")
+		time.Sleep(3 * time.Second)
+	}
+	fmt.Println()
 }
 
 // PrintAuthResult prints authentication test results

@@ -1,6 +1,7 @@
 package sim
 
 import (
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -50,8 +51,26 @@ type SIMConfig struct {
 	// Services
 	Services *ServicesConfig `json:"services,omitempty"`
 
+	// Programmable card parameters (DANGEROUS!)
+	Programmable *ProgrammableConfig `json:"programmable,omitempty"`
+
 	// PLMN options
 	ClearFPLMN bool `json:"clear_fplmn,omitempty"`
+}
+
+// ProgrammableConfig represents programmable card parameters
+type ProgrammableConfig struct {
+	Ki        string `json:"ki,omitempty"`        // Subscriber key (32 hex chars)
+	OP        string `json:"op,omitempty"`        // Operator key OP (32 hex chars, OPc computed)
+	OPc       string `json:"opc,omitempty"`       // Operator key OPc (32 hex chars)
+	ICCID     string `json:"iccid,omitempty"`     // Card identifier (18-20 digits)
+	MSISDN    string `json:"msisdn,omitempty"`    // Phone number
+	ACC       string `json:"acc,omitempty"`       // Access Control Class (4 hex chars)
+	PIN1      string `json:"pin1,omitempty"`      // PIN1 code (4-8 digits)
+	PUK1      string `json:"puk1,omitempty"`      // PUK1 code (8 digits)
+	PIN2      string `json:"pin2,omitempty"`      // PIN2 code (4-8 digits)
+	PUK2      string `json:"puk2,omitempty"`      // PUK2 code (8 digits)
+	Algorithm string `json:"algorithm,omitempty"` // Algorithm: milenage, xor (default: milenage)
 }
 
 // HPLMNConfig represents HPLMN entry configuration
@@ -120,8 +139,18 @@ func SaveConfig(filename string, config *SIMConfig) error {
 }
 
 // ApplyConfig applies the configuration to the SIM card
-func ApplyConfig(reader *card.Reader, config *SIMConfig) error {
+// If dryRun is true, programmable card operations will be simulated without writing
+// If force is true, programmable card operations will be forced on unrecognized cards
+func ApplyConfig(reader *card.Reader, config *SIMConfig, dryRun, force bool) error {
 	var errors []string
+
+	// Handle programmable card section first (if present)
+	if config.Programmable != nil {
+		// Warnings are printed from main.go before ApplyConfig is called
+		if err := applyProgrammableConfig(reader, config.Programmable, dryRun, force); err != nil {
+			errors = append(errors, fmt.Sprintf("Programmable card: %v", err))
+		}
+	}
 
 	// Write IMSI
 	if config.IMSI != "" {
@@ -586,4 +615,169 @@ func plmnActToStrings(act uint16) []string {
 		result = append(result, "ngran")
 	}
 	return result
+}
+
+// applyProgrammableConfig applies programmable card configuration
+// Output is done via fmt to avoid circular dependency (output imports sim)
+func applyProgrammableConfig(reader *card.Reader, progCfg *ProgrammableConfig, dryRun, force bool) error {
+	// Detect card type
+	cardType := card.DetectProgrammableCardType(reader.ATR())
+
+	// Safety check
+	if !force && cardType == card.CardTypeUnknown {
+		return fmt.Errorf("card is not recognized as programmable. Use -prog-force to override (DANGEROUS!)")
+	}
+
+	// Write Ki
+	if progCfg.Ki != "" {
+		if dryRun {
+			fmt.Printf("[DRY RUN] Would write Ki: %s\n", progCfg.Ki)
+		} else {
+			kiBytes, err := hex.DecodeString(progCfg.Ki)
+			if err != nil || len(kiBytes) != 16 {
+				return fmt.Errorf("Ki must be 32 hex characters (128-bit)")
+			}
+			if err := WriteKi(reader, cardType, kiBytes); err != nil {
+				return fmt.Errorf("failed to write Ki: %w", err)
+			}
+			fmt.Println("Ki written successfully")
+		}
+	}
+
+	// Write OPc (or compute from OP)
+	if progCfg.OPc != "" {
+		if dryRun {
+			fmt.Printf("[DRY RUN] Would write OPc: %s\n", progCfg.OPc)
+		} else {
+			opcBytes, err := hex.DecodeString(progCfg.OPc)
+			if err != nil || len(opcBytes) != 16 {
+				return fmt.Errorf("OPc must be 32 hex characters (128-bit)")
+			}
+			if err := WriteOPc(reader, cardType, opcBytes); err != nil {
+				return fmt.Errorf("failed to write OPc: %w", err)
+			}
+			fmt.Println("OPc written successfully")
+		}
+	} else if progCfg.OP != "" {
+		if dryRun {
+			fmt.Printf("[DRY RUN] Would compute and write OPc from OP: %s\n", progCfg.OP)
+		} else {
+			if progCfg.Ki == "" {
+				return fmt.Errorf("Ki must be provided to compute OPc from OP")
+			}
+			kiBytes, err := hex.DecodeString(progCfg.Ki)
+			if err != nil || len(kiBytes) != 16 {
+				return fmt.Errorf("Ki must be 32 hex characters (128-bit)")
+			}
+			opBytes, err := hex.DecodeString(progCfg.OP)
+			if err != nil || len(opBytes) != 16 {
+				return fmt.Errorf("OP must be 32 hex characters (128-bit)")
+			}
+			if err := ComputeAndWriteOPc(reader, cardType, kiBytes, opBytes); err != nil {
+				return fmt.Errorf("failed to compute and write OPc: %w", err)
+			}
+			fmt.Println("OPc computed and written successfully")
+		}
+	}
+
+	// Write Milenage R and C constants
+	if progCfg.Ki != "" || progCfg.OPc != "" || progCfg.OP != "" {
+		if dryRun {
+			fmt.Println("[DRY RUN] Would write Milenage R and C constants")
+		} else {
+			if err := WriteMilenageRAndC(reader, cardType); err != nil {
+				return fmt.Errorf("failed to write Milenage R/C: %w", err)
+			}
+			fmt.Println("Milenage R and C constants written successfully")
+		}
+	}
+
+	// Set algorithm type (for GRv2)
+	if progCfg.Algorithm != "" && cardType == card.CardTypeGRv2 {
+		var algoType byte
+		switch progCfg.Algorithm {
+		case "milenage":
+			algoType = 0x10
+		case "xor":
+			algoType = 0x20
+		default:
+			return fmt.Errorf("unsupported algorithm: %s (use milenage or xor)", progCfg.Algorithm)
+		}
+
+		if dryRun {
+			fmt.Printf("[DRY RUN] Would set algorithm type: %s\n", progCfg.Algorithm)
+		} else {
+			if err := SetMilenageAlgorithmType(reader, algoType); err != nil {
+				return fmt.Errorf("failed to set algorithm type: %w", err)
+			}
+			fmt.Printf("Algorithm type set to: %s\n", progCfg.Algorithm)
+		}
+	}
+
+	// Write ICCID
+	if progCfg.ICCID != "" {
+		if dryRun {
+			fmt.Printf("[DRY RUN] Would write ICCID: %s\n", progCfg.ICCID)
+		} else {
+			if err := WriteICCID(reader, cardType, progCfg.ICCID); err != nil {
+				return fmt.Errorf("failed to write ICCID: %w", err)
+			}
+			fmt.Println("ICCID written successfully")
+		}
+	}
+
+	// Write MSISDN
+	if progCfg.MSISDN != "" {
+		if dryRun {
+			fmt.Printf("[DRY RUN] Would write MSISDN: %s\n", progCfg.MSISDN)
+		} else {
+			if err := WriteMSISDN(reader, cardType, progCfg.MSISDN); err != nil {
+				return fmt.Errorf("failed to write MSISDN: %w", err)
+			}
+			fmt.Println("MSISDN written successfully")
+		}
+	}
+
+	// Write ACC
+	if progCfg.ACC != "" {
+		if dryRun {
+			fmt.Printf("[DRY RUN] Would write ACC: %s\n", progCfg.ACC)
+		} else {
+			if err := WriteACC(reader, cardType, progCfg.ACC); err != nil {
+				return fmt.Errorf("failed to write ACC: %w", err)
+			}
+			fmt.Println("ACC written successfully")
+		}
+	}
+
+	// Write PIN/PUK codes (GRv2 only)
+	if cardType == card.CardTypeGRv2 {
+		if progCfg.PIN1 != "" && progCfg.PUK1 != "" {
+			if dryRun {
+				fmt.Printf("[DRY RUN] Would write PIN1: %s, PUK1: %s\n", progCfg.PIN1, progCfg.PUK1)
+			} else {
+				pin1 := EncodePIN(progCfg.PIN1)
+				puk1 := EncodePIN(progCfg.PUK1)
+				if err := WritePIN1Puk1(reader, pin1, puk1); err != nil {
+					return fmt.Errorf("failed to write PIN1/PUK1: %w", err)
+				}
+				fmt.Println("PIN1/PUK1 written successfully")
+			}
+		}
+
+		if progCfg.PIN2 != "" && progCfg.PUK2 != "" {
+			if dryRun {
+				fmt.Printf("[DRY RUN] Would write PIN2: %s, PUK2: %s\n", progCfg.PIN2, progCfg.PUK2)
+			} else {
+				pin2 := EncodePIN(progCfg.PIN2)
+				puk2 := EncodePIN(progCfg.PUK2)
+				if err := WritePIN2Puk2(reader, pin2, puk2); err != nil {
+					return fmt.Errorf("failed to write PIN2/PUK2: %w", err)
+				}
+				fmt.Println("PIN2/PUK2 written successfully")
+			}
+		}
+	}
+
+	return nil
 }

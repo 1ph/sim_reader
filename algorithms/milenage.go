@@ -124,6 +124,21 @@ func (m *Milenage) ComputeTOPC(v *Variables) error {
 	return nil
 }
 
+// ComputeOPc is a convenience function that computes OPc from K and OP
+// Returns OPc (16 bytes) or error
+func ComputeOPc(k, op []byte) ([]byte, error) {
+	if len(k) != KeyLen128 {
+		return nil, ErrInvalidKeyLength
+	}
+	if len(op) != KeyLen128 {
+		return nil, ErrInvalidTOPLength
+	}
+
+	encrypted := aesEncrypt(op, k)
+	opc := xorBytes(encrypted, op)
+	return opc, nil
+}
+
 // ComputeF1 computes MAC-A (Network Authentication Code)
 // f1(K, RAND, SQN, AMF) = MAC-A
 // Required inputs: K, TOPC, RAND, SQN, AMF

@@ -292,3 +292,36 @@ const (
 	IST_SMS_OVER_IP       = 7
 	IST_VOICE_DOMAIN_PREF = 12
 )
+
+// EncodePIN encodes a PIN/PUK code to 8 bytes
+// PIN is typically 4-8 digits, PUK is 8 digits
+// Format: BCD encoding padded with 0xFF
+func EncodePIN(pin string) []byte {
+	// Remove any non-digit characters
+	pin = strings.TrimSpace(pin)
+	digits := ""
+	for _, c := range pin {
+		if c >= '0' && c <= '9' {
+			digits += string(c)
+		}
+	}
+
+	// Pad or truncate to 8 bytes (16 BCD digits)
+	result := make([]byte, 8)
+	for i := range result {
+		result[i] = 0xFF
+	}
+
+	// Encode decimal digits to BCD
+	for i := 0; i < len(digits) && i < 16; i++ {
+		digit := digits[i] - '0'
+		byteIdx := i / 2
+		if i%2 == 0 {
+			result[byteIdx] = (result[byteIdx] & 0xF0) | digit
+		} else {
+			result[byteIdx] = (digit << 4) | (result[byteIdx] & 0x0F)
+		}
+	}
+
+	return result
+}

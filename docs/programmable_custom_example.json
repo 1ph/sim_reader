@@ -1,0 +1,51 @@
+{
+  "programmable": {
+    "ki": "F2464E3293019A7E51ABAA7B1262B7D8",
+    "op": "CDC202D5123E20F62B6D676AC72CB318",
+    "iccid": "89860061100000000123",
+    "msisdn": "+1234567890",
+    "acc": "0001",
+    "pin1": "1234",
+    "puk1": "12345678",
+    "pin2": "5678",
+    "puk2": "87654321",
+    "algorithm": "milenage"
+  },
+  "imsi": "250880000000001",
+  "spn": "My Network",
+  "mcc": "250",
+  "mnc": "88",
+  "hplmn": [
+    {"mcc": "250", "mnc": "88", "act": ["eutran", "utran", "gsm"]}
+  ],
+  "oplmn": [
+    {"mcc": "250", "mnc": "01", "act": ["eutran", "utran", "gsm"]},
+    {"mcc": "250", "mnc": "02", "act": ["eutran", "gsm"]}
+  ],
+  "fplmn": [
+    {"mcc": "999", "mnc": "99"}
+  ],
+  "isim": {
+    "impi": "250880000000001@ims.mnc088.mcc250.3gppnetwork.org",
+    "impu": ["sip:250880000000001@ims.mnc088.mcc250.3gppnetwork.org"],
+    "domain": "ims.mnc088.mcc250.3gppnetwork.org",
+    "pcscf": ["pcscf.ims.mnc088.mcc250.3gppnetwork.org"]
+  },
+  "smsp": {
+    "service_center": "+1234567890",
+    "destination": "",
+    "validity_period": 255
+  },
+  "ust": {
+    "lte": true,
+    "location_services": true,
+    "fdn": false
+  },
+  "phonebook": [
+    {
+      "name": "Emergency",
+      "number": "112",
+      "type": "emergency"
+    }
+  ]
+}

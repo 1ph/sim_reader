@@ -2,7 +2,7 @@
 
 A command-line tool written in Go for reading and writing SIM/USIM/ISIM card parameters using PC/SC smart card readers.
 
-**Version 2.3.0**
+**Version 2.4.0**
 
 ---
 
@@ -42,6 +42,12 @@ This software is provided "AS IS", without warranty of any kind, express or impl
 - **Reading**: ICCID, IMSI, MSISDN, PLMN lists, Service Tables, ISIM parameters
 - **Writing**: IMSI, SPN, PLMN lists, ISIM parameters, service configuration
 - **JSON Export/Import**: Full round-trip support (`-json` → edit → `-write`)
+- **Programmable SIM Cards**: Full support for blank/programmable cards (Grcard v1/v2, open5gs)
+  - Write cryptographic keys (Ki, OPc/OP)
+  - Write Milenage R/C constants
+  - Write ICCID, MSISDN, ACC
+  - Set PIN/PUK codes
+  - Safe dry-run mode for testing
 - **Authentication**: Test 3G/4G/5G authentication with Milenage and TUAK algorithms
 - **Card Analysis**: Auto-detect card type by ATR, read EF_DIR, file access conditions
 - **Multiple ADM Keys**: Support for up to 4 ADM keys (`-adm`, `-adm2`, `-adm3`, `-adm4`)
@@ -129,6 +135,16 @@ make build-windows
 # Supported values: milenage, s3g-128, tuak, s3g-256
 ./sim_reader -adm YOUR_ADM_KEY -show-card-algo
 ./sim_reader -adm YOUR_ADM_KEY -set-card-algo milenage -show-card-algo
+
+# Program blank SIM cards (Grcard, open5gs)
+# Show programmable card info
+./sim_reader -prog-info
+
+# Safe test (dry run) - no data written
+./sim_reader -adm YOUR_ADM_KEY -write programmable_config.json -prog-dry-run
+
+# Actually program the card (PERMANENT!)
+./sim_reader -adm YOUR_ADM_KEY -write programmable_config.json
 ```
 
 ## Command Line Reference
@@ -213,8 +229,13 @@ make build-windows
 
 | Flag | Description |
 |------|-------------|
+| `-prog-info` | Show programmable card information (card type, supported operations) |
+| `-prog-dry-run` | Test programmable card operations without writing (safe mode) |
+| `-prog-force` | Force programming on unrecognized cards (DANGEROUS!) |
 | `-show-card-algo` | Show current USIM algorithm selector (EF 8F90) |
 | `-set-card-algo ALGO` | Set USIM algorithm (milenage, s3g-128, tuak, s3g-256) |
+
+**Note**: Programmable card write operations use JSON configuration with `programmable` section. See [docs/PROGRAMMABLE_CARDS.md](docs/PROGRAMMABLE_CARDS.md) for details.
 
 ### Other Options
 
@@ -256,6 +277,7 @@ The `-json` flag exports all readable card parameters. Edit and re-import with `
 | `clear_fplmn` | bool | Yes | Clear Forbidden PLMN list on write |
 | `isim` | object | Yes | ISIM parameters (IMPI, IMPU, Domain, PCSCF) |
 | `services` | object | Yes | Service flags (VoLTE, VoWiFi, GBA, etc.) |
+| `programmable` | object | Yes | Programmable card parameters (Ki, OPc, ICCID, etc.) - see [PROGRAMMABLE_CARDS.md](docs/PROGRAMMABLE_CARDS.md) |
 
 ### Example JSON
 
@@ -290,6 +312,7 @@ The `-json` flag exports all readable card parameters. Edit and re-import with `
 | [docs/USAGE.md](docs/USAGE.md) | Detailed usage guide |
 | [docs/WRITING.md](docs/WRITING.md) | Writing card data |
 | [docs/AUTHENTICATION.md](docs/AUTHENTICATION.md) | Authentication testing (Milenage/TUAK) |
+| [docs/PROGRAMMABLE_CARDS.md](docs/PROGRAMMABLE_CARDS.md) | Programmable SIM cards (Grcard, open5gs) |
 | [docs/GLOBALPLATFORM.md](docs/GLOBALPLATFORM.md) | GlobalPlatform secure channels |
 | [docs/PCOM.md](docs/PCOM.md) | PCOM script execution |
 | [docs/EF_FILES.md](docs/EF_FILES.md) | EF file reference |

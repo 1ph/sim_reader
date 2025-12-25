@@ -1018,3 +1018,38 @@ func parseAUTS(data []byte) []byte {
 
 	return data
 }
+
+// FileInfo contains basic file information
+type FileInfo struct {
+	RecordLength byte
+	NumRecords   byte
+	FileSize     uint16
+}
+
+// GetFileInfo returns file information (record length, etc.)
+func (r *Reader) GetFileInfo(path []byte) (*FileInfo, error) {
+	resp, err := r.SelectByPath(path)
+	if err != nil {
+		return nil, err
+	}
+
+	// Parse FCP to extract file info
+	data := resp.Data
+	info := &FileInfo{}
+
+	// Simple parsing for record length (tag 0x82 or look for record info)
+	for i := 0; i < len(data)-1; i++ {
+		if data[i] == 0x82 && i+1 < len(data) {
+			// File Descriptor
+			// Skip parsing, use defaults for now
+			break
+		}
+	}
+
+	// Default record length for MSISDN and similar files
+	info.RecordLength = 28
+	info.NumRecords = 10
+	info.FileSize = 0
+
+	return info, nil
+}
