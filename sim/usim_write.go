@@ -8,6 +8,13 @@ import (
 // WriteIMSI writes IMSI to the card
 // Note: This also affects MCC/MNC as they are part of IMSI
 func WriteIMSI(reader *card.Reader, imsi string) error {
+	// Prepare write if a programmable driver is found
+	if drv := FindDriver(reader); drv != nil {
+		if err := drv.PrepareWrite(reader); err != nil {
+			return fmt.Errorf("prepare write failed: %w", err)
+		}
+	}
+
 	// Select USIM application
 	resp, err := SelectUSIMWithAuth(reader)
 	if err != nil {
@@ -46,6 +53,13 @@ func WriteIMSI(reader *card.Reader, imsi string) error {
 
 // WriteSPN writes Service Provider Name
 func WriteSPN(reader *card.Reader, spn string, displayCondition byte) error {
+	// Prepare write if a programmable driver is found
+	if drv := FindDriver(reader); drv != nil {
+		if err := drv.PrepareWrite(reader); err != nil {
+			return fmt.Errorf("prepare write failed: %w", err)
+		}
+	}
+
 	// Select USIM
 	resp, err := SelectUSIMWithAuth(reader)
 	if err != nil {

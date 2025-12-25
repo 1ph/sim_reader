@@ -110,26 +110,23 @@ func ParseAuthConfig(
 
 	// Parse K (optional if AUTN is provided - card-only mode)
 	if kStr != "" {
-		k, err := hex.DecodeString(strings.ReplaceAll(kStr, " ", ""))
+		k, err := algorithms.ValidateKi(kStr)
 		if err != nil {
 			return nil, fmt.Errorf("invalid K format: %w", err)
-		}
-		if len(k) != 16 && len(k) != 32 {
-			return nil, fmt.Errorf("K must be 16 or 32 bytes, got %d", len(k))
 		}
 		cfg.K = k
 	}
 
 	// Parse OP or OPc (optional if AUTN is provided - card-only mode)
 	if opStr != "" {
-		op, err := hex.DecodeString(strings.ReplaceAll(opStr, " ", ""))
+		op, err := algorithms.ValidateOPc(opStr) // OP has same format as OPc/Ki
 		if err != nil {
 			return nil, fmt.Errorf("invalid OP format: %w", err)
 		}
 		cfg.OP = op
 	}
 	if opcStr != "" {
-		opc, err := hex.DecodeString(strings.ReplaceAll(opcStr, " ", ""))
+		opc, err := algorithms.ValidateOPc(opcStr)
 		if err != nil {
 			return nil, fmt.Errorf("invalid OPc format: %w", err)
 		}

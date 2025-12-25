@@ -3,7 +3,9 @@ package algorithms
 import (
 	"crypto/hmac"
 	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
+	"strings"
 )
 
 // Field size constants (in bytes)
@@ -328,6 +330,24 @@ func reverseBytes(src []byte) []byte {
 		dst[i] = src[n-1-i]
 	}
 	return dst
+}
+
+// ValidateKi checks if Ki is valid (128-bit = 16 bytes = 32 hex chars)
+func ValidateKi(ki string) ([]byte, error) {
+	ki = strings.ReplaceAll(ki, " ", "")
+	if len(ki) != 32 {
+		return nil, fmt.Errorf("Ki must be 32 hex characters (128-bit), got %d", len(ki))
+	}
+	return hex.DecodeString(ki)
+}
+
+// ValidateOPc checks if OPc is valid (128-bit = 16 bytes = 32 hex chars)
+func ValidateOPc(opc string) ([]byte, error) {
+	opc = strings.ReplaceAll(opc, " ", "")
+	if len(opc) != 32 {
+		return nil, fmt.Errorf("OPc must be 32 hex characters (128-bit), got %d", len(opc))
+	}
+	return hex.DecodeString(opc)
 }
 
 // xorBytes performs XOR of two byte slices (internal use)

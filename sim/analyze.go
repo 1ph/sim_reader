@@ -19,6 +19,7 @@ type CardInfo struct {
 	IsProprietary bool                    // Card uses File ID selection instead of AID
 	UsesGSMClass  bool                    // Card requires GSM class commands (CLA=A0)
 	ADMStatus     map[string]card.ADMInfo // Status of ADM keys
+	ATRInfo       *card.ATRInfo           // Detailed ATR analysis
 }
 
 // ApplicationInfo describes an application on the card
@@ -84,9 +85,18 @@ func AnalyzeCard(reader *card.Reader, checkADM bool) (*CardInfo, error) {
 		ATR: reader.ATRHex(),
 	}
 
-	// Check if card uses File ID selection
-	info.IsProprietary = IsProprietaryCard(info.ATR)
-	info.UsesGSMClass = IsGSMOnlyCard(info.ATR)
+	// Detailed ATR analysis
+	info.ATRInfo, _ = card.DecodeATR(reader.ATR())
+
+	// Detect card driver
+	drv := FindDriver(reader)
+	if drv != nil {
+		info.UsesGSMClass = (drv.BaseCLA() == 0xA0)
+		info.IsProprietary = true // Any programmable driver is considered proprietary here
+	} else {
+		info.UsesGSMClass = IsGSMOnlyCard(info.ATR)
+		info.IsProprietary = IsProprietaryCard(info.ATR)
+	}
 
 	// Set global flag for other packages to use
 	UseGSMCommands = info.UsesGSMClass
@@ -96,6 +106,9 @@ func AnalyzeCard(reader *card.Reader, checkADM bool) (*CardInfo, error) {
 	if err == nil {
 		info.ICCID = iccid
 	}
+
+	// Detailed ATR analysis
+	info.ATRInfo, _ = card.DecodeATR(reader.ATR())
 
 	// Try to read EF_DIR to find applications
 	apps, rawDir := readApplicationDirectoryWithGSMFallback(reader, info.UsesGSMClass)
@@ -513,46 +526,6 @@ func TrySelectApplication(reader *card.Reader, aid []byte) (*card.APDUResponse, 
 	return reader.Select(aid)
 }
 
-// ParseATR provides basic ATR analysis
-func ParseATR(atr []byte) map[string]string {
-	info := make(map[string]string)
-
-	if len(atr) < 2 {
-		return info
-	}
-
-	// TS byte
-	switch atr[0] {
-	case 0x3B:
-		info["Convention"] = "Direct"
-	case 0x3F:
-		info["Convention"] = "Inverse"
-	}
-
-	// Historical bytes (simplified)
-	if len(atr) > 2 {
-		histLen := atr[1] & 0x0F
-		if int(histLen) <= len(atr)-2 {
-			histStart := len(atr) - int(histLen) - 1 // -1 for TCK
-			if histStart > 0 && histStart < len(atr) {
-				histBytes := atr[histStart : len(atr)-1]
-				// Try to extract readable text
-				var text strings.Builder
-				for _, b := range histBytes {
-					if b >= 0x20 && b < 0x7F {
-						text.WriteByte(b)
-					}
-				}
-				if text.Len() > 0 {
-					info["Historical"] = text.String()
-				}
-			}
-		}
-	}
-
-	return info
-}
-
 // IdentifyCardByATR identifies card type based on ATR using embedded dictionary
 func IdentifyCardByATR(atr string) string {
 	atr = strings.ToUpper(atr)
@@ -567,21 +540,33 @@ func IdentifyCardByATR(atr string) string {
 
 // IsProprietaryCard checks if the card uses File ID selection instead of AID
 func IsProprietaryCard(atr string) bool {
-	atr = strings.ToUpper(atr)
-	// Cards that use File ID selection
-	proprietaryPrefixes := []string{
-		"3B959640F00F050A0F0A",
-		"3B9596",
-	}
-	for _, prefix := range proprietaryPrefixes {
-		if strings.HasPrefix(atr, prefix) {
-			return true
-		}
-	}
-	return false
+	// We'll use the driver registry to determine this
+	// But since we only have ATR string here, we might need a dummy reader or change the signature
+	// For now, let's keep the prefixes here or move them to a central place.
+	// Actually, the goal is to MOVE them to drivers.
+	
+	// Let's check if any registered driver identifies this card
+	// Note: AnalyzeCard is called with a real reader, so we can use it there.
+	return strings.HasPrefix(strings.ToUpper(atr), "3B9596")
 }
 
 // IsGSMOnlyCard checks if the card requires GSM class commands (CLA=A0)
 func IsGSMOnlyCard(atr string) bool {
-	return IsProprietaryCard(atr)
+	// RuSIM and GRv2 use GSM class
+	atr = strings.ToUpper(atr)
+	if strings.HasPrefix(atr, "3B9596") { // RuSIM
+		return true
+	}
+	// GRv2 patterns
+	grv2 := []string{
+		"3B9F95801FC78031A073B6A10067CF3211B252C679",
+		"3B9F94801FC38031A073B6A10067CF3210DF0EF5",
+		"3B9F94801FC38031A073B6A10067CF3250DF0E72",
+	}
+	for _, p := range grv2 {
+		if strings.HasPrefix(atr, p) {
+			return true
+		}
+	}
+	return false
 }

@@ -72,17 +72,18 @@
 - Proprietary File IDs in `7FF0 FFxx` range
 - No handshake required
 
-### ✅ sysmocom sysmoUSIM-GR1
+### ✅ sysmocom (Professional Cards)
 
-**ATR pattern**:
-```
-3B 9F 95 80 1F C7 80 31 E0 73 FE 21 13 57 12 29 11 02 01 00 00 C2
-```
+**Models supported**:
+- **sysmoUSIM-GR1**: Requires proprietary unlock command.
+- **sysmoSIM-GR2**: Supports SUPER ADM authentication for full control.
+- **sysmoUSIM-SJS1**: Standard sysmocom profile.
+- **sysmoISIM-SJA2 / SJA5**: Advanced ISIM cards (Warning: ICCID write may affect license on some models).
 
 **Features**:
-- Professional programmable cards
-- TUAK support
-- Extended capabilities
+- Advanced authentication support (TUAK).
+- High reliability and standards compliance.
+- Driver-based implementation for specific model quirks.
 
 ---
 

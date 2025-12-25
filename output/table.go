@@ -422,6 +422,56 @@ func PrintCardAnalysis(info *sim.CardInfo) {
 	}
 	t.Render()
 
+	// Detailed ATR Analysis
+	if info.ATRInfo != nil {
+		fmt.Println()
+		ta := newTable()
+		ta.SetTitle("DETAILED ATR ANALYSIS")
+		ta.SetColumnConfigs([]table.ColumnConfig{
+			{Number: 1, Colors: colorLabel, WidthMin: 20},
+			{Number: 2, Colors: colorValue, WidthMin: 55},
+		})
+
+		ta.AppendRow(table.Row{"Convention", info.ATRInfo.Convention()})
+
+		protocols := []string{}
+		for _, p := range info.ATRInfo.Protocols {
+			protocols = append(protocols, fmt.Sprintf("T=%d", p))
+		}
+		if len(protocols) == 0 {
+			protocols = append(protocols, "T=0")
+		}
+		ta.AppendRow(table.Row{"Protocols", strings.Join(protocols, ", ")})
+
+		if info.ATRInfo.Fi > 0 || info.ATRInfo.Di > 0 {
+			ta.AppendRow(table.Row{"Fi / Di", fmt.Sprintf("Fi=%d, Di=%d", info.ATRInfo.Fi, info.ATRInfo.Di)})
+			ta.AppendRow(table.Row{"Baud Rate Factor", fmt.Sprintf("%d", info.ATRInfo.Fi/info.ATRInfo.Di)})
+		}
+
+		if info.ATRInfo.Voltage != "" {
+			ta.AppendRow(table.Row{"Voltage", info.ATRInfo.Voltage})
+		}
+
+		if len(info.ATRInfo.HB) > 0 {
+			hbStr := fmt.Sprintf("%X", info.ATRInfo.HB)
+			var text strings.Builder
+			for _, b := range info.ATRInfo.HB {
+				if b >= 0x20 && b < 0x7F {
+					text.WriteByte(b)
+				}
+			}
+			if text.Len() > 0 {
+				hbStr += fmt.Sprintf(" (\"%s\")", text.String())
+			}
+			ta.AppendRow(table.Row{"Historical Bytes", hbStr})
+		}
+
+		if info.ATRInfo.TCK != nil {
+			ta.AppendRow(table.Row{"Checksum (TCK)", fmt.Sprintf("%02X", *info.ATRInfo.TCK)})
+		}
+		ta.Render()
+	}
+
 	// Applications found
 	if len(info.Applications) > 0 {
 		fmt.Println()

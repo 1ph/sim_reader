@@ -12,10 +12,11 @@ import (
 	"sim_reader/card"
 	"sim_reader/output"
 	"sim_reader/sim"
+	_ "sim_reader/sim/card_drivers"
 )
 
 var (
-	version = "2.4.0"
+	version = "2.5.0"
 )
 
 func main() {
@@ -427,8 +428,13 @@ EXAMPLES:
 		output.PrintReaderInfo(reader.Name(), reader.ATRHex())
 	}
 
-	// Set global card mode early (affects selection + some GSM class fallbacks)
-	sim.UseGSMCommands = sim.IsGSMOnlyCard(reader.ATRHex())
+	// Detect card driver and set global card mode
+	drv := sim.FindDriver(reader)
+	if drv != nil {
+		sim.UseGSMCommands = (drv.BaseCLA() == 0xA0)
+	} else {
+		sim.UseGSMCommands = sim.IsGSMOnlyCard(reader.ATRHex())
+	}
 
 	// Verify PIN1 if provided
 	if *pin1 != "" {
@@ -899,33 +905,24 @@ EXAMPLES:
 
 	// Show/set proprietary USIM authentication algorithm (EF 8F90) if requested
 	if *showCardAlgo || *setCardAlgo != "" {
-		// Guardrails: only allow this operation on supported proprietary card families.
-		// This avoids probing vendor-standard SIMs with non-standard EFs.
-		if !sim.SupportsProprietaryNAA(reader.ATRHex()) {
+		drv := sim.FindDriver(reader)
+		if drv == nil {
 			output.PrintWarning("This card does not support proprietary USIM algorithm selector (EF 8F90).")
 		} else {
 			if *setCardAlgo != "" {
-				algo, err := sim.SetUSIMAuthAlgorithmFromString(reader, *setCardAlgo)
+				err := drv.SetAlgorithmType(reader, *setCardAlgo)
 				if err != nil {
-					if err == sim.ErrNotSupported {
-						output.PrintWarning("Set USIM auth algorithm: not supported by this card.")
-					} else {
-						output.PrintError(fmt.Sprintf("Failed to set USIM auth algorithm: %v", err))
-					}
+					output.PrintError(fmt.Sprintf("Failed to update USIM auth algorithm: %v", err))
 				} else {
-					output.PrintSuccess(fmt.Sprintf("USIM auth algorithm updated: 0x%02X (%s)", algo, sim.USIMAuthAlgoName(algo)))
+					output.PrintSuccess(fmt.Sprintf("USIM auth algorithm updated to: %s", *setCardAlgo))
 				}
 			}
 
-			algo, err := sim.ReadUSIMAuthAlgorithm(reader)
+			algo, err := drv.GetAlgorithmType(reader)
 			if err != nil {
-				if err == sim.ErrNotSupported {
-					output.PrintWarning("Read USIM auth algorithm: not supported by this card.")
-				} else {
-					output.PrintWarning(fmt.Sprintf("USIM auth algorithm read failed: %v", err))
-				}
+				output.PrintWarning(fmt.Sprintf("USIM auth algorithm read failed: %v", err))
 			} else {
-				output.PrintSuccess(fmt.Sprintf("USIM auth algorithm: 0x%02X (%s)", algo, sim.USIMAuthAlgoName(algo)))
+				output.PrintSuccess(fmt.Sprintf("USIM auth algorithm: %s", algo))
 			}
 		}
 	}
@@ -998,8 +995,7 @@ EXAMPLES:
 
 			// Show programmable card info and warnings if present
 			if config.Programmable != nil {
-				cardType := card.DetectProgrammableCardType(reader.ATR())
-				cardTypeName := sim.GetProgrammableCardTypeName(cardType)
+				cardTypeName := sim.ShowProgrammableCardInfo(reader)
 				atrHex := fmt.Sprintf("%X", reader.ATR())
 				output.PrintProgrammableCardInfo(cardTypeName, atrHex)
 				output.PrintProgrammableWriteWarning(*progDryRun)

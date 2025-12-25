@@ -2,7 +2,7 @@
 
 A command-line tool written in Go for reading and writing SIM/USIM/ISIM card parameters using PC/SC smart card readers.
 
-**Version 2.4.0**
+**Version 2.5.0**
 
 ---
 
@@ -42,7 +42,9 @@ This software is provided "AS IS", without warranty of any kind, express or impl
 - **Reading**: ICCID, IMSI, MSISDN, PLMN lists, Service Tables, ISIM parameters
 - **Writing**: IMSI, SPN, PLMN lists, ISIM parameters, service configuration
 - **JSON Export/Import**: Full round-trip support (`-json` → edit → `-write`)
-- **Programmable SIM Cards**: Full support for blank/programmable cards (Grcard v1/v2, open5gs)
+- **Advanced ATR Analysis**: Detailed breakdown of voltage, protocols, and transmission parameters (ISO 7816-3)
+- **Programmable SIM Cards**: Modular driver-based support for blank/programmable cards
+  - **Supported**: Grcard v1/v2, sysmocom (GR1, GR2, SJS1, SJA2, SJA5), RuSIM/OX24
   - Write cryptographic keys (Ki, OPc/OP)
   - Write Milenage R/C constants
   - Write ICCID, MSISDN, ACC
@@ -54,7 +56,7 @@ This software is provided "AS IS", without warranty of any kind, express or impl
 - **PCOM Scripts**: Execute personalization scripts for programmable cards
 - **GlobalPlatform**: Secure channel (SCP02/SCP03) for applet management
 - **Extended APDU**: Support for large file operations (up to 64KB)
-- **Programmable / Proprietary Profiles (Guarded)**: Optional support for switching USIM authentication algorithm via proprietary EF `8F90` (NAA selector) on supported programmable card families. This feature is **ATR-gated** to avoid probing unrelated vendor cards.
+- **Proprietary Profiles**: Plug-and-play drivers for switching USIM authentication algorithms.
 
 ## Supported Card Types
 

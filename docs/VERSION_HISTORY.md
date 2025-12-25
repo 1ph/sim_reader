@@ -1,5 +1,36 @@
 # Version History
 
+## v2.5.0 - Proprietary Driver Architecture & Deep ATR Analysis
+
+### Internal Refactoring & Plugin Architecture
+- **Proprietary Card Drivers**: All vendor-specific logic moved to `sim/card_drivers/` folder.
+- **ProgrammableDriver Interface**: New decoupled architecture allowing easy addition of new card types.
+- **Automatic Driver Discovery**: Cards are now identified via `init()` registration and ATR matching.
+- **Algorithm Validation**: Ki and OPc validation moved to `algorithms/` package.
+- **Codebase Cleanup**: Removed deprecated `card/programmable.go` and `sim/programmable_info.go`.
+
+### New Card Support (based on pySim analysis)
+- **sysmocom Extended Support**: 
+  - sysmoUSIM-GR1 (proprietary unlock & write)
+  - sysmoSIM-GR2 (SUPER ADM authentication)
+  - sysmoUSIM-SJS1 (ADM1 verification)
+  - sysmoISIM-SJA2 / SJA5 (Model detection and safety warnings for ICCID writes)
+- **RuSIM / OX24**: New dedicated driver for algorithm selection (EF 8F90).
+
+### Advanced ATR Analysis
+- **Detailed Decomposition**: Full breakdown of ATR fields (TS, T0, TAi, TBi, TCi, TDi).
+- **Technical Parameters**: Displaying Voltage Class (1.8V, 3V, 5V), Protocol (T=0/T=1), and Convention.
+- **Transmission Specs**: Calculation of Fi, Di, and Baud Rate Factor.
+- **Historical Bytes**: Decoding and displaying printable ASCII from historical bytes.
+- **Integrated into `-analyze`**: Detailed ATR table added to the card analysis output.
+
+### Compatibility & Reliability
+- **Smart PIN Verification**: Automatic fallback to GSM class (`0xA0`) if standard PIN verify fails.
+- **Dynamic CLA Selection**: The base class (0x00 or 0xA0) is now determined by the card driver.
+- **PrepareWrite Handshake**: Drivers can now perform necessary setup (like GRv2 handshake) before any write operation (IMSI, SPN, etc.).
+
+---
+
 ## v2.4.0 - Programmable SIM Card Support
 
 ### Full Programmable Card Support

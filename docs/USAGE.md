@@ -22,13 +22,15 @@
 ./sim_reader -pin 0000 -adm 77111606
 ```
 
-## Analyzing Unknown Cards
+## Analyzing Cards
 
 ```bash
-# Analyze card structure (useful for non-standard cards)
+# Detailed card analysis
 ./sim_reader -analyze
 
-# This shows:
+# This version (2.5.0) provides:
+# - Deep ATR analysis (Convention, Voltage, Protocols, Fi/Di)
+# - Historical bytes decoding
 # - Card type detection by ATR
 # - List of applications from EF_DIR
 # - GSM 2G data if available

@@ -3,9 +3,61 @@ package sim
 import (
 	"encoding/hex"
 	"fmt"
+	"sync"
+
 	"sim_reader/algorithms"
 	"sim_reader/card"
 )
+
+// ProgrammableDriver interface for proprietary card implementations
+type ProgrammableDriver interface {
+	Name() string
+	Identify(reader *card.Reader) bool
+	BaseCLA() byte                          // Returns 0x00 or 0xA0
+	PrepareWrite(reader *card.Reader) error // Called before any write operation
+	WriteKi(reader *card.Reader, ki []byte) error
+	WriteOPc(reader *card.Reader, opc []byte) error
+	WriteMilenageRAndC(reader *card.Reader) error
+	SetAlgorithmType(reader *card.Reader, algo string) error
+	GetAlgorithmType(reader *card.Reader) (string, error)
+	WriteICCID(reader *card.Reader, iccid string) error
+	WriteMSISDN(reader *card.Reader, msisdn string) error
+	WriteACC(reader *card.Reader, acc string) error
+	WritePINs(reader *card.Reader, pin1, puk1, pin2, puk2 string) error
+}
+
+var (
+	registeredDrivers []ProgrammableDriver
+	driversMu         sync.RWMutex
+)
+
+// RegisterDriver adds a new card driver to the registry
+func RegisterDriver(driver ProgrammableDriver) {
+	driversMu.Lock()
+	defer driversMu.Unlock()
+	registeredDrivers = append(registeredDrivers, driver)
+}
+
+// FindDriver detects the driver for the current card
+func FindDriver(reader *card.Reader) ProgrammableDriver {
+	driversMu.RLock()
+	defer driversMu.RUnlock()
+	for _, d := range registeredDrivers {
+		if d.Identify(reader) {
+			return d
+		}
+	}
+	return nil
+}
+
+// ShowProgrammableCardInfo displays information about the programmable card
+func ShowProgrammableCardInfo(reader *card.Reader) string {
+	drv := FindDriver(reader)
+	if drv != nil {
+		return drv.Name()
+	}
+	return "Standard / Non-programmable (or unrecognized)"
+}
 
 // Standard File IDs
 var (
@@ -15,88 +67,30 @@ var (
 	FileUSIMACC    = []byte{0x7F, 0xF0, 0x6F, 0x78}
 )
 
-// Proprietary File IDs for GRv1 cards (from uicc project)
-var (
-	GRv1FileOPc = []byte{0x7F, 0xF0, 0xFF, 0x01}
-	GRv1FileKi  = []byte{0x7F, 0xF0, 0xFF, 0x02}
-	GRv1FileR   = []byte{0x7F, 0xF0, 0xFF, 0x03}
-	GRv1FileC   = []byte{0x7F, 0xF0, 0xFF, 0x04}
-)
-
-// Proprietary File IDs for GRv2 cards (from uicc project)
-var (
-	GRv2FileAlgType       = []byte{0x2F, 0xD0}
-	GRv2FileRC            = []byte{0x2F, 0xE6}
-	GRv2FileMilenageParam = []byte{0x2F, 0xE5}
-	GRv2FileOPc           = []byte{0x60, 0x02}
-	GRv2FileKi            = []byte{0x00, 0x01}
-	GRv2FileADM           = []byte{0x0B, 0x00}
-	GRv2FilePin1Puk1      = []byte{0x01, 0x00}
-	GRv2FilePin2Puk2      = []byte{0x02, 0x00}
-)
-
 // WriteKi writes the Subscriber Key (Ki) to a programmable card
-func WriteKi(reader *card.Reader, cardType card.ProgrammableCardType, ki []byte) error {
+func WriteKi(reader *card.Reader, drv ProgrammableDriver, ki []byte) error {
 	if len(ki) != 16 {
 		return fmt.Errorf("Ki must be 16 bytes (128-bit)")
 	}
-
-	switch cardType {
-	case card.CardTypeGRv1:
-		// GRv1 uses standard USIM commands to proprietary files
-		if _, err := reader.SelectByPath(GRv1FileKi); err != nil {
-			return fmt.Errorf("failed to select GRv1 Ki file: %w", err)
-		}
-		if _, err := reader.UpdateBinary(0, ki); err != nil {
-			return fmt.Errorf("failed to write GRv1 Ki: %w", err)
-		}
-		return nil
-	case card.CardTypeGRv2:
-		// GRv2 uses proprietary low-level APDU commands
-		if err := card.GRv2SelectProprietaryFile(reader, GRv2FileKi); err != nil {
-			return fmt.Errorf("failed to select GRv2 Ki file: %w", err)
-		}
-		if err := card.GRv2UpdateProprietaryBinary(reader, 0, ki); err != nil {
-			return fmt.Errorf("failed to write GRv2 Ki: %w", err)
-		}
-		return nil
-	default:
-		return fmt.Errorf("unsupported programmable card type for Ki write: %v", cardType)
+	if drv == nil {
+		return fmt.Errorf("no driver found for this card")
 	}
+	return drv.WriteKi(reader, ki)
 }
 
 // WriteOPc writes the Operator Code (OPc) to a programmable card
-func WriteOPc(reader *card.Reader, cardType card.ProgrammableCardType, opc []byte) error {
+func WriteOPc(reader *card.Reader, drv ProgrammableDriver, opc []byte) error {
 	if len(opc) != 16 {
 		return fmt.Errorf("OPc must be 16 bytes (128-bit)")
 	}
-
-	switch cardType {
-	case card.CardTypeGRv1:
-		if _, err := reader.SelectByPath(GRv1FileOPc); err != nil {
-			return fmt.Errorf("failed to select GRv1 OPc file: %w", err)
-		}
-		if _, err := reader.UpdateBinary(0, opc); err != nil {
-			return fmt.Errorf("failed to write GRv1 OPc: %w", err)
-		}
-		return nil
-	case card.CardTypeGRv2:
-		if err := card.GRv2SelectProprietaryFile(reader, GRv2FileOPc); err != nil {
-			return fmt.Errorf("failed to select GRv2 OPc file: %w", err)
-		}
-		// GRv2 OPc write command is A0 D6 00 00 11 01 [16 bytes OPc]
-		apduData := append([]byte{0x01}, opc...)
-		if err := card.GRv2UpdateProprietaryBinary(reader, 0, apduData); err != nil {
-			return fmt.Errorf("failed to write GRv2 OPc: %w", err)
-		}
-		return nil
-	default:
-		return fmt.Errorf("unsupported programmable card type for OPc write: %v", cardType)
+	if drv == nil {
+		return fmt.Errorf("no driver found for this card")
 	}
+	return drv.WriteOPc(reader, opc)
 }
 
 // ComputeAndWriteOPc computes OPc from OP and K, then writes it to the card
-func ComputeAndWriteOPc(reader *card.Reader, cardType card.ProgrammableCardType, k, op []byte) error {
+func ComputeAndWriteOPc(reader *card.Reader, drv ProgrammableDriver, k, op []byte) error {
 	if len(k) != 16 || len(op) != 16 {
 		return fmt.Errorf("K and OP must be 16 bytes (128-bit)")
 	}
@@ -104,120 +98,67 @@ func ComputeAndWriteOPc(reader *card.Reader, cardType card.ProgrammableCardType,
 	if err != nil {
 		return fmt.Errorf("failed to compute OPc: %w", err)
 	}
-	return WriteOPc(reader, cardType, opc)
+	return WriteOPc(reader, drv, opc)
 }
 
 // WriteMilenageRAndC writes Milenage R and C constants to a programmable card
-func WriteMilenageRAndC(reader *card.Reader, cardType card.ProgrammableCardType) error {
-	switch cardType {
-	case card.CardTypeGRv1:
-		// GRv1 R constants (5 bytes)
-		rConstants := []byte{0x40, 0x00, 0x20, 0x40, 0x60}
-		if _, err := reader.SelectByPath(GRv1FileR); err != nil {
-			return fmt.Errorf("failed to select GRv1 R file: %w", err)
-		}
-		if _, err := reader.UpdateBinary(0, rConstants); err != nil {
-			return fmt.Errorf("failed to write GRv1 R: %w", err)
-		}
-
-		// GRv1 C constants (5 records of 16 bytes)
-		cConstants := [][]byte{
-			{0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00},
-			{0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01},
-			{0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02},
-			{0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x04},
-			{0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x08},
-		}
-		if _, err := reader.SelectByPath(GRv1FileC); err != nil {
-			return fmt.Errorf("failed to select GRv1 C file: %w", err)
-		}
-		for i, c := range cConstants {
-			if _, err := reader.UpdateRecord(byte(i+1), c); err != nil {
-				return fmt.Errorf("failed to write GRv1 C record %d: %w", i+1, err)
-			}
-		}
-		return nil
-	case card.CardTypeGRv2:
-		// GRv2 R constants (5 records)
-		rConstants := [][]byte{
-			{0x40, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01},
-			{0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02},
-			{0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x04},
-			{0x40, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x08},
-			{0x60, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x10},
-		}
-		if err := card.GRv2SelectProprietaryFile(reader, GRv2FileRC); err != nil {
-			return fmt.Errorf("failed to select GRv2 RC file: %w", err)
-		}
-		for i, rVal := range rConstants {
-			if err := card.GRv2UpdateProprietaryRecord(reader, byte(i+1), 0x04, rVal); err != nil {
-				return fmt.Errorf("failed to write GRv2 R record %d: %w", i+1, err)
-			}
-		}
-
-		// Milenage parameters (single binary write)
-		milenageParam := []byte{0x08, 0x1C, 0x2A, 0x00, 0x01}
-		if err := card.GRv2SelectProprietaryFile(reader, GRv2FileMilenageParam); err != nil {
-			return fmt.Errorf("failed to select GRv2 Milenage Param file: %w", err)
-		}
-		if err := card.GRv2UpdateProprietaryBinary(reader, 0, milenageParam); err != nil {
-			return fmt.Errorf("failed to write GRv2 Milenage Param: %w", err)
-		}
-		return nil
-	default:
-		return fmt.Errorf("unsupported programmable card type for Milenage R/C write: %v", cardType)
+func WriteMilenageRAndC(reader *card.Reader, drv ProgrammableDriver) error {
+	if drv == nil {
+		return fmt.Errorf("no driver found for this card")
 	}
+	return drv.WriteMilenageRAndC(reader)
 }
 
-// SetMilenageAlgorithmType sets the authentication algorithm type for GRv2 cards
-func SetMilenageAlgorithmType(reader *card.Reader, algoType byte) error {
-	// 0x10 = Milenage, 0x20 = XOR
-	if err := card.GRv2SelectProprietaryFile(reader, GRv2FileAlgType); err != nil {
-		return fmt.Errorf("failed to select GRv2 AlgType file: %w", err)
+// SetMilenageAlgorithmType sets the authentication algorithm type
+func SetMilenageAlgorithmType(reader *card.Reader, drv ProgrammableDriver, algo string) error {
+	if drv == nil {
+		return fmt.Errorf("no driver found for this card")
 	}
-	if err := card.GRv2UpdateProprietaryBinary(reader, 0, []byte{0x19, algoType}); err != nil {
-		return fmt.Errorf("failed to write GRv2 AlgType: %w", err)
+	return drv.SetAlgorithmType(reader, algo)
+}
+
+// GetMilenageAlgorithmType returns the current algorithm type
+func GetMilenageAlgorithmType(reader *card.Reader, drv ProgrammableDriver) (string, error) {
+	if drv == nil {
+		return "", fmt.Errorf("no driver found for this card")
 	}
-	return nil
+	return drv.GetAlgorithmType(reader)
 }
 
 // WriteICCID writes ICCID to the card
-func WriteICCID(reader *card.Reader, cardType card.ProgrammableCardType, iccid string) error {
-	// Encode ICCID
-	encodedICCID, err := EncodeICCID(iccid)
-	if err != nil {
-		return err
+func WriteICCID(reader *card.Reader, drv ProgrammableDriver, iccid string) error {
+	if drv == nil {
+		return fmt.Errorf("no driver found for this card")
 	}
-
-	fileID := []byte{0x2F, 0xE2} // EF_ICCID
-
-	switch cardType {
-	case card.CardTypeGRv1, card.CardTypeUnknown:
-		if _, err := reader.SelectByPath(fileID); err != nil {
-			return fmt.Errorf("failed to select ICCID file: %w", err)
-		}
-		if _, err := reader.UpdateBinary(0, encodedICCID); err != nil {
-			return fmt.Errorf("failed to write ICCID: %w", err)
-		}
-		return nil
-	case card.CardTypeGRv2:
-		if err := card.GRv2Handshake(reader); err != nil {
-			return fmt.Errorf("GRv2 handshake failed before writing ICCID: %w", err)
-		}
-		if _, err := reader.SelectByPath(fileID); err != nil {
-			return fmt.Errorf("failed to select ICCID file for GRv2: %w", err)
-		}
-		if _, err := reader.UpdateBinary(0, encodedICCID); err != nil {
-			return fmt.Errorf("failed to write ICCID for GRv2: %w", err)
-		}
-		return nil
-	default:
-		return fmt.Errorf("unsupported programmable card type for ICCID write: %v", cardType)
-	}
+	return drv.WriteICCID(reader, iccid)
 }
 
 // WriteMSISDN writes MSISDN to the card
-func WriteMSISDN(reader *card.Reader, cardType card.ProgrammableCardType, msisdn string) error {
+func WriteMSISDN(reader *card.Reader, drv ProgrammableDriver, msisdn string) error {
+	if drv == nil {
+		return fmt.Errorf("no driver found for this card")
+	}
+	return drv.WriteMSISDN(reader, msisdn)
+}
+
+// WriteACC writes Access Control Class to the card
+func WriteACC(reader *card.Reader, drv ProgrammableDriver, acc string) error {
+	if drv == nil {
+		return fmt.Errorf("no driver found for this card")
+	}
+	return drv.WriteACC(reader, acc)
+}
+
+// WritePINs writes PIN/PUK codes to the card
+func WritePINs(reader *card.Reader, drv ProgrammableDriver, pin1, puk1, pin2, puk2 string) error {
+	if drv == nil {
+		return fmt.Errorf("no driver found for this card")
+	}
+	return drv.WritePINs(reader, pin1, puk1, pin2, puk2)
+}
+
+// WriteMSISDNGeneric is a default implementation for writing MSISDN
+func WriteMSISDNGeneric(reader *card.Reader, msisdn string) error {
 	var filePath []byte
 	if UseGSMCommands {
 		filePath = FileSIMMSISDN
@@ -235,33 +176,17 @@ func WriteMSISDN(reader *card.Reader, cardType card.ProgrammableCardType, msisdn
 	// Encode MSISDN
 	encodedMSISDN := EncodeISDN(msisdn, recordLength)
 
-	switch cardType {
-	case card.CardTypeGRv1, card.CardTypeUnknown:
-		if _, err := reader.SelectByPath(filePath); err != nil {
-			return fmt.Errorf("failed to select MSISDN file: %w", err)
-		}
-		if _, err := reader.UpdateRecord(1, encodedMSISDN); err != nil {
-			return fmt.Errorf("failed to write MSISDN: %w", err)
-		}
-		return nil
-	case card.CardTypeGRv2:
-		if err := card.GRv2Handshake(reader); err != nil {
-			return fmt.Errorf("GRv2 handshake failed before writing MSISDN: %w", err)
-		}
-		if _, err := reader.SelectByPath(filePath); err != nil {
-			return fmt.Errorf("failed to select MSISDN file for GRv2: %w", err)
-		}
-		if _, err := reader.UpdateRecord(1, encodedMSISDN); err != nil {
-			return fmt.Errorf("failed to write MSISDN for GRv2: %w", err)
-		}
-		return nil
-	default:
-		return fmt.Errorf("unsupported programmable card type for MSISDN write: %v", cardType)
+	if _, err := reader.SelectByPath(filePath); err != nil {
+		return fmt.Errorf("failed to select MSISDN file: %w", err)
 	}
+	if _, err := reader.UpdateRecord(1, encodedMSISDN); err != nil {
+		return fmt.Errorf("failed to write MSISDN: %w", err)
+	}
+	return nil
 }
 
-// WriteACC writes Access Control Class to the card
-func WriteACC(reader *card.Reader, cardType card.ProgrammableCardType, acc string) error {
+// WriteACCGeneric is a default implementation for writing ACC
+func WriteACCGeneric(reader *card.Reader, acc string) error {
 	// Parse ACC hex string
 	accBytes, err := hex.DecodeString(acc)
 	if err != nil || len(accBytes) != 2 {
@@ -275,61 +200,26 @@ func WriteACC(reader *card.Reader, cardType card.ProgrammableCardType, acc strin
 		filePath = FileUSIMACC
 	}
 
-	switch cardType {
-	case card.CardTypeGRv1, card.CardTypeUnknown:
-		if _, err := reader.SelectByPath(filePath); err != nil {
-			return fmt.Errorf("failed to select ACC file: %w", err)
-		}
-		if _, err := reader.UpdateBinary(0, accBytes); err != nil {
-			return fmt.Errorf("failed to write ACC: %w", err)
-		}
-		return nil
-	case card.CardTypeGRv2:
-		if err := card.GRv2Handshake(reader); err != nil {
-			return fmt.Errorf("GRv2 handshake failed before writing ACC: %w", err)
-		}
-		if _, err := reader.SelectByPath(filePath); err != nil {
-			return fmt.Errorf("failed to select ACC file for GRv2: %w", err)
-		}
-		if _, err := reader.UpdateBinary(0, accBytes); err != nil {
-			return fmt.Errorf("failed to write ACC for GRv2: %w", err)
-		}
-		return nil
-	default:
-		return fmt.Errorf("unsupported programmable card type for ACC write: %v", cardType)
+	if _, err := reader.SelectByPath(filePath); err != nil {
+		return fmt.Errorf("failed to select ACC file: %w", err)
 	}
-}
-
-// WritePIN1Puk1 writes PIN1 and PUK1 to a GRv2 card
-func WritePIN1Puk1(reader *card.Reader, pin1, puk1 []byte) error {
-	if len(pin1) != 8 || len(puk1) != 8 {
-		return fmt.Errorf("PIN1 and PUK1 must be 8 bytes")
-	}
-	if err := card.GRv2SelectProprietaryFile(reader, GRv2FilePin1Puk1); err != nil {
-		return fmt.Errorf("failed to select GRv2 PIN1/PUK1 file: %w", err)
-	}
-	apduData := append([]byte{0x00, 0x00, 0x00}, pin1...)
-	apduData = append(apduData, puk1...)
-	apduData = append(apduData, 0x8A, 0x8A)
-	if err := card.GRv2UpdateProprietaryBinary(reader, 0, apduData); err != nil {
-		return fmt.Errorf("failed to write GRv2 PIN1/PUK1: %w", err)
+	if _, err := reader.UpdateBinary(0, accBytes); err != nil {
+		return fmt.Errorf("failed to write ACC: %w", err)
 	}
 	return nil
 }
 
-// WritePIN2Puk2 writes PIN2 and PUK2 to a GRv2 card
-func WritePIN2Puk2(reader *card.Reader, pin2, puk2 []byte) error {
-	if len(pin2) != 8 || len(puk2) != 8 {
-		return fmt.Errorf("PIN2 and PUK2 must be 8 bytes")
+// WriteICCIDGeneric is a default implementation for writing ICCID
+func WriteICCIDGeneric(reader *card.Reader, iccid string) error {
+	encoded, err := EncodeICCID(iccid)
+	if err != nil {
+		return err
 	}
-	if err := card.GRv2SelectProprietaryFile(reader, GRv2FilePin2Puk2); err != nil {
-		return fmt.Errorf("failed to select GRv2 PIN2/PUK2 file: %w", err)
+	if _, err := reader.SelectByPath([]byte{0x2F, 0xE2}); err != nil {
+		return fmt.Errorf("failed to select ICCID file: %w", err)
 	}
-	apduData := append([]byte{0x01, 0x00, 0x00}, pin2...)
-	apduData = append(apduData, puk2...)
-	apduData = append(apduData, 0x8A, 0x8A)
-	if err := card.GRv2UpdateProprietaryBinary(reader, 0, apduData); err != nil {
-		return fmt.Errorf("failed to write GRv2 PIN2/PUK2: %w", err)
+	if _, err := reader.UpdateBinary(0, encoded); err != nil {
+		return fmt.Errorf("failed to write ICCID: %w", err)
 	}
 	return nil
 }
@@ -358,7 +248,7 @@ func EncodeISDN(msisdn string, recordLength int) []byte {
 	// MSISDN record format:
 	// [Alpha ID (variable)] [Length] [TON/NPI] [Dialing Number (BCD)] [Capability/Config] [Extension]
 	// We'll create a minimal record with empty alpha ID
-	
+
 	result := make([]byte, recordLength)
 	for i := range result {
 		result[i] = 0xFF // Fill with 0xFF (empty)
@@ -383,7 +273,7 @@ func EncodeISDN(msisdn string, recordLength int) []byte {
 
 	// Length of BCD number
 	result[offset] = byte(bcdLen + 1) // +1 for TON/NPI byte
-	
+
 	// TON/NPI: 0x91 = international, 0x81 = unknown
 	ton := byte(0x91)
 	if msisdn[0] == '+' || (len(msisdn) > 0 && msisdn[0] != '0') {
@@ -405,4 +295,3 @@ func EncodeISDN(msisdn string, recordLength int) []byte {
 
 	return result
 }
-

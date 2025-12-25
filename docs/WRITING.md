@@ -127,11 +127,13 @@ This ensures all parameters are correctly formatted and you can see what values 
 ./sim_reader -adm 77111606 -set-op-mode normal
 ```
 
-## Method 3: Combined (Config + Flags)
+## Important for Programmable Cards (v2.5.0)
+
+If you are using programmable cards (sysmocom, Grcard, etc.), the tool will automatically detect the driver and apply necessary settings (like CLA byte or pre-write handshakes).
 
 ```bash
-# Apply config and also enable VoLTE and clear FPLMN
-./sim_reader -adm 77111606 -write config.json -enable-volte -clear-fplmn
+# Recommended check before writing
+./sim_reader -prog-info
 ```
 
 ## Configuration File Reference
