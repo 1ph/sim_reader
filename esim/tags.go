@@ -1,128 +1,78 @@
 package esim
 
-// ProfileElement CHOICE tags according to SGP.22 / TS48
-// Context-specific class, constructed form
+// ProfileElement tags according to PE_Definitions ASN.1 with AUTOMATIC TAGS
+// Tags are assigned sequentially in the order they appear in the CHOICE
 const (
-	TagProfileHeader         = 0  // [0] A0
-	TagMF                    = 1  // [1] A1
-	TagPukCodes              = 2  // [2] A2
-	TagPinCodes              = 3  // [3] A3
-	TagTelecom               = 4  // [4] A4
-	TagUSIM                  = 8  // [8] A8
-	TagOptUSIM               = 9  // [9] A9
-	TagISIM                  = 10 // [10] AA
-	TagOptISIM               = 11 // [11] AB
-	TagCSIM                  = 12 // [12] AC
-	TagOptCSIM               = 13 // [13] AD
-	TagGSMAccess             = 20 // [20] BF 14
-	TagAKAParameter          = 22 // [22] BF 16
-	TagCDMAParameter         = 23 // [23] BF 17
-	TagDF5GS                 = 24 // [24] BF 18
-	TagDFSAIP                = 25 // [25] BF 19
-	TagGenericFileManagement = 26 // [26] BF 1A
-	TagSecurityDomain        = 55 // [55] BF 37
-	TagRFM                   = 56 // [56] BF 38
-	TagApplication           = 57 // [57] BF 39
-	TagEnd                   = 63 // [63] BF 3F
+	// First group: non-file-system related PEs
+	TagProfileHeader         = 0  // header ProfileHeader
+	TagGenericFileManagement = 1  // genericFileManagement PE-GenericFileManagement
+	TagPinCodes              = 2  // pinCodes PE-PINCodes
+	TagPukCodes              = 3  // pukCodes PE-PUKCodes
+	TagAKAParameter          = 4  // akaParameter PE-AKAParameter
+	TagCDMAParameter         = 5  // cdmaParameter PE-CDMAParameter
+	TagSecurityDomain        = 6  // securityDomain PE-SecurityDomain
+	TagRFM                   = 7  // rfm PE-RFM
+	TagApplication           = 8  // application PE-Application
+	TagNonStandard           = 9  // nonStandard PE-NonStandard
+	TagEnd                   = 10 // end PE-End
+	TagRFU1                  = 11 // rfu1 PE-Dummy
+	TagRFU2                  = 12 // rfu2 PE-Dummy
+	TagRFU3                  = 13 // rfu3 PE-Dummy
+	TagRFU4                  = 14 // rfu4 PE-Dummy
+	TagRFU5                  = 15 // rfu5 PE-Dummy
+
+	// Second group: file system related PEs using templates
+	TagMF        = 16 // mf PE-MF
+	TagCD        = 17 // cd PE-CD
+	TagTelecom   = 18 // telecom PE-TELECOM
+	TagUSIM      = 19 // usim PE-USIM
+	TagOptUSIM   = 20 // opt-usim PE-OPT-USIM
+	TagISIM      = 21 // isim PE-ISIM
+	TagOptISIM   = 22 // opt-isim PE-OPT-ISIM
+	TagPhonebook = 23 // phonebook PE-PHONEBOOK
+	TagGSMAccess = 24 // gsm-access PE-GSM-ACCESS
+	TagCSIM      = 25 // csim PE-CSIM
+	TagOptCSIM   = 26 // opt-csim PE-OPT-CSIM
+	TagEAP       = 27 // eap PE-EAP
+	TagDF5GS     = 28 // df-5gs PE-DF-5GS
+	TagDFSAIP    = 29 // df-saip PE-DF-SAIP
+	TagDFSNPN    = 30 // df-snpn PE-DF-SNPN
+	TagDF5GPROSE = 31 // df-5gprose PE-DF-5GPROSE
+	TagIoT       = 32 // iot PE-IoT
+	TagOptIoT    = 33 // opt-iot PE-OPT-IoT
 )
 
-// Universal ASN.1 tags
-const (
-	TagBoolean         = 0x01
-	TagInteger         = 0x02
-	TagBitString       = 0x03
-	TagOctetString     = 0x04
-	TagNull            = 0x05
-	TagOID             = 0x06
-	TagUTF8String      = 0x0C
-	TagSequence        = 0x30
-	TagSet             = 0x31
-	TagPrintableString = 0x13
-	TagIA5String       = 0x16
-	TagUTCTime         = 0x17
-	TagGeneralizedTime = 0x18
-	TagVisibleString   = 0x1A
-	TagGeneralString   = 0x1B
-	TagUniversalString = 0x1C
-	TagBMPString       = 0x1E
-)
-
-// Context-specific primitive tags (commonly used)
-const (
-	TagContext0Primitive  = 0x80 // [0] IMPLICIT
-	TagContext1Primitive  = 0x81 // [1] IMPLICIT
-	TagContext2Primitive  = 0x82 // [2] IMPLICIT
-	TagContext3Primitive  = 0x83 // [3] IMPLICIT
-	TagContext4Primitive  = 0x84 // [4] IMPLICIT
-	TagContext5Primitive  = 0x85 // [5] IMPLICIT
-	TagContext6Primitive  = 0x86 // [6] IMPLICIT
-	TagContext7Primitive  = 0x87 // [7] IMPLICIT
-	TagContext8Primitive  = 0x88 // [8] IMPLICIT
-	TagContext9Primitive  = 0x89 // [9] IMPLICIT
-	TagContext10Primitive = 0x8A // [10] IMPLICIT
-)
-
-// Context-specific constructed tags
-const (
-	TagContext0Constructed  = 0xA0 // [0] EXPLICIT
-	TagContext1Constructed  = 0xA1 // [1] EXPLICIT
-	TagContext2Constructed  = 0xA2 // [2] EXPLICIT
-	TagContext3Constructed  = 0xA3 // [3] EXPLICIT
-	TagContext4Constructed  = 0xA4 // [4] EXPLICIT
-	TagContext5Constructed  = 0xA5 // [5] EXPLICIT
-	TagContext6Constructed  = 0xA6 // [6] EXPLICIT
-	TagContext7Constructed  = 0xA7 // [7] EXPLICIT
-	TagContext8Constructed  = 0xA8 // [8] EXPLICIT
-	TagContext9Constructed  = 0xA9 // [9] EXPLICIT
-	TagContext10Constructed = 0xAA // [10] EXPLICIT
-)
-
-// FileDescriptor internal tags for file description
-const (
-	TagFileDescriptorByte          = 0x82
-	TagFileID                      = 0x83
-	TagDFName                      = 0x84
-	TagProprietaryNotTLV           = 0x85
-	TagSecurityAttributeReferenced = 0x8B
-	TagSecurityAttributeExpanded   = 0xAB
-	TagSecurityAttributeCompact    = 0x8C
-	TagFCIExtension                = 0xA5
-	TagLifeCycleStatus             = 0x8A
-	TagShortEFID                   = 0x88
-	TagTotalFileSize               = 0x81
-	TagPinStatusTemplateDO         = 0xC6
-)
-
-// AlgorithmID constants for authentication algorithm type
-const (
-	AlgoIDMilenage          = 1
-	AlgoIDTUAK              = 2
-	AlgoIDUSIMTestAlgorithm = 3
-)
-
-// PUK/PIN key references
-const (
-	KeyRefPIN1       = 0x01
-	KeyRefPIN2       = 0x81
-	KeyRefPUK1       = 0x01
-	KeyRefPUK2       = 0x81
-	KeyRefADM1       = 0x0A
-	KeyRefADM2       = 0x0B
-	KeyRefSecondPIN1 = 0x0B
-	KeyRefSecondPUK1 = 0x8B
-)
-
-// GetProfileElementName returns profile element name by tag
+// GetProfileElementName returns human-readable name for profile element tag
 func GetProfileElementName(tag int) string {
 	switch tag {
 	case TagProfileHeader:
 		return "header"
-	case TagMF:
-		return "mf"
-	case TagPukCodes:
-		return "pukCodes"
+	case TagGenericFileManagement:
+		return "genericFileManagement"
 	case TagPinCodes:
 		return "pinCodes"
+	case TagPukCodes:
+		return "pukCodes"
+	case TagAKAParameter:
+		return "akaParameter"
+	case TagCDMAParameter:
+		return "cdmaParameter"
+	case TagSecurityDomain:
+		return "securityDomain"
+	case TagRFM:
+		return "rfm"
+	case TagApplication:
+		return "application"
+	case TagNonStandard:
+		return "nonStandard"
+	case TagEnd:
+		return "end"
+	case TagRFU1, TagRFU2, TagRFU3, TagRFU4, TagRFU5:
+		return "rfu"
+	case TagMF:
+		return "mf"
+	case TagCD:
+		return "cd"
 	case TagTelecom:
 		return "telecom"
 	case TagUSIM:
@@ -133,30 +83,28 @@ func GetProfileElementName(tag int) string {
 		return "isim"
 	case TagOptISIM:
 		return "opt-isim"
+	case TagPhonebook:
+		return "phonebook"
+	case TagGSMAccess:
+		return "gsm-access"
 	case TagCSIM:
 		return "csim"
 	case TagOptCSIM:
 		return "opt-csim"
-	case TagGSMAccess:
-		return "gsm-access"
-	case TagAKAParameter:
-		return "akaParameter"
-	case TagCDMAParameter:
-		return "cdmaParameter"
+	case TagEAP:
+		return "eap"
 	case TagDF5GS:
 		return "df-5gs"
 	case TagDFSAIP:
 		return "df-saip"
-	case TagGenericFileManagement:
-		return "genericFileManagement"
-	case TagSecurityDomain:
-		return "securityDomain"
-	case TagRFM:
-		return "rfm"
-	case TagApplication:
-		return "application"
-	case TagEnd:
-		return "end"
+	case TagDFSNPN:
+		return "df-snpn"
+	case TagDF5GPROSE:
+		return "df-5gprose"
+	case TagIoT:
+		return "iot"
+	case TagOptIoT:
+		return "opt-iot"
 	default:
 		return "unknown"
 	}

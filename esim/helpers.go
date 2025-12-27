@@ -56,7 +56,25 @@ func encodeInteger(val int) []byte {
 	return result
 }
 
-// decodeSwappedBCD decodes BCD with swapped nibbles (ICCID, IMSI format)
+// decodeBCD decodes BCD (normal order: high nibble first, then low nibble)
+// Used for ICCID in eSIM profiles
+func decodeBCD(data []byte) string {
+	result := ""
+	for _, b := range data {
+		hi := (b >> 4) & 0x0F
+		lo := b & 0x0F
+		if hi != 0x0F {
+			result += string('0' + hi)
+		}
+		if lo != 0x0F {
+			result += string('0' + lo)
+		}
+	}
+	return result
+}
+
+// decodeSwappedBCD decodes BCD with swapped nibbles (IMSI format in EF.IMSI)
+// In swapped BCD, low nibble comes first, then high nibble
 func decodeSwappedBCD(data []byte) string {
 	result := ""
 	for _, b := range data {

@@ -100,6 +100,10 @@ func decodeProfileHeader(a *asn1.ASN1) (*ProfileHeader, error) {
 		tagNum := getContextTag(a)
 		inner := asn1.Init(a.Data)
 
+		// Tags according to PE_Definitions ASN.1 with AUTOMATIC TAGS:
+		// 0=major-version, 1=minor-version, 2=profileType, 3=iccid
+		// 4=pol, 5=eUICC-Mandatory-services, 6=eUICC-Mandatory-GFSTEList
+		// 7=connectivityParameters, 8=eUICC-Mandatory-AIDs, 9=iotOptions
 		switch tagNum {
 		case 0: // major-version
 			h.MajorVersion = decodeInteger(a.Data)
@@ -109,9 +113,11 @@ func decodeProfileHeader(a *asn1.ASN1) (*ProfileHeader, error) {
 			h.ProfileType = string(a.Data)
 		case 3: // iccid
 			h.ICCID = copyBytes(a.Data)
-		case 4: // eUICC-Mandatory-services
+		case 4: // pol (optional)
+			// Skip for now
+		case 5: // eUICC-Mandatory-services
 			h.MandatoryServices = decodeMandatoryServices(inner)
-		case 5: // eUICC-Mandatory-GFSTEList
+		case 6: // eUICC-Mandatory-GFSTEList
 			h.MandatoryGFSTEList = decodeOIDList(inner)
 		}
 	}
@@ -124,22 +130,30 @@ func decodeMandatoryServices(a *asn1.ASN1) *MandatoryServices {
 
 	for a.Unmarshal() {
 		tagNum := getContextTag(a)
+		// Tags according to PE_Definitions ASN.1 with AUTOMATIC TAGS:
+		// 0=contactless, 1=usim, 2=isim, 3=csim, 4=milenage, 5=tuak128, 6=cave
+		// 7=gba-usim, 8=gba-isim, 9=mbms, 10=eap, 11=javacard, 12=multos
+		// 13=multiple-usim, 14=multiple-isim, 15=multiple-csim, 16=tuak256
+		// 17=usim-test-algorithm, 18=ber-tlv, 19=dfLink, 20=cat-tp
+		// 21=get-identity, 22=profile-a-x25519, 23=profile-b-p256
+		// 24=suciCalculatorApi, 25=dns-resolution, 26=scp11ac
+		// 27=scp11c-authorization-mechanism, 28=s16mode, 29=eaka
 		switch tagNum {
-		case 0:
-			ms.USIM = true
 		case 1:
-			ms.ISIM = true
+			ms.USIM = true
 		case 2:
-			ms.CSIM = true
+			ms.ISIM = true
 		case 3:
+			ms.CSIM = true
+		case 17:
 			ms.USIMTestAlgorithm = true
-		case 5:
+		case 18:
 			ms.BERTLV = true
-		case 6:
+		case 21:
 			ms.GetIdentity = true
-		case 7:
+		case 22:
 			ms.ProfileAX25519 = true
-		case 8:
+		case 23:
 			ms.ProfileBP256 = true
 		}
 	}

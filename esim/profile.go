@@ -28,7 +28,7 @@ func SaveProfile(p *Profile, filename string) error {
 // GetICCID returns ICCID in readable format
 func (p *Profile) GetICCID() string {
 	if p.Header != nil && len(p.Header.ICCID) > 0 {
-		return decodeSwappedBCD(p.Header.ICCID)
+		return decodeBCD(p.Header.ICCID)
 	}
 	return ""
 }

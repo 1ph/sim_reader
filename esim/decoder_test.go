@@ -12,15 +12,15 @@ import (
 // 80 01 02 = [0] major-version = 2
 // 81 01 03 = [1] minor-version = 3
 // 82 04 54657374 = [2] profileType = "Test"
-// 83 0A 98001032547698103214 = [3] iccid
-// BF 3F 05 = End [63], length 5
+// 83 0A 89000123456789012341 = [3] iccid (normal BCD)
+// AA 05 = End [10] constructed, length 5
 // A0 03 80 01 1F = end-header with identification = 31
 var minimalProfileHex = "A018" + // ProfileHeader [0], length 24
 	"8001" + "02" + // major-version = 2 (3 bytes)
 	"8101" + "03" + // minor-version = 3 (3 bytes)
 	"8204" + "54657374" + // profileType = "Test" (6 bytes)
-	"830A" + "98001032547698103214" + // iccid (12 bytes) = 24 total
-	"BF3F05" + // End [63], length 5
+	"830A" + "89000123456789012341" + // iccid (12 bytes) = 24 total, normal BCD
+	"AA05" + // End [10] constructed, length 5
 	"A003" + // end-header [0], length 3
 	"8101" + "1F" // identification = 31 (not mandated, so use [1])
 
@@ -259,7 +259,7 @@ func TestProfileHelperMethods(t *testing.T) {
 			MajorVersion: 2,
 			MinorVersion: 3,
 			ProfileType:  "Test Profile",
-			ICCID:        []byte{0x98, 0x00, 0x10, 0x32, 0x54, 0x76, 0x98, 0x10, 0x32, 0x14},
+			ICCID:        []byte{0x89, 0x00, 0x01, 0x23, 0x45, 0x67, 0x89, 0x01, 0x23, 0x41}, // normal BCD
 		},
 		AKAParams: []*AKAParameter{
 			{
@@ -436,4 +436,3 @@ func TestSetIMSI(t *testing.T) {
 		t.Errorf("GetIMSI after SetIMSI: got %s, want %s", got, newIMSI)
 	}
 }
-
