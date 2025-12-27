@@ -21,6 +21,12 @@ func EncodeProfile(p *Profile) ([]byte, error) {
 
 // encodeProfileElement encodes single ProfileElement
 func encodeProfileElement(elem *ProfileElement) ([]byte, error) {
+	// Use RawBytes if available for lossless round-trip encoding
+	if len(elem.RawBytes) > 0 {
+		return elem.RawBytes, nil
+	}
+
+	// Fallback: encode from structured data
 	var data []byte
 	var err error
 
@@ -227,55 +233,58 @@ func encodeElementHeader(eh *ElementHeader) []byte {
 func encodeFileDescriptor(fd *FileDescriptor) []byte {
 	var data []byte
 
-	// [0] fileDescriptor
-	if len(fd.FileDescriptor) > 0 {
-		data = append(data, asn1.Marshal(0x80, nil, fd.FileDescriptor...)...)
-	}
+	// Tags must be encoded in ascending order per DER rules
+	// Fcp field order by tag: [0], [2], [3], [4], [5], [8], [10], [11], [PRIVATE 6], [PRIVATE 7]
 
-	// [1] fileID
-	if fd.FileID != 0 {
-		data = append(data, asn1.Marshal(0x81, nil, encodeUint16BE(fd.FileID)...)...)
-	}
-
-	// [2] lcsi
-	if fd.LCSI != 0 {
-		data = append(data, asn1.Marshal(0x82, nil, fd.LCSI)...)
-	}
-
-	// [3] securityAttributesReferenced
-	if len(fd.SecurityAttributesReferenced) > 0 {
-		data = append(data, asn1.Marshal(0x83, nil, fd.SecurityAttributesReferenced...)...)
-	}
-
-	// [4] shortEFID
-	if fd.ShortEFID != 0 {
-		data = append(data, asn1.Marshal(0x84, nil, fd.ShortEFID)...)
-	}
-
-	// [5] efFileSize
+	// [0] efFileSize
 	if fd.EFFileSize > 0 {
-		data = append(data, asn1.Marshal(0x85, nil, encodeInteger(fd.EFFileSize)...)...)
+		data = append(data, asn1.Marshal(0x80, nil, encodeInteger(fd.EFFileSize)...)...)
 	}
 
-	// [6] dfName
+	// [2] fileDescriptor
+	if len(fd.FileDescriptor) > 0 {
+		data = append(data, asn1.Marshal(0x82, nil, fd.FileDescriptor...)...)
+	}
+
+	// [3] fileID
+	if fd.FileID != 0 {
+		data = append(data, asn1.Marshal(0x83, nil, encodeUint16BE(fd.FileID)...)...)
+	}
+
+	// [4] dfName
 	if len(fd.DFName) > 0 {
-		data = append(data, asn1.Marshal(0x86, nil, fd.DFName...)...)
+		data = append(data, asn1.Marshal(0x84, nil, fd.DFName...)...)
 	}
 
-	// [7] pinStatusTemplateDO
-	if len(fd.PinStatusTemplateDO) > 0 {
-		data = append(data, asn1.Marshal(0x87, nil, fd.PinStatusTemplateDO...)...)
-	}
-
-	// [8] proprietaryEFInfo
+	// [5] proprietaryEFInfo (constructed)
 	if fd.ProprietaryEFInfo != nil {
 		peiData := encodeProprietaryEFInfo(fd.ProprietaryEFInfo)
-		data = append(data, asn1.Marshal(0xA8, nil, peiData...)...)
+		data = append(data, asn1.Marshal(0xA5, nil, peiData...)...)
 	}
 
-	// [9] linkPath
+	// [8] shortEFID
+	if fd.ShortEFID != 0 {
+		data = append(data, asn1.Marshal(0x88, nil, fd.ShortEFID)...)
+	}
+
+	// [10] lcsi
+	if fd.LCSI != 0 {
+		data = append(data, asn1.Marshal(0x8A, nil, fd.LCSI)...)
+	}
+
+	// [11] securityAttributesReferenced
+	if len(fd.SecurityAttributesReferenced) > 0 {
+		data = append(data, asn1.Marshal(0x8B, nil, fd.SecurityAttributesReferenced...)...)
+	}
+
+	// [PRIVATE 6] pinStatusTemplateDO (0xC6 = PRIVATE primitive tag 6)
+	if len(fd.PinStatusTemplateDO) > 0 {
+		data = append(data, asn1.Marshal(0xC6, nil, fd.PinStatusTemplateDO...)...)
+	}
+
+	// [PRIVATE 7] linkPath (0xC7 = PRIVATE primitive tag 7)
 	if len(fd.LinkPath) > 0 {
-		data = append(data, asn1.Marshal(0x89, nil, fd.LinkPath...)...)
+		data = append(data, asn1.Marshal(0xC7, nil, fd.LinkPath...)...)
 	}
 
 	return data
@@ -303,10 +312,35 @@ func encodeProprietaryEFInfo(pei *ProprietaryEFInfo) []byte {
 func encodeElementaryFile(ef *ElementaryFile) []byte {
 	var data []byte
 
-	// [0] fileDescriptor
+	// If Raw elements are available, use them for exact round-trip encoding
+	if len(ef.Raw) > 0 {
+		for _, elem := range ef.Raw {
+			switch elem.Type {
+			case FileElementDoNotCreate:
+				// [0] doNotCreate NULL
+				data = append(data, asn1.Marshal(0x80, nil)...)
+			case FileElementDescriptor:
+				// [1] fileDescriptor Fcp (constructed)
+				if elem.Descriptor != nil {
+					fdData := encodeFileDescriptor(elem.Descriptor)
+					data = append(data, asn1.Marshal(0xA1, nil, fdData...)...)
+				}
+			case FileElementOffset:
+				// [2] fillFileOffset UInt16
+				data = append(data, asn1.Marshal(0x82, nil, encodeInteger(elem.Offset)...)...)
+			case FileElementContent:
+				// [3] fillFileContent OCTET STRING
+				data = append(data, asn1.Marshal(0x83, nil, elem.Content...)...)
+			}
+		}
+		return data
+	}
+
+	// Fallback: build from simplified fields
+	// [1] fileDescriptor Fcp (constructed)
 	if ef.Descriptor != nil {
 		fdData := encodeFileDescriptor(ef.Descriptor)
-		data = append(data, asn1.Marshal(0xA0, nil, fdData...)...)
+		data = append(data, asn1.Marshal(0xA1, nil, fdData...)...)
 	}
 
 	// Encode fill contents with offsets
@@ -315,8 +349,8 @@ func encodeElementaryFile(ef *ElementaryFile) []byte {
 			// [2] fillFileOffset
 			data = append(data, asn1.Marshal(0x82, nil, encodeInteger(fc.Offset)...)...)
 		}
-		// [1] fillFileContent
-		data = append(data, asn1.Marshal(0x81, nil, fc.Content...)...)
+		// [3] fillFileContent
+		data = append(data, asn1.Marshal(0x83, nil, fc.Content...)...)
 	}
 
 	return data

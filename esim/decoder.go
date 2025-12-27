@@ -11,10 +11,16 @@ func DecodeProfile(data []byte) (*Profile, error) {
 		Elements: make([]ProfileElement, 0),
 	}
 
+	offset := 0
 	a := asn1.Init(data)
 
 	for a.Unmarshal() {
-		elem, err := decodeProfileElement(a)
+		// Calculate raw bytes for this element (full TLV)
+		elemLen := a.FullLen()
+		rawBytes := copyBytes(data[offset : offset+elemLen])
+		offset += elemLen
+
+		elem, err := decodeProfileElement(a, rawBytes)
 		if err != nil {
 			return nil, fmt.Errorf("decode element at offset: %w", err)
 		}
@@ -29,10 +35,10 @@ func DecodeProfile(data []byte) (*Profile, error) {
 }
 
 // decodeProfileElement decodes single ProfileElement (CHOICE)
-func decodeProfileElement(a *asn1.ASN1) (*ProfileElement, error) {
+func decodeProfileElement(a *asn1.ASN1, rawBytes []byte) (*ProfileElement, error) {
 	tagNum := getTagNumber(a)
 
-	elem := &ProfileElement{Tag: tagNum}
+	elem := &ProfileElement{Tag: tagNum, RawBytes: rawBytes}
 	inner := asn1.Init(a.Data)
 
 	var err error
@@ -222,31 +228,39 @@ func decodeFileDescriptor(a *asn1.ASN1) *FileDescriptor {
 		tagNum := getContextTag(a)
 		inner := asn1.Init(a.Data)
 
-		switch tagNum {
-		case 0: // fileDescriptor
-			fd.FileDescriptor = copyBytes(a.Data)
-		case 1: // fileID
-			fd.FileID = decodeUint16BE(a.Data)
-		case 2: // lcsi
-			if len(a.Data) > 0 {
-				fd.LCSI = a.Data[0]
+		// Handle PRIVATE class tags first
+		if a.Class == asn1.ClassPrivate {
+			switch tagNum {
+			case 6: // pinStatusTemplateDO [PRIVATE 6]
+				fd.PinStatusTemplateDO = copyBytes(a.Data)
+			case 7: // linkPath [PRIVATE 7]
+				fd.LinkPath = copyBytes(a.Data)
 			}
-		case 3: // securityAttributesReferenced
-			fd.SecurityAttributesReferenced = copyBytes(a.Data)
-		case 4: // shortEFID
+			continue
+		}
+
+		// Context-specific tags (Fcp uses AUTOMATIC TAGS starting from defined numbers)
+		switch tagNum {
+		case 0: // efFileSize [0]
+			fd.EFFileSize = decodeInteger(a.Data)
+		case 2: // fileDescriptor [2]
+			fd.FileDescriptor = copyBytes(a.Data)
+		case 3: // fileID [3]
+			fd.FileID = decodeUint16BE(a.Data)
+		case 4: // dfName [4]
+			fd.DFName = copyBytes(a.Data)
+		case 5: // proprietaryEFInfo [5]
+			fd.ProprietaryEFInfo = decodeProprietaryEFInfo(inner)
+		case 8: // shortEFID [8]
 			if len(a.Data) > 0 {
 				fd.ShortEFID = a.Data[0]
 			}
-		case 5: // efFileSize
-			fd.EFFileSize = decodeInteger(a.Data)
-		case 6: // dfName
-			fd.DFName = copyBytes(a.Data)
-		case 7: // pinStatusTemplateDO
-			fd.PinStatusTemplateDO = copyBytes(a.Data)
-		case 8: // proprietaryEFInfo
-			fd.ProprietaryEFInfo = decodeProprietaryEFInfo(inner)
-		case 9: // linkPath
-			fd.LinkPath = copyBytes(a.Data)
+		case 10: // lcsi [10]
+			if len(a.Data) > 0 {
+				fd.LCSI = a.Data[0]
+			}
+		case 11: // securityAttributesReferenced [11]
+			fd.SecurityAttributesReferenced = copyBytes(a.Data)
 		}
 	}
 
@@ -276,6 +290,7 @@ func decodeProprietaryEFInfo(a *asn1.ASN1) *ProprietaryEFInfo {
 func decodeElementaryFile(a *asn1.ASN1) *ElementaryFile {
 	ef := &ElementaryFile{
 		FillContents: make([]FillContent, 0),
+		Raw:          make(File, 0),
 	}
 
 	var currentOffset int
@@ -284,16 +299,24 @@ func decodeElementaryFile(a *asn1.ASN1) *ElementaryFile {
 		tagNum := getContextTag(a)
 		inner := asn1.Init(a.Data)
 
+		// File ::= SEQUENCE OF CHOICE { doNotCreate[0], fileDescriptor[1], fillFileOffset[2], fillFileContent[3] }
 		switch tagNum {
-		case 0: // fileDescriptor
-			ef.Descriptor = decodeFileDescriptor(inner)
-		case 1: // fillFileContent
+		case 0: // doNotCreate NULL
+			ef.Raw = append(ef.Raw, FileElement{Type: FileElementDoNotCreate})
+		case 1: // fileDescriptor Fcp
+			fd := decodeFileDescriptor(inner)
+			ef.Descriptor = fd
+			ef.Raw = append(ef.Raw, FileElement{Type: FileElementDescriptor, Descriptor: fd})
+		case 2: // fillFileOffset UInt16
+			currentOffset = decodeInteger(a.Data)
+			ef.Raw = append(ef.Raw, FileElement{Type: FileElementOffset, Offset: currentOffset})
+		case 3: // fillFileContent OCTET STRING
+			content := copyBytes(a.Data)
 			ef.FillContents = append(ef.FillContents, FillContent{
 				Offset:  currentOffset,
-				Content: copyBytes(a.Data),
+				Content: content,
 			})
-		case 2: // fillFileOffset
-			currentOffset = decodeInteger(a.Data)
+			ef.Raw = append(ef.Raw, FileElement{Type: FileElementContent, Content: content})
 		}
 	}
 

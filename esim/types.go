@@ -34,6 +34,8 @@ type Profile struct {
 type ProfileElement struct {
 	Tag   int
 	Value interface{}
+	// RawBytes preserves original encoding for lossless round-trip
+	RawBytes []byte
 }
 
 // ============================================================================
@@ -76,6 +78,8 @@ type MasterFile struct {
 	EF_DIR     *ElementaryFile
 	EF_ARR     *ElementaryFile
 	EF_UMPC    *ElementaryFile
+	// RawBytes preserves original encoding for lossless round-trip
+	RawBytes []byte
 }
 
 // ============================================================================
@@ -109,10 +113,35 @@ type ProprietaryEFInfo struct {
 	RepeatPattern          []byte
 }
 
-// ElementaryFile represents elementary file with content
+// FileElementType represents the type of File CHOICE element
+type FileElementType int
+
+const (
+	FileElementDoNotCreate FileElementType = iota // NULL - file shall not be created
+	FileElementDescriptor                         // Fcp - file descriptor
+	FileElementOffset                             // UInt16 - fill file offset
+	FileElementContent                            // OCTET STRING - fill file content
+)
+
+// FileElement represents one element of File SEQUENCE OF CHOICE
+// File ::= SEQUENCE OF CHOICE { doNotCreate NULL, fileDescriptor Fcp, fillFileOffset UInt16, fillFileContent OCTET STRING }
+type FileElement struct {
+	Type       FileElementType
+	Descriptor *FileDescriptor // when Type == FileElementDescriptor
+	Offset     int             // when Type == FileElementOffset
+	Content    []byte          // when Type == FileElementContent
+}
+
+// File represents ASN.1 File type - SEQUENCE OF CHOICE
+type File []FileElement
+
+// ElementaryFile represents elementary file with content (simplified view)
+// Internally uses File structure for full ASN.1 representation
 type ElementaryFile struct {
 	Descriptor   *FileDescriptor
 	FillContents []FillContent
+	// Raw preserves original File elements for exact round-trip encoding
+	Raw File
 }
 
 // FillContent represents file content with optional offset
@@ -178,6 +207,8 @@ type TelecomDF struct {
 	EF_MSPL       *ElementaryFile
 	// Additional fields as needed
 	AdditionalEFs map[string]*ElementaryFile
+	// RawBytes preserves original encoding for lossless round-trip
+	RawBytes []byte
 }
 
 // ============================================================================
@@ -214,6 +245,8 @@ type USIMApplication struct {
 	EF_EPSNSC    *ElementaryFile
 	// Additional EFs as needed
 	AdditionalEFs map[string]*ElementaryFile
+	// RawBytes preserves original encoding for lossless round-trip
+	RawBytes []byte
 }
 
 // OptionalUSIM represents optional USIM files
@@ -272,6 +305,8 @@ type OptionalUSIM struct {
 	EF_FDNURI     *ElementaryFile
 	EF_SDNURI     *ElementaryFile
 	AdditionalEFs map[string]*ElementaryFile
+	// RawBytes preserves original encoding for lossless round-trip
+	RawBytes []byte
 }
 
 // ============================================================================
@@ -290,6 +325,8 @@ type ISIMApplication struct {
 	EF_AD         *ElementaryFile
 	EF_ARR        *ElementaryFile
 	AdditionalEFs map[string]*ElementaryFile
+	// RawBytes preserves original encoding for lossless round-trip
+	RawBytes []byte
 }
 
 // OptionalISIM represents optional ISIM files
@@ -300,6 +337,8 @@ type OptionalISIM struct {
 	EF_GBABP      *ElementaryFile
 	EF_GBANL      *ElementaryFile
 	AdditionalEFs map[string]*ElementaryFile
+	// RawBytes preserves original encoding for lossless round-trip
+	RawBytes []byte
 }
 
 // ============================================================================
@@ -346,6 +385,8 @@ type CSIMApplication struct {
 	EF_SPECIFIC_TAG *ElementaryFile
 	EF_CALL_PROMPT  *ElementaryFile
 	AdditionalEFs   map[string]*ElementaryFile
+	// RawBytes preserves original encoding for lossless round-trip
+	RawBytes []byte
 }
 
 // OptionalCSIM represents optional CSIM files
@@ -396,6 +437,8 @@ type OptionalCSIM struct {
 	EF_CCP2       *ElementaryFile
 	EF_MODEL      *ElementaryFile
 	AdditionalEFs map[string]*ElementaryFile
+	// RawBytes preserves original encoding for lossless round-trip
+	RawBytes []byte
 }
 
 // ============================================================================
@@ -412,6 +455,8 @@ type GSMAccessDF struct {
 	EF_CPBCCH     *ElementaryFile
 	EF_INVSCAN    *ElementaryFile
 	AdditionalEFs map[string]*ElementaryFile
+	// RawBytes preserves original encoding for lossless round-trip
+	RawBytes []byte
 }
 
 // ============================================================================
@@ -433,6 +478,8 @@ type DF5GS struct {
 	EF_OPL5G             *ElementaryFile
 	EF_ROUTING_INDICATOR *ElementaryFile
 	AdditionalEFs        map[string]*ElementaryFile
+	// RawBytes preserves original encoding for lossless round-trip
+	RawBytes []byte
 }
 
 // ============================================================================
@@ -446,6 +493,8 @@ type DFSAIP struct {
 	DFDFSAIP               *FileDescriptor
 	EF_SUCI_CALC_INFO_USIM *ElementaryFile
 	AdditionalEFs          map[string]*ElementaryFile
+	// RawBytes preserves original encoding for lossless round-trip
+	RawBytes []byte
 }
 
 // ============================================================================
@@ -504,6 +553,8 @@ type CDMAParameter struct {
 type GenericFileManagement struct {
 	Header             *ElementHeader
 	FileManagementCMDs []FileManagementCMD
+	// RawBytes preserves original encoding for lossless round-trip
+	RawBytes []byte
 }
 
 // FileManagementCMD represents single file management command
@@ -523,6 +574,8 @@ type SecurityDomain struct {
 	Instance    *SDInstance
 	KeyList     []SDKey
 	SDPersoData []byte
+	// RawBytes preserves original encoding for lossless round-trip
+	RawBytes []byte
 }
 
 // SDInstance represents Security Domain instance
@@ -570,6 +623,8 @@ type RFMConfig struct {
 	UICCAccessDomain      byte
 	UICCAdminAccessDomain byte
 	ADFRFMAccess          *ADFRFMAccess
+	// RawBytes preserves original encoding for lossless round-trip
+	RawBytes []byte
 }
 
 // ADFRFMAccess represents RFM access to ADF

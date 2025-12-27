@@ -1,6 +1,7 @@
 package esim
 
 import (
+	"bytes"
 	"encoding/hex"
 	"os"
 	"path/filepath"
@@ -438,26 +439,76 @@ func TestRoundTripProfile(t *testing.T) {
 			profile2.HasUSIM(), profile2.HasISIM(), profile2.HasCSIM())
 	})
 
-	// Test full byte-level round-trip (informational, not a failure)
+	// Test full byte-level round-trip with RawBytes preservation
 	t.Run("ByteLevelComparison", func(t *testing.T) {
-		if len(original) == len(encoded) {
+		if !bytes.Equal(original, encoded) {
+			t.Errorf("Round-trip encoding does not match original!")
+			t.Logf("Original size: %d, Encoded size: %d", len(original), len(encoded))
+
+			// Find first difference
+			minLen := len(original)
+			if len(encoded) < minLen {
+				minLen = len(encoded)
+			}
+			for i := 0; i < minLen; i++ {
+				if original[i] != encoded[i] {
+					t.Logf("First diff at offset 0x%04x: original=0x%02x, encoded=0x%02x", i, original[i], encoded[i])
+					break
+				}
+			}
+
+			// Count total differences
 			differences := 0
-			for i := range original {
+			for i := 0; i < minLen; i++ {
 				if original[i] != encoded[i] {
 					differences++
 				}
 			}
-			if differences == 0 {
-				t.Log("Full byte-level round-trip: PASS")
-			} else {
-				t.Logf("Byte differences: %d (encoder needs more work)", differences)
-			}
+			differences += abs(len(original) - len(encoded))
+			t.Logf("Total byte differences: %d", differences)
 		} else {
-			t.Logf("Size difference: %d bytes (encoder doesn't implement all internal structures)",
-				len(original)-len(encoded))
-			t.Log("This is expected - encoder needs to implement File, FCP, and other complex structures")
+			t.Log("Full byte-level round-trip: PASS - encoded matches original exactly")
 		}
 	})
+
+	// Element-by-element comparison
+	t.Run("ElementByElementComparison", func(t *testing.T) {
+		// Parse encoded data to compare elements
+		profile2, err := DecodeProfile(encoded)
+		if err != nil {
+			t.Fatalf("Failed to decode encoded profile: %v", err)
+		}
+
+		if len(profile.Elements) != len(profile2.Elements) {
+			t.Fatalf("Element count mismatch: original=%d, encoded=%d",
+				len(profile.Elements), len(profile2.Elements))
+		}
+
+		mismatchCount := 0
+		for i := range profile.Elements {
+			elem1 := &profile.Elements[i]
+			elem2 := &profile2.Elements[i]
+
+			if !bytes.Equal(elem1.RawBytes, elem2.RawBytes) {
+				mismatchCount++
+				t.Logf("Element[%d] Tag=%d: RawBytes mismatch (orig=%d bytes, re-decoded=%d bytes)",
+					i, elem1.Tag, len(elem1.RawBytes), len(elem2.RawBytes))
+			}
+		}
+
+		if mismatchCount == 0 {
+			t.Logf("All %d elements have matching RawBytes", len(profile.Elements))
+		} else {
+			t.Errorf("%d elements have mismatched RawBytes", mismatchCount)
+		}
+	})
+}
+
+func abs(x int) int {
+	if x < 0 {
+		return -x
+	}
+	return x
 }
 
 // TestEncodeProfileHeader tests encoding of ProfileHeader element
