@@ -54,8 +54,156 @@ type SIMConfig struct {
 	// Programmable card parameters (DANGEROUS!)
 	Programmable *ProgrammableConfig `json:"programmable,omitempty"`
 
+	// GlobalPlatform parameters (experimental; used for applet management and ARA-M rules)
+	GlobalPlatform *GlobalPlatformConfig `json:"global_platform,omitempty"`
+
 	// PLMN options
 	ClearFPLMN bool `json:"clear_fplmn,omitempty"`
+}
+
+// GlobalPlatformConfig contains configuration for GP secure channel operations and key storage.
+//
+// This section is primarily intended for future workflows (including eSIM-related tooling),
+// where the same config file may carry both UICC filesystem parameters and GP key material.
+//
+// NOTE: Storing real GP keys in plaintext JSON files is sensitive. Treat them as secrets.
+type GlobalPlatformConfig struct {
+	// SDAID is the Security Domain / Card Manager AID (hex).
+	// If empty, callers typically try common defaults depending on platform.
+	SDAID string `json:"sd_aid,omitempty"`
+
+	// SecurityLevel is the Secure Channel security level, e.g. "mac" or "mac+enc".
+	SecurityLevel string `json:"security_level,omitempty"`
+
+	// KVN is the Key Version Number (0..255) used for INITIALIZE UPDATE.
+	// If omitted, tooling may try 0 or auto-probe.
+	KVN *int `json:"kvn,omitempty"`
+
+	// SCP can be "auto", "scp02", or "scp03".
+	// If omitted, tooling should auto-detect based on INITIALIZE UPDATE response.
+	SCP string `json:"scp,omitempty"`
+
+	// KeySets is a list of known GP keysets for this environment.
+	// Tooling may select one by name and/or auto-probe.
+	KeySets []GPKeySetConfig `json:"keysets,omitempty"`
+
+	// DefaultKeySet selects a KeySets entry by Name.
+	DefaultKeySet string `json:"default_keyset,omitempty"`
+
+	// DMS is an optional mapping to an external per-card key database (var_out format).
+	DMS *GPDMSConfig `json:"dms,omitempty"`
+
+	// ARAM optionally contains Access Rules (ARA-M) definitions.
+	ARAM *GPARAMConfig `json:"aram,omitempty"`
+
+	// Applets describes CAP load/install operations to be performed via GlobalPlatform.
+	// This is intended for Java Card / UICC applet management workflows.
+	Applets *GPAppletsConfig `json:"applets,omitempty"`
+}
+
+// GPAppletsConfig is a collection of GP applet/package management operations.
+type GPAppletsConfig struct {
+	// Loads is a list of CAP load+install operations.
+	Loads []GPAppletLoadConfig `json:"loads,omitempty"`
+}
+
+// GPAppletLoadConfig describes one CAP load and applet installation operation.
+//
+// AIDs are hex strings (no spaces). CAPPath must point to a .cap ZIP file.
+// NOTE: LOAD/INSTALL operations are destructive and may brick the card if misused.
+type GPAppletLoadConfig struct {
+	// CAPPath is the path to the CAP file (ZIP) on disk.
+	CAPPath string `json:"cap_path,omitempty"`
+
+	// PackageAID is the Executable Load File AID (package AID) used in INSTALL [for load].
+	PackageAID string `json:"package_aid,omitempty"`
+
+	// AppletAID is the Executable Module / Applet Class AID used in INSTALL [for install].
+	AppletAID string `json:"applet_aid,omitempty"`
+
+	// InstanceAID is the application instance AID (may equal AppletAID). If empty, tooling should default to AppletAID.
+	InstanceAID string `json:"instance_aid,omitempty"`
+
+	// Optional: target Security Domain AID to use for INSTALL [for load] (hex).
+	// If empty, tooling should use GlobalPlatformConfig.SDAID.
+	SDAID string `json:"sd_aid,omitempty"`
+
+	// Optional: install parameters and privileges are not implemented in the minimal loader yet,
+	// but reserved here for future compatibility (e.g., delegated management, ARA-M params, etc.).
+	InstallParameters string   `json:"install_parameters,omitempty"`
+	Privileges        []string `json:"privileges,omitempty"`
+}
+
+// GPKeySetConfig represents one GlobalPlatform static keyset.
+// Typical mapping for SCP02/SCP03 is KID=01 ENC, KID=02 MAC, KID=03 DEK within a given KVN.
+type GPKeySetConfig struct {
+	Name string `json:"name,omitempty"`
+
+	// KVN is the Key Version Number (0..255) for this keyset.
+	KVN int `json:"kvn,omitempty"`
+
+	// SCP may be set per-keyset: "auto", "scp02", "scp03".
+	SCP string `json:"scp,omitempty"`
+
+	// Keys holds key material.
+	Keys GPKeysConfig `json:"keys,omitempty"`
+}
+
+// GPKeysConfig holds GlobalPlatform key material.
+//
+// Provide either ENC+MAC (and optional DEK), or PSK (ENC=MAC=PSK), or legacy OTA-style aliases.
+// All fields are hex strings.
+type GPKeysConfig struct {
+	// Standard GP naming
+	ENC string `json:"enc,omitempty"`
+	MAC string `json:"mac,omitempty"`
+	DEK string `json:"dek,omitempty"`
+
+	// PSK convenience: if set, ENC=MAC=PSK (DEK optional).
+	PSK string `json:"psk,omitempty"`
+
+	// Legacy/OTA-style aliases sometimes used by vendors (mapped as ENC/MAC/DEK by tooling)
+	KIC string `json:"kic,omitempty"`
+	KID string `json:"kid,omitempty"`
+	KIK string `json:"kik,omitempty"`
+}
+
+// GPDMSConfig describes how to resolve key material from an external DMS-style file (var_out).
+type GPDMSConfig struct {
+	// Path to the var_out file
+	Path string `json:"path,omitempty"`
+
+	// Selector chooses a row (either ICCID or IMSI).
+	ICCID string `json:"iccid,omitempty"`
+	IMSI  string `json:"imsi,omitempty"`
+
+	// Keyset names match the CLI conventions: cm, psk40, psk41, a..h, auto.
+	Keyset string `json:"keyset,omitempty"`
+}
+
+// GPARAMConfig describes ARA-M access rules to be pushed via GP STORE DATA.
+type GPARAMConfig struct {
+	// AID of the ARA-M applet, typically A00000015141434C00.
+	AID string `json:"aid,omitempty"`
+
+	// Rules is a list of access rules.
+	Rules []GPARAMRuleConfig `json:"rules,omitempty"`
+}
+
+// GPARAMRuleConfig is a JSON-friendly definition of a single ARA-M rule.
+type GPARAMRuleConfig struct {
+	// TargetAID is the AID of the applet this rule applies to (hex).
+	// Use FFFFFFFFFFFF to match any AID (wildcard).
+	TargetAID string `json:"target_aid,omitempty"`
+
+	// CertHash is the SHA-1 (20 bytes) or SHA-256 (32 bytes) of an Android signing certificate (hex).
+	CertHash string `json:"cert_hash,omitempty"`
+
+	// Perm is PERM-AR-DO value (hex, commonly 8 bytes).
+	Perm string `json:"perm,omitempty"`
+
+	// ApduRule is APDU-AR-DO value (hex, commonly 01 for ALWAYS allow).
+	ApduRule string `json:"apdu_rule,omitempty"`
 }
 
 // ProgrammableConfig represents programmable card parameters
@@ -769,4 +917,3 @@ func applyProgrammableConfig(reader *card.Reader, progCfg *ProgrammableConfig, d
 
 	return nil
 }
-

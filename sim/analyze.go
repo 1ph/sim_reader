@@ -49,18 +49,25 @@ func DetectApplicationAIDs(reader *card.Reader) {
 		pathBytes, _ := hex.DecodeString(app.Path)
 
 		if len(aidBytes) >= 7 {
-			// Check if it's USIM (starts with A0000000871002)
-			if aidBytes[0] == 0xA0 && aidBytes[5] == 0x10 && aidBytes[6] == 0x02 {
-				DetectedUSIM_AID = aidBytes
-				if len(pathBytes) >= 2 {
-					DetectedUSIM_Path = pathBytes
+			// Check for 3GPP RID: A0 00 00 00 87
+			// This distinguishes USIM/ISIM from CSIM (A0 00 00 03 43)
+			is3GPP := aidBytes[0] == 0xA0 && aidBytes[1] == 0x00 &&
+				aidBytes[2] == 0x00 && aidBytes[3] == 0x00 && aidBytes[4] == 0x87
+
+			if is3GPP {
+				// Check if it's USIM (3GPP RID + app code 1002)
+				if aidBytes[5] == 0x10 && aidBytes[6] == 0x02 {
+					DetectedUSIM_AID = aidBytes
+					if len(pathBytes) >= 2 {
+						DetectedUSIM_Path = pathBytes
+					}
 				}
-			}
-			// Check if it's ISIM (starts with A0000000871004)
-			if aidBytes[0] == 0xA0 && aidBytes[5] == 0x10 && aidBytes[6] == 0x04 {
-				DetectedISIM_AID = aidBytes
-				if len(pathBytes) >= 2 {
-					DetectedISIM_Path = pathBytes
+				// Check if it's ISIM (3GPP RID + app code 1004)
+				if aidBytes[5] == 0x10 && aidBytes[6] == 0x04 {
+					DetectedISIM_AID = aidBytes
+					if len(pathBytes) >= 2 {
+						DetectedISIM_Path = pathBytes
+					}
 				}
 			}
 		}
@@ -121,18 +128,25 @@ func AnalyzeCard(reader *card.Reader, checkADM bool) (*CardInfo, error) {
 		pathBytes, _ := hex.DecodeString(app.Path)
 
 		if len(aidBytes) >= 7 {
-			// Check if it's USIM (starts with A0000000871002)
-			if aidBytes[0] == 0xA0 && aidBytes[5] == 0x10 && aidBytes[6] == 0x02 {
-				DetectedUSIM_AID = aidBytes
-				if len(pathBytes) >= 2 {
-					DetectedUSIM_Path = pathBytes
+			// Check for 3GPP RID: A0 00 00 00 87
+			// This distinguishes USIM/ISIM from CSIM (A0 00 00 03 43)
+			is3GPP := aidBytes[0] == 0xA0 && aidBytes[1] == 0x00 &&
+				aidBytes[2] == 0x00 && aidBytes[3] == 0x00 && aidBytes[4] == 0x87
+
+			if is3GPP {
+				// Check if it's USIM (3GPP RID + app code 1002)
+				if aidBytes[5] == 0x10 && aidBytes[6] == 0x02 {
+					DetectedUSIM_AID = aidBytes
+					if len(pathBytes) >= 2 {
+						DetectedUSIM_Path = pathBytes
+					}
 				}
-			}
-			// Check if it's ISIM (starts with A0000000871004)
-			if aidBytes[0] == 0xA0 && aidBytes[5] == 0x10 && aidBytes[6] == 0x04 {
-				DetectedISIM_AID = aidBytes
-				if len(pathBytes) >= 2 {
-					DetectedISIM_Path = pathBytes
+				// Check if it's ISIM (3GPP RID + app code 1004)
+				if aidBytes[5] == 0x10 && aidBytes[6] == 0x04 {
+					DetectedISIM_AID = aidBytes
+					if len(pathBytes) >= 2 {
+						DetectedISIM_Path = pathBytes
+					}
 				}
 			}
 		}

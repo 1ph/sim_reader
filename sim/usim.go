@@ -68,6 +68,9 @@ type EPSLocationInfo struct {
 	Status string
 }
 
+// DebugUSIM enables debug output for USIM selection
+var DebugUSIM = false
+
 // ReadUSIM reads all USIM application data
 func ReadUSIM(reader *card.Reader) (*USIMData, error) {
 	data := &USIMData{
@@ -94,7 +97,17 @@ func ReadUSIM(reader *card.Reader) (*USIMData, error) {
 
 	// Method 1: Try detected AID
 	usimAID := GetUSIMAID()
+	if DebugUSIM {
+		fmt.Printf("DEBUG USIM: Selecting AID %X\n", usimAID)
+	}
 	resp, err = reader.Select(usimAID)
+	if DebugUSIM {
+		if err != nil {
+			fmt.Printf("DEBUG USIM: Select AID error: %v\n", err)
+		} else {
+			fmt.Printf("DEBUG USIM: Select AID response SW=%04X, Data=%X\n", resp.SW(), resp.Data)
+		}
+	}
 	if err == nil && resp.IsOK() {
 		usimSelected = true
 	}
@@ -134,6 +147,9 @@ func ReadUSIM(reader *card.Reader) (*USIMData, error) {
 	}
 
 	// Read IMSI
+	if DebugUSIM {
+		fmt.Printf("DEBUG USIM: Reading IMSI (0x6F07)...\n")
+	}
 	if _, raw, err := readEF(reader, 0x6F07); err == nil {
 		data.IMSI = DecodeIMSI(raw)
 		data.RawFiles["EF_IMSI"] = raw
@@ -144,6 +160,9 @@ func ReadUSIM(reader *card.Reader) (*USIMData, error) {
 			data.MNC = data.IMSI[3:5] // Default 2 digits
 		}
 	} else {
+		if DebugUSIM {
+			fmt.Printf("DEBUG USIM: IMSI read error: %v\n", err)
+		}
 		fmt.Printf("Warning: could not read IMSI: %v\n", err)
 	}
 
