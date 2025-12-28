@@ -1,0 +1,447 @@
+{
+  "timestamp": "2025-12-28T20:46:49.234063+03:00",
+  "card_atr": "3B9F96801FC78031A073BE21136743200718000001A5",
+  "summary": {
+    "total": 46,
+    "passed": 45,
+    "failed": 1,
+    "pass_rate": 97.82608695652173,
+    "duration_ns": 8826879750,
+    "by_category": {
+      "apdu": 10,
+      "auth": 4,
+      "isim": 1,
+      "security": 7,
+      "usim": 24
+    },
+    "failed_tests": [
+      "ISIM Application Select"
+    ]
+  },
+  "results": [
+    {
+      "name": "USIM Application Select",
+      "category": "usim",
+      "passed": true,
+      "actual": "SW=9000, AID=A0000000871002FFFFFFFF8907090000",
+      "spec": "TS 31.102",
+      "duration_ns": 0
+    },
+    {
+      "name": "EF.IMSI (6F07)",
+      "category": "usim",
+      "passed": true,
+      "actual": "901700000028006",
+      "sw": 36864,
+      "spec": "TS 31.102 4.2.2",
+      "duration_ns": 86704875
+    },
+    {
+      "name": "EF.AD (6FAD)",
+      "category": "usim",
+      "passed": true,
+      "actual": "Mode=Normal, MNC_len=2",
+      "sw": 36864,
+      "spec": "TS 31.102 4.2.18",
+      "duration_ns": 68854500
+    },
+    {
+      "name": "EF.UST (6F38)",
+      "category": "usim",
+      "passed": true,
+      "actual": "9 bytes, 34 services enabled",
+      "sw": 36864,
+      "spec": "TS 31.102 4.2.8",
+      "duration_ns": 67947958
+    },
+    {
+      "name": "EF.EST (6F56)",
+      "category": "usim",
+      "passed": true,
+      "actual": "9 bytes",
+      "sw": 36864,
+      "spec": "TS 31.102 4.2.47",
+      "duration_ns": 77350167
+    },
+    {
+      "name": "EF.ACC (6F78)",
+      "category": "usim",
+      "passed": true,
+      "actual": "0x0040 (classes: 6)",
+      "sw": 36864,
+      "spec": "TS 31.102 4.2.15",
+      "duration_ns": 73481708
+    },
+    {
+      "name": "EF.SPN (6F46)",
+      "category": "usim",
+      "passed": true,
+      "actual": "\"\"",
+      "sw": 36864,
+      "spec": "TS 31.102 4.2.12",
+      "duration_ns": 74579542
+    },
+    {
+      "name": "EF.HPPLMN (6F31)",
+      "category": "usim",
+      "passed": true,
+      "actual": "30 min (raw=0x05)",
+      "sw": 36864,
+      "spec": "TS 31.102 4.2.6",
+      "duration_ns": 73552041
+    },
+    {
+      "name": "EF.PLMNwAcT (6F60)",
+      "category": "usim",
+      "passed": true,
+      "actual": "60 bytes, 12 entries",
+      "sw": 36864,
+      "spec": "TS 31.102 4.2.5",
+      "duration_ns": 81321042
+    },
+    {
+      "name": "EF.OPLMNwAcT (6F61)",
+      "category": "usim",
+      "passed": true,
+      "actual": "60 bytes, 12 entries",
+      "sw": 36864,
+      "spec": "TS 31.102 4.2.53",
+      "duration_ns": 75441625
+    },
+    {
+      "name": "EF.HPLMNwAcT (6F62)",
+      "category": "usim",
+      "passed": true,
+      "actual": "25 bytes, 5 entries",
+      "sw": 36864,
+      "spec": "TS 31.102 4.2.51",
+      "duration_ns": 73238417
+    },
+    {
+      "name": "EF.FPLMN (6F7B)",
+      "category": "usim",
+      "passed": true,
+      "actual": "12 bytes, 4/4 entries used",
+      "sw": 36864,
+      "spec": "TS 31.102 4.2.16",
+      "duration_ns": 74153667
+    },
+    {
+      "name": "EF.LOCI (6F7E)",
+      "category": "usim",
+      "passed": true,
+      "actual": "11 bytes, raw=FFFFFFFFFFFF",
+      "sw": 36864,
+      "spec": "TS 31.102 4.2.17",
+      "duration_ns": 82943833
+    },
+    {
+      "name": "EF.PSLOCI (6F73)",
+      "category": "usim",
+      "passed": true,
+      "actual": "14 bytes",
+      "sw": 36864,
+      "spec": "TS 31.102 4.2.23",
+      "duration_ns": 74511792
+    },
+    {
+      "name": "EF.EPSLOCI (6FE3)",
+      "category": "usim",
+      "passed": true,
+      "actual": "Not present (optional)",
+      "spec": "TS 31.102 4.2.48",
+      "duration_ns": 26054583
+    },
+    {
+      "name": "EF.Keys (6F08)",
+      "category": "usim",
+      "passed": true,
+      "actual": "33 bytes, KSI=0x07",
+      "sw": 36864,
+      "spec": "TS 31.102 4.2.6",
+      "duration_ns": 72960250
+    },
+    {
+      "name": "EF.KeysPS (6F09)",
+      "category": "usim",
+      "passed": true,
+      "actual": "33 bytes, KSI=0x07",
+      "sw": 36864,
+      "spec": "TS 31.102 4.2.6",
+      "duration_ns": 79004209
+    },
+    {
+      "name": "EF.LI (6F05)",
+      "category": "usim",
+      "passed": true,
+      "actual": "10 bytes, 5 languages",
+      "sw": 36864,
+      "spec": "TS 31.102 4.2.4",
+      "duration_ns": 72433542
+    },
+    {
+      "name": "EF.START-HFN (6F5B)",
+      "category": "usim",
+      "passed": true,
+      "actual": "6 bytes",
+      "sw": 36864,
+      "spec": "TS 31.102 4.2.44",
+      "duration_ns": 69755833
+    },
+    {
+      "name": "EF.THRESHOLD (6F5C)",
+      "category": "usim",
+      "passed": true,
+      "actual": "3 bytes",
+      "sw": 36864,
+      "spec": "TS 31.102 4.2.45",
+      "duration_ns": 69107125
+    },
+    {
+      "name": "EF.SMS (6F3C)",
+      "category": "usim",
+      "passed": true,
+      "actual": "Present (linear fixed)",
+      "sw": 36864,
+      "spec": "TS 31.102 4.2.25",
+      "duration_ns": 49060584
+    },
+    {
+      "name": "EF.SMSP (6F42)",
+      "category": "usim",
+      "passed": true,
+      "actual": "Present (linear fixed)",
+      "sw": 36864,
+      "spec": "TS 31.102 4.2.27",
+      "duration_ns": 38763625
+    },
+    {
+      "name": "EF.MSISDN (6F40)",
+      "category": "usim",
+      "passed": true,
+      "actual": "Present (linear fixed)",
+      "sw": 36864,
+      "spec": "TS 31.102 4.2.26",
+      "duration_ns": 40230709
+    },
+    {
+      "name": "EF.ECC (6FB7)",
+      "category": "usim",
+      "passed": true,
+      "actual": "Present (linear fixed)",
+      "sw": 36864,
+      "spec": "TS 31.102 4.2.21",
+      "duration_ns": 38890083
+    },
+    {
+      "name": "ISIM Application Select",
+      "category": "isim",
+      "passed": false,
+      "expected": "SW=9000",
+      "actual": "SW=6A82",
+      "error": "ISIM not available",
+      "spec": "TS 31.103",
+      "duration_ns": 0
+    },
+    {
+      "name": "3G AUTHENTICATE (P2=0x81)",
+      "category": "auth",
+      "passed": true,
+      "actual": "AUTS returned (SQN resync needed), SQNms=000000000000",
+      "spec": "TS 31.102 7.1.2",
+      "duration_ns": 209555542
+    },
+    {
+      "name": "GSM AUTHENTICATE (P2=0x80)",
+      "category": "auth",
+      "passed": true,
+      "actual": "14 bytes response",
+      "apdu": "00880080111088E163D83FB548FDA575D2D5698728F200",
+      "response": "04EE6320700805BEA80A9B05C800",
+      "sw": 36864,
+      "spec": "TS 31.102 7.1.1",
+      "duration_ns": 41583709
+    },
+    {
+      "name": "Multiple AUTHENTICATE (3x)",
+      "category": "auth",
+      "passed": true,
+      "actual": "0 success, 3 sync-fail out of 3",
+      "spec": "TS 31.102 7.1.2",
+      "duration_ns": 654471083
+    },
+    {
+      "name": "Authentication via sim.RunAuthentication",
+      "category": "auth",
+      "passed": true,
+      "actual": "XRES=C6BDC298..., CK=0306A947..., IK=8343231E...",
+      "spec": "TS 35.206",
+      "duration_ns": 59791
+    },
+    {
+      "name": "SELECT MF (3F00)",
+      "category": "apdu",
+      "passed": true,
+      "actual": "SW=9000",
+      "apdu": "00A4000C023F00",
+      "sw": 36864,
+      "spec": "TS 102.221 11.1.1",
+      "duration_ns": 33546625
+    },
+    {
+      "name": "SELECT by AID (USIM)",
+      "category": "apdu",
+      "passed": true,
+      "actual": "SW=6159, AID=A0000000871002FFFFFFFF8907090000",
+      "apdu": "00A4040410A0000000871002FFFFFFFF8907090000",
+      "sw": 24921,
+      "spec": "TS 102.221 11.1.1",
+      "duration_ns": 76898875
+    },
+    {
+      "name": "SELECT by FID (EF.ICCID)",
+      "category": "apdu",
+      "passed": true,
+      "actual": "SW=6120",
+      "apdu": "00A40004022FE2",
+      "sw": 24864,
+      "spec": "TS 102.221 11.1.1",
+      "duration_ns": 71642875
+    },
+    {
+      "name": "SELECT P2 Variants",
+      "category": "apdu",
+      "passed": true,
+      "actual": "P2=04: SW=6120, P2=0C: SW=9000, P2=00: SW=6A86 (fail)",
+      "spec": "TS 102.221 11.1.1",
+      "duration_ns": 119503791
+    },
+    {
+      "name": "READ BINARY",
+      "category": "apdu",
+      "passed": true,
+      "actual": "10 bytes: 988812010000200860F8",
+      "apdu": "00B000000A",
+      "response": "988812010000200860F8",
+      "sw": 36864,
+      "spec": "TS 102.221 11.1.3",
+      "duration_ns": 102582125
+    },
+    {
+      "name": "READ BINARY with Offset",
+      "category": "apdu",
+      "passed": true,
+      "actual": "offset=5, 5 bytes",
+      "apdu": "00B0000505",
+      "response": "00200860F8",
+      "sw": 36864,
+      "spec": "TS 102.221 11.1.3",
+      "duration_ns": 111392875
+    },
+    {
+      "name": "READ RECORD",
+      "category": "apdu",
+      "passed": true,
+      "actual": "record #1, 52 bytes",
+      "apdu": "00B2010434",
+      "sw": 36864,
+      "spec": "TS 102.221 11.1.5",
+      "duration_ns": 164352083
+    },
+    {
+      "name": "STATUS",
+      "category": "apdu",
+      "passed": true,
+      "actual": "Not implemented by card (optional)",
+      "apdu": "00F2000000",
+      "sw": 27904,
+      "spec": "TS 102.221 11.1.2",
+      "duration_ns": 104659458
+    },
+    {
+      "name": "VERIFY PIN Status Query",
+      "category": "apdu",
+      "passed": true,
+      "actual": "3 attempts remaining",
+      "apdu": "00200001",
+      "sw": 25539,
+      "spec": "TS 102.221 11.1.9",
+      "duration_ns": 17326000
+    },
+    {
+      "name": "GET RESPONSE after 61XX",
+      "category": "apdu",
+      "passed": true,
+      "actual": "Got 89 bytes after 6159",
+      "apdu": "00C0000059",
+      "sw": 36864,
+      "spec": "TS 102.221 11.1.12",
+      "duration_ns": 83461750
+    },
+    {
+      "name": "Wrong PIN -\u003e 63CX",
+      "category": "security",
+      "passed": true,
+      "expected": "SW=63CX",
+      "actual": "Test skipped (avoid blocking PIN)",
+      "spec": "TS 102.221 11.1.9",
+      "duration_ns": 333
+    },
+    {
+      "name": "File Not Found -\u003e 6A82",
+      "category": "security",
+      "passed": true,
+      "actual": "SW=6A82 (File not found) as expected",
+      "apdu": "00A4000402FFFF",
+      "sw": 27266,
+      "spec": "TS 102.221 11.1.1",
+      "duration_ns": 18832083
+    },
+    {
+      "name": "Security Condition Not Satisfied -\u003e 6982",
+      "category": "security",
+      "passed": true,
+      "actual": "Security conditions checked during file access tests",
+      "spec": "TS 102.221",
+      "duration_ns": 42
+    },
+    {
+      "name": "Wrong Length -\u003e 6700",
+      "category": "security",
+      "passed": true,
+      "actual": "SW=6700 (length/PIN handled)",
+      "apdu": "00200001053132333435",
+      "sw": 26368,
+      "spec": "TS 102.221",
+      "duration_ns": 20905250
+    },
+    {
+      "name": "Wrong P1P2 -\u003e 6A86/6B00",
+      "category": "security",
+      "passed": true,
+      "actual": "SW=6A86 (P1P2 error)",
+      "apdu": "00A4FF00023F00",
+      "sw": 27270,
+      "spec": "TS 102.221",
+      "duration_ns": 14053708
+    },
+    {
+      "name": "Wrong CLA -\u003e 6E00",
+      "category": "security",
+      "passed": true,
+      "actual": "Rejected by reader (CLA=0xFF reserved for PC/SC)",
+      "apdu": "FFA40000023F00",
+      "spec": "TS 102.221",
+      "duration_ns": 1478647083
+    },
+    {
+      "name": "Wrong INS -\u003e 6D00",
+      "category": "security",
+      "passed": true,
+      "actual": "Rejected at transport level",
+      "apdu": "00FF000000",
+      "spec": "TS 102.221",
+      "duration_ns": 1485968834
+    }
+  ]
+}

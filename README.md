@@ -2,7 +2,7 @@
 
 A command-line tool written in Go for reading and writing SIM/USIM/ISIM card parameters using PC/SC smart card readers.
 
-**Version 2.5.0**
+**Version 3.1.0**
 
 ---
 
@@ -51,6 +51,7 @@ This software is provided "AS IS", without warranty of any kind, express or impl
   - Set PIN/PUK codes
   - Safe dry-run mode for testing
 - **Authentication**: Test 3G/4G/5G authentication with Milenage and TUAK algorithms
+- **Test Suite**: Comprehensive conformance testing (46+ tests) with JSON/HTML reports
 - **Card Analysis**: Auto-detect card type by ATR, read EF_DIR, file access conditions
 - **Multiple ADM Keys**: Support for up to 4 ADM keys (`-adm`, `-adm2`, `-adm3`, `-adm4`)
 - **PCOM Scripts**: Execute personalization scripts for programmable cards
@@ -132,6 +133,9 @@ make build-windows
 
 # Test authentication with card
 ./sim_reader -auth -auth-k YOUR_K -auth-opc YOUR_OPC -auth-mcc 250 -auth-mnc 88
+
+# Run comprehensive test suite
+./sim_reader -test -adm YOUR_ADM -auth-k YOUR_K -auth-opc YOUR_OPC -test-output report
 
 # (Programmable cards only) Show / set proprietary USIM algorithm selector (EF 8F90)
 # Supported values: milenage, s3g-128, tuak, s3g-256
@@ -239,6 +243,23 @@ make build-windows
 
 **Note**: Programmable card write operations use JSON configuration with `programmable` section. See [docs/PROGRAMMABLE_CARDS.md](docs/PROGRAMMABLE_CARDS.md) for details.
 
+### Test Suite Options
+
+| Flag | Description |
+|------|-------------|
+| `-test` | Run comprehensive SIM card test suite (46+ tests) |
+| `-test-output PREFIX` | Output file prefix for JSON and HTML reports |
+| `-test-only CATEGORIES` | Run specific categories: usim,isim,auth,apdu,security |
+
+**Test Categories:**
+- `usim` - 24 tests for USIM EF files (IMSI, AD, UST, PLMN lists, Keys, etc.)
+- `isim` - 8 tests for ISIM parameters (IMPI, IMPU, Domain, IST, PCSCF)
+- `auth` - 4 tests for 3G/GSM authentication and Milenage vectors
+- `apdu` - 10 tests for low-level APDU commands (SELECT, READ, VERIFY)
+- `security` - 7 negative tests (wrong PIN, CLA, INS, file not found)
+
+See [docs/TESTING.md](docs/TESTING.md) for detailed test documentation.
+
 ### Other Options
 
 | Flag | Description |
@@ -315,6 +336,7 @@ The `-json` flag exports all readable card parameters. Edit and re-import with `
 | [docs/WRITING.md](docs/WRITING.md) | Writing card data |
 | [docs/AUTHENTICATION.md](docs/AUTHENTICATION.md) | Authentication testing (Milenage/TUAK) |
 | [docs/PROGRAMMABLE_CARDS.md](docs/PROGRAMMABLE_CARDS.md) | Programmable SIM cards (Grcard, open5gs) |
+| [docs/TESTING.md](docs/TESTING.md) | Comprehensive test suite for USIM/ISIM |
 | [docs/GLOBALPLATFORM.md](docs/GLOBALPLATFORM.md) | GlobalPlatform secure channels |
 | [docs/PCOM.md](docs/PCOM.md) | PCOM script execution |
 | [docs/EF_FILES.md](docs/EF_FILES.md) | EF file reference |

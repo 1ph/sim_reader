@@ -1,0 +1,650 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SIM Card Test Report</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #1a1a2e; color: #eee; padding: 20px; line-height: 1.6;
+        }
+        .container { max-width: 1200px; margin: 0 auto; }
+        h1 { color: #00d4ff; margin-bottom: 20px; }
+        h2 { color: #ff6b6b; margin: 20px 0 10px; border-bottom: 1px solid #333; padding-bottom: 5px; }
+        .summary { 
+            display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); 
+            gap: 15px; margin-bottom: 30px;
+        }
+        .stat { 
+            background: #16213e; padding: 20px; border-radius: 8px; text-align: center;
+        }
+        .stat-value { font-size: 2em; font-weight: bold; }
+        .stat-label { color: #888; font-size: 0.9em; }
+        .pass .stat-value { color: #4ade80; }
+        .fail .stat-value { color: #f87171; }
+        .rate .stat-value { color: #fbbf24; }
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        th, td { padding: 10px; text-align: left; border-bottom: 1px solid #333; }
+        th { background: #16213e; color: #00d4ff; }
+        tr:hover { background: #1f2937; }
+        .status-pass { color: #4ade80; }
+        .status-fail { color: #f87171; }
+        .apdu { font-family: monospace; font-size: 0.85em; color: #a5b4fc; }
+        .error { color: #f87171; font-size: 0.9em; }
+        .spec { color: #888; font-size: 0.85em; }
+        details { margin: 10px 0; }
+        summary { cursor: pointer; padding: 10px; background: #16213e; border-radius: 5px; }
+        summary:hover { background: #1f2937; }
+        .meta { color: #888; font-size: 0.9em; margin-bottom: 20px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔐 SIM Card Test Report</h1>
+        
+        <div class="meta">
+            <p>Generated: 2025-12-28 20:46:49</p>
+            <p>ATR: <span class="apdu">3B9F96801FC78031A073BE21136743200718000001A5</span></p>
+            
+        </div>
+        
+        <div class="summary">
+            <div class="stat">
+                <div class="stat-value">46</div>
+                <div class="stat-label">Total Tests</div>
+            </div>
+            <div class="stat pass">
+                <div class="stat-value">45</div>
+                <div class="stat-label">Passed</div>
+            </div>
+            <div class="stat fail">
+                <div class="stat-value">1</div>
+                <div class="stat-label">Failed</div>
+            </div>
+            <div class="stat rate">
+                <div class="stat-value">97.8%</div>
+                <div class="stat-label">Pass Rate</div>
+            </div>
+        </div>
+        
+        
+        <h2>❌ Failed Tests</h2>
+        <ul>
+            
+            <li class="status-fail">ISIM Application Select</li>
+            
+        </ul>
+        
+        
+        <h2>📋 All Results</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Status</th>
+                    <th>Category</th>
+                    <th>Test Name</th>
+                    <th>Result</th>
+                    <th>Details</th>
+                </tr>
+            </thead>
+            <tbody>
+                
+                <tr>
+                    <td class="status-pass">✓</td>
+                    <td>usim</td>
+                    <td>USIM Application Select</td>
+                    <td>SW=9000, AID=A0000000871002FFFFFFFF8907090000</td>
+                    <td>
+                        
+                        
+                        <span class="spec">TS 31.102</span>
+                    </td>
+                </tr>
+                
+                <tr>
+                    <td class="status-pass">✓</td>
+                    <td>usim</td>
+                    <td>EF.IMSI (6F07)</td>
+                    <td>901700000028006</td>
+                    <td>
+                        
+                        
+                        <span class="spec">TS 31.102 4.2.2</span>
+                    </td>
+                </tr>
+                
+                <tr>
+                    <td class="status-pass">✓</td>
+                    <td>usim</td>
+                    <td>EF.AD (6FAD)</td>
+                    <td>Mode=Normal, MNC_len=2</td>
+                    <td>
+                        
+                        
+                        <span class="spec">TS 31.102 4.2.18</span>
+                    </td>
+                </tr>
+                
+                <tr>
+                    <td class="status-pass">✓</td>
+                    <td>usim</td>
+                    <td>EF.UST (6F38)</td>
+                    <td>9 bytes, 34 services enabled</td>
+                    <td>
+                        
+                        
+                        <span class="spec">TS 31.102 4.2.8</span>
+                    </td>
+                </tr>
+                
+                <tr>
+                    <td class="status-pass">✓</td>
+                    <td>usim</td>
+                    <td>EF.EST (6F56)</td>
+                    <td>9 bytes</td>
+                    <td>
+                        
+                        
+                        <span class="spec">TS 31.102 4.2.47</span>
+                    </td>
+                </tr>
+                
+                <tr>
+                    <td class="status-pass">✓</td>
+                    <td>usim</td>
+                    <td>EF.ACC (6F78)</td>
+                    <td>0x0040 (classes: 6)</td>
+                    <td>
+                        
+                        
+                        <span class="spec">TS 31.102 4.2.15</span>
+                    </td>
+                </tr>
+                
+                <tr>
+                    <td class="status-pass">✓</td>
+                    <td>usim</td>
+                    <td>EF.SPN (6F46)</td>
+                    <td>&#34;&#34;</td>
+                    <td>
+                        
+                        
+                        <span class="spec">TS 31.102 4.2.12</span>
+                    </td>
+                </tr>
+                
+                <tr>
+                    <td class="status-pass">✓</td>
+                    <td>usim</td>
+                    <td>EF.HPPLMN (6F31)</td>
+                    <td>30 min (raw=0x05)</td>
+                    <td>
+                        
+                        
+                        <span class="spec">TS 31.102 4.2.6</span>
+                    </td>
+                </tr>
+                
+                <tr>
+                    <td class="status-pass">✓</td>
+                    <td>usim</td>
+                    <td>EF.PLMNwAcT (6F60)</td>
+                    <td>60 bytes, 12 entries</td>
+                    <td>
+                        
+                        
+                        <span class="spec">TS 31.102 4.2.5</span>
+                    </td>
+                </tr>
+                
+                <tr>
+                    <td class="status-pass">✓</td>
+                    <td>usim</td>
+                    <td>EF.OPLMNwAcT (6F61)</td>
+                    <td>60 bytes, 12 entries</td>
+                    <td>
+                        
+                        
+                        <span class="spec">TS 31.102 4.2.53</span>
+                    </td>
+                </tr>
+                
+                <tr>
+                    <td class="status-pass">✓</td>
+                    <td>usim</td>
+                    <td>EF.HPLMNwAcT (6F62)</td>
+                    <td>25 bytes, 5 entries</td>
+                    <td>
+                        
+                        
+                        <span class="spec">TS 31.102 4.2.51</span>
+                    </td>
+                </tr>
+                
+                <tr>
+                    <td class="status-pass">✓</td>
+                    <td>usim</td>
+                    <td>EF.FPLMN (6F7B)</td>
+                    <td>12 bytes, 4/4 entries used</td>
+                    <td>
+                        
+                        
+                        <span class="spec">TS 31.102 4.2.16</span>
+                    </td>
+                </tr>
+                
+                <tr>
+                    <td class="status-pass">✓</td>
+                    <td>usim</td>
+                    <td>EF.LOCI (6F7E)</td>
+                    <td>11 bytes, raw=FFFFFFFFFFFF</td>
+                    <td>
+                        
+                        
+                        <span class="spec">TS 31.102 4.2.17</span>
+                    </td>
+                </tr>
+                
+                <tr>
+                    <td class="status-pass">✓</td>
+                    <td>usim</td>
+                    <td>EF.PSLOCI (6F73)</td>
+                    <td>14 bytes</td>
+                    <td>
+                        
+                        
+                        <span class="spec">TS 31.102 4.2.23</span>
+                    </td>
+                </tr>
+                
+                <tr>
+                    <td class="status-pass">✓</td>
+                    <td>usim</td>
+                    <td>EF.EPSLOCI (6FE3)</td>
+                    <td>Not present (optional)</td>
+                    <td>
+                        
+                        
+                        <span class="spec">TS 31.102 4.2.48</span>
+                    </td>
+                </tr>
+                
+                <tr>
+                    <td class="status-pass">✓</td>
+                    <td>usim</td>
+                    <td>EF.Keys (6F08)</td>
+                    <td>33 bytes, KSI=0x07</td>
+                    <td>
+                        
+                        
+                        <span class="spec">TS 31.102 4.2.6</span>
+                    </td>
+                </tr>
+                
+                <tr>
+                    <td class="status-pass">✓</td>
+                    <td>usim</td>
+                    <td>EF.KeysPS (6F09)</td>
+                    <td>33 bytes, KSI=0x07</td>
+                    <td>
+                        
+                        
+                        <span class="spec">TS 31.102 4.2.6</span>
+                    </td>
+                </tr>
+                
+                <tr>
+                    <td class="status-pass">✓</td>
+                    <td>usim</td>
+                    <td>EF.LI (6F05)</td>
+                    <td>10 bytes, 5 languages</td>
+                    <td>
+                        
+                        
+                        <span class="spec">TS 31.102 4.2.4</span>
+                    </td>
+                </tr>
+                
+                <tr>
+                    <td class="status-pass">✓</td>
+                    <td>usim</td>
+                    <td>EF.START-HFN (6F5B)</td>
+                    <td>6 bytes</td>
+                    <td>
+                        
+                        
+                        <span class="spec">TS 31.102 4.2.44</span>
+                    </td>
+                </tr>
+                
+                <tr>
+                    <td class="status-pass">✓</td>
+                    <td>usim</td>
+                    <td>EF.THRESHOLD (6F5C)</td>
+                    <td>3 bytes</td>
+                    <td>
+                        
+                        
+                        <span class="spec">TS 31.102 4.2.45</span>
+                    </td>
+                </tr>
+                
+                <tr>
+                    <td class="status-pass">✓</td>
+                    <td>usim</td>
+                    <td>EF.SMS (6F3C)</td>
+                    <td>Present (linear fixed)</td>
+                    <td>
+                        
+                        
+                        <span class="spec">TS 31.102 4.2.25</span>
+                    </td>
+                </tr>
+                
+                <tr>
+                    <td class="status-pass">✓</td>
+                    <td>usim</td>
+                    <td>EF.SMSP (6F42)</td>
+                    <td>Present (linear fixed)</td>
+                    <td>
+                        
+                        
+                        <span class="spec">TS 31.102 4.2.27</span>
+                    </td>
+                </tr>
+                
+                <tr>
+                    <td class="status-pass">✓</td>
+                    <td>usim</td>
+                    <td>EF.MSISDN (6F40)</td>
+                    <td>Present (linear fixed)</td>
+                    <td>
+                        
+                        
+                        <span class="spec">TS 31.102 4.2.26</span>
+                    </td>
+                </tr>
+                
+                <tr>
+                    <td class="status-pass">✓</td>
+                    <td>usim</td>
+                    <td>EF.ECC (6FB7)</td>
+                    <td>Present (linear fixed)</td>
+                    <td>
+                        
+                        
+                        <span class="spec">TS 31.102 4.2.21</span>
+                    </td>
+                </tr>
+                
+                <tr>
+                    <td class="status-fail">✗</td>
+                    <td>isim</td>
+                    <td>ISIM Application Select</td>
+                    <td>SW=6A82</td>
+                    <td>
+                        
+                        <span class="error">ISIM not available</span><br>
+                        <span class="spec">TS 31.103</span>
+                    </td>
+                </tr>
+                
+                <tr>
+                    <td class="status-pass">✓</td>
+                    <td>auth</td>
+                    <td>3G AUTHENTICATE (P2=0x81)</td>
+                    <td>AUTS returned (SQN resync needed), SQNms=000000000000</td>
+                    <td>
+                        
+                        
+                        <span class="spec">TS 31.102 7.1.2</span>
+                    </td>
+                </tr>
+                
+                <tr>
+                    <td class="status-pass">✓</td>
+                    <td>auth</td>
+                    <td>GSM AUTHENTICATE (P2=0x80)</td>
+                    <td>14 bytes response</td>
+                    <td>
+                        <span class="apdu">APDU: 00880080111088E163D83FB548FDA575D2D5698728F200</span><br>
+                        
+                        <span class="spec">TS 31.102 7.1.1</span>
+                    </td>
+                </tr>
+                
+                <tr>
+                    <td class="status-pass">✓</td>
+                    <td>auth</td>
+                    <td>Multiple AUTHENTICATE (3x)</td>
+                    <td>0 success, 3 sync-fail out of 3</td>
+                    <td>
+                        
+                        
+                        <span class="spec">TS 31.102 7.1.2</span>
+                    </td>
+                </tr>
+                
+                <tr>
+                    <td class="status-pass">✓</td>
+                    <td>auth</td>
+                    <td>Authentication via sim.RunAuthentication</td>
+                    <td>XRES=C6BDC298..., CK=0306A947..., IK=8343231E...</td>
+                    <td>
+                        
+                        
+                        <span class="spec">TS 35.206</span>
+                    </td>
+                </tr>
+                
+                <tr>
+                    <td class="status-pass">✓</td>
+                    <td>apdu</td>
+                    <td>SELECT MF (3F00)</td>
+                    <td>SW=9000</td>
+                    <td>
+                        <span class="apdu">APDU: 00A4000C023F00</span><br>
+                        
+                        <span class="spec">TS 102.221 11.1.1</span>
+                    </td>
+                </tr>
+                
+                <tr>
+                    <td class="status-pass">✓</td>
+                    <td>apdu</td>
+                    <td>SELECT by AID (USIM)</td>
+                    <td>SW=6159, AID=A0000000871002FFFFFFFF8907090000</td>
+                    <td>
+                        <span class="apdu">APDU: 00A4040410A0000000871002FFFFFFFF8907090000</span><br>
+                        
+                        <span class="spec">TS 102.221 11.1.1</span>
+                    </td>
+                </tr>
+                
+                <tr>
+                    <td class="status-pass">✓</td>
+                    <td>apdu</td>
+                    <td>SELECT by FID (EF.ICCID)</td>
+                    <td>SW=6120</td>
+                    <td>
+                        <span class="apdu">APDU: 00A40004022FE2</span><br>
+                        
+                        <span class="spec">TS 102.221 11.1.1</span>
+                    </td>
+                </tr>
+                
+                <tr>
+                    <td class="status-pass">✓</td>
+                    <td>apdu</td>
+                    <td>SELECT P2 Variants</td>
+                    <td>P2=04: SW=6120, P2=0C: SW=9000, P2=00: SW=6A86 (fail)</td>
+                    <td>
+                        
+                        
+                        <span class="spec">TS 102.221 11.1.1</span>
+                    </td>
+                </tr>
+                
+                <tr>
+                    <td class="status-pass">✓</td>
+                    <td>apdu</td>
+                    <td>READ BINARY</td>
+                    <td>10 bytes: 988812010000200860F8</td>
+                    <td>
+                        <span class="apdu">APDU: 00B000000A</span><br>
+                        
+                        <span class="spec">TS 102.221 11.1.3</span>
+                    </td>
+                </tr>
+                
+                <tr>
+                    <td class="status-pass">✓</td>
+                    <td>apdu</td>
+                    <td>READ BINARY with Offset</td>
+                    <td>offset=5, 5 bytes</td>
+                    <td>
+                        <span class="apdu">APDU: 00B0000505</span><br>
+                        
+                        <span class="spec">TS 102.221 11.1.3</span>
+                    </td>
+                </tr>
+                
+                <tr>
+                    <td class="status-pass">✓</td>
+                    <td>apdu</td>
+                    <td>READ RECORD</td>
+                    <td>record #1, 52 bytes</td>
+                    <td>
+                        <span class="apdu">APDU: 00B2010434</span><br>
+                        
+                        <span class="spec">TS 102.221 11.1.5</span>
+                    </td>
+                </tr>
+                
+                <tr>
+                    <td class="status-pass">✓</td>
+                    <td>apdu</td>
+                    <td>STATUS</td>
+                    <td>Not implemented by card (optional)</td>
+                    <td>
+                        <span class="apdu">APDU: 00F2000000</span><br>
+                        
+                        <span class="spec">TS 102.221 11.1.2</span>
+                    </td>
+                </tr>
+                
+                <tr>
+                    <td class="status-pass">✓</td>
+                    <td>apdu</td>
+                    <td>VERIFY PIN Status Query</td>
+                    <td>3 attempts remaining</td>
+                    <td>
+                        <span class="apdu">APDU: 00200001</span><br>
+                        
+                        <span class="spec">TS 102.221 11.1.9</span>
+                    </td>
+                </tr>
+                
+                <tr>
+                    <td class="status-pass">✓</td>
+                    <td>apdu</td>
+                    <td>GET RESPONSE after 61XX</td>
+                    <td>Got 89 bytes after 6159</td>
+                    <td>
+                        <span class="apdu">APDU: 00C0000059</span><br>
+                        
+                        <span class="spec">TS 102.221 11.1.12</span>
+                    </td>
+                </tr>
+                
+                <tr>
+                    <td class="status-pass">✓</td>
+                    <td>security</td>
+                    <td>Wrong PIN -&gt; 63CX</td>
+                    <td>Test skipped (avoid blocking PIN)</td>
+                    <td>
+                        
+                        
+                        <span class="spec">TS 102.221 11.1.9</span>
+                    </td>
+                </tr>
+                
+                <tr>
+                    <td class="status-pass">✓</td>
+                    <td>security</td>
+                    <td>File Not Found -&gt; 6A82</td>
+                    <td>SW=6A82 (File not found) as expected</td>
+                    <td>
+                        <span class="apdu">APDU: 00A4000402FFFF</span><br>
+                        
+                        <span class="spec">TS 102.221 11.1.1</span>
+                    </td>
+                </tr>
+                
+                <tr>
+                    <td class="status-pass">✓</td>
+                    <td>security</td>
+                    <td>Security Condition Not Satisfied -&gt; 6982</td>
+                    <td>Security conditions checked during file access tests</td>
+                    <td>
+                        
+                        
+                        <span class="spec">TS 102.221</span>
+                    </td>
+                </tr>
+                
+                <tr>
+                    <td class="status-pass">✓</td>
+                    <td>security</td>
+                    <td>Wrong Length -&gt; 6700</td>
+                    <td>SW=6700 (length/PIN handled)</td>
+                    <td>
+                        <span class="apdu">APDU: 00200001053132333435</span><br>
+                        
+                        <span class="spec">TS 102.221</span>
+                    </td>
+                </tr>
+                
+                <tr>
+                    <td class="status-pass">✓</td>
+                    <td>security</td>
+                    <td>Wrong P1P2 -&gt; 6A86/6B00</td>
+                    <td>SW=6A86 (P1P2 error)</td>
+                    <td>
+                        <span class="apdu">APDU: 00A4FF00023F00</span><br>
+                        
+                        <span class="spec">TS 102.221</span>
+                    </td>
+                </tr>
+                
+                <tr>
+                    <td class="status-pass">✓</td>
+                    <td>security</td>
+                    <td>Wrong CLA -&gt; 6E00</td>
+                    <td>Rejected by reader (CLA=0xFF reserved for PC/SC)</td>
+                    <td>
+                        <span class="apdu">APDU: FFA40000023F00</span><br>
+                        
+                        <span class="spec">TS 102.221</span>
+                    </td>
+                </tr>
+                
+                <tr>
+                    <td class="status-pass">✓</td>
+                    <td>security</td>
+                    <td>Wrong INS -&gt; 6D00</td>
+                    <td>Rejected at transport level</td>
+                    <td>
+                        <span class="apdu">APDU: 00FF000000</span><br>
+                        
+                        <span class="spec">TS 102.221</span>
+                    </td>
+                </tr>
+                
+            </tbody>
+        </table>
+    </div>
+</body>
+</html>

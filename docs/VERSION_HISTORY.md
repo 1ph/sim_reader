@@ -1,5 +1,132 @@
 # Version History
 
+## v3.1.0 - Comprehensive SIM Card Test Suite
+
+### Full Test Suite for USIM/ISIM Cards
+Complete implementation of SIM card conformance testing according to 3GPP TS 31.102, TS 31.103, and ETSI TS 102.221 specifications:
+
+- **46+ automated tests** covering all major card functions
+- **JSON and HTML reports** for test documentation and analysis
+- **Specification references** for each test (e.g., "TS 31.102 4.2.8")
+
+### Test Categories
+
+| Category | Tests | Description |
+|----------|-------|-------------|
+| usim | 24 | USIM EF files: IMSI, AD, UST, EST, ACC, SPN, PLMN lists, Keys, LOCI |
+| isim | 8 | ISIM parameters: IMPI, IMPU, Domain, IST, PCSCF, ARR |
+| auth | 4 | 3G/GSM AUTHENTICATE, Milenage vectors, SQN resync |
+| apdu | 10 | Low-level commands: SELECT, READ BINARY/RECORD, STATUS, VERIFY |
+| security | 7 | Negative tests: wrong PIN, CLA, INS, P1P2, file not found |
+
+### USIM Tests (TS 31.102)
+- Application selection and AID verification
+- EF.IMSI - International Mobile Subscriber Identity
+- EF.AD - Administrative Data (operation mode, MNC length)
+- EF.UST - USIM Service Table (enabled services count)
+- EF.EST - Enabled Services Table
+- EF.ACC - Access Control Class
+- EF.SPN - Service Provider Name
+- EF.HPPLMN - HPLMN search period
+- PLMN lists: PLMNwAcT, OPLMNwAcT, HPLMNwAcT, FPLMN
+- Location files: LOCI, PSLOCI, EPSLOCI
+- Key files: Keys, KeysPS (KSI verification)
+- EF.LI - Language preference
+- EF.START-HFN, EF.THRESHOLD
+- Linear fixed files: SMS, SMSP, MSISDN, ECC
+
+### ISIM Tests (TS 31.103)
+- Application selection
+- EF.IMPI - IMS Private User Identity (BER-TLV tag 0x80)
+- EF.IMPU - IMS Public User Identity (linear fixed)
+- EF.DOMAIN - Home Network Domain Name
+- EF.IST - ISIM Service Table
+- EF.PCSCF - P-CSCF addresses
+- EF.AD - Administrative Data (ISIM variant)
+- EF.ARR - Access Rule Reference
+
+### Authentication Tests (TS 35.206)
+- 3G AUTHENTICATE (P2=0x81) with AUTS/SQN resync detection
+- GSM AUTHENTICATE (P2=0x80) for 2G context
+- Multiple sequential authentications
+- Milenage vector computation and verification
+
+### APDU Command Tests (TS 102.221)
+- SELECT by MF (3F00), AID, FID
+- SELECT P2 variants (FCP, no data, FCI)
+- READ BINARY with offset
+- READ RECORD (absolute mode, 6CXX handling)
+- STATUS command (optional)
+- VERIFY PIN status query (63CX remaining attempts)
+- GET RESPONSE after 61XX
+
+### Security/Negative Tests
+- Wrong PIN → 63CX (skipped to avoid blocking)
+- File not found → 6A82
+- Security condition not satisfied → 6982
+- Wrong length → 6700
+- Wrong P1P2 → 6A86/6B00
+- Wrong CLA → 6E00 (PC/SC reader filtering)
+- Wrong INS → 6D00/6E00
+
+### Card State Management
+- **Automatic warm reset** on connection to ensure clean card state
+- **Reset between test categories** to prevent cross-contamination
+- **Robust error handling** for transport-level failures
+
+### New Command Line Flags
+
+| Flag | Description |
+|------|-------------|
+| `-test` | Run comprehensive SIM card test suite |
+| `-test-output <prefix>` | Output file prefix for reports (.json + .html) |
+| `-test-only <categories>` | Run specific categories: usim,isim,auth,apdu,security |
+
+### Report Formats
+
+#### JSON Report
+```json
+{
+  "timestamp": "2025-12-28T20:46:49Z",
+  "card_atr": "3B9F96801F878031E073FE211B674A357530350265F8",
+  "summary": {
+    "total": 53,
+    "passed": 53,
+    "failed": 0,
+    "pass_rate": 100.0
+  },
+  "results": [...]
+}
+```
+
+#### HTML Report
+- Modern dark theme with responsive layout
+- Color-coded pass/fail status
+- APDU commands and responses
+- Specification references
+- Summary statistics with charts
+
+### Usage Examples
+
+```bash
+# Run full test suite
+./sim_reader -test -adm 24068496 -auth-k F2464E... -auth-opc B10B35... -test-output baseline
+
+# Run only USIM file tests
+./sim_reader -test -test-only usim -adm 24068496
+
+# Run authentication tests
+./sim_reader -test -test-only auth -auth-k F2464E... -auth-opc B10B35...
+
+# Run multiple categories
+./sim_reader -test -test-only usim,isim,auth -adm 24068496
+```
+
+### Documentation
+- New [docs/TESTING.md](TESTING.md) with comprehensive test suite guide
+
+---
+
 ## v3.0.0 - eSIM Profile Encoder/Decoder (SGP.22 SAIP 2.3)
 
 ### Full eSIM Profile Support

@@ -9,14 +9,16 @@ import (
 	"os"
 	"strings"
 
+	"sim_reader/algorithms"
 	"sim_reader/card"
 	"sim_reader/output"
 	"sim_reader/sim"
 	_ "sim_reader/sim/card_drivers"
+	"sim_reader/testing"
 )
 
 var (
-	version = "2.5.0"
+	version = "3.1.0"
 )
 
 func main() {
@@ -134,6 +136,11 @@ func main() {
 	progDryRun := flag.Bool("prog-dry-run", false, "Simulate programming without writing (test mode)")
 	progForce := flag.Bool("prog-force", false, "Force programming on unrecognized cards (DANGEROUS!)")
 
+	// Test suite flags
+	testMode := flag.Bool("test", false, "Run full SIM card test suite")
+	testOutput := flag.String("test-output", "", "Output file prefix for test reports (.json + .html)")
+	testOnly := flag.String("test-only", "", "Run specific test category: usim,isim,auth,apdu,security")
+
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, `SIM Card Reader/Writer v%s
 Read and write SIM/USIM/ISIM card parameters
@@ -248,6 +255,11 @@ PROGRAMMABLE CARD OPTIONS (⚠️  DANGEROUS - CAN PERMANENTLY BRICK CARD!):
   • Use -write <config.json> with "programmable" section to program card
   • See docs/programmable_custom_example.json for example config
 
+TEST SUITE OPTIONS:
+  -test              Run comprehensive SIM card test suite
+  -test-output <p>   Output file prefix (.json + .html reports)
+  -test-only <cat>   Run specific category: usim,isim,auth,apdu,security
+
 EXAMPLES:
   # List readers
   %s -list
@@ -315,7 +327,16 @@ EXAMPLES:
 
   # See docs/programmable_custom_example.json for example config
 
-`, os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0])
+  # Run full test suite
+  %s -test -adm 4444444444444444 -auth-k FFFEFDFCFBFAF9F8F7F6F5F4F3F2F1F0 -auth-opc 808182838485868788898A8B8C8D8E8F -test-output baseline
+
+  # Run only USIM file tests
+  %s -test -test-only usim -adm 4444444444444444
+
+  # Run only authentication tests
+  %s -test -test-only auth -auth-k FFFEFDFCFBFAF9F8F7F6F5F4F3F2F1F0 -auth-opc 808182838485868788898A8B8C8D8E8F
+
+`, os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0], os.Args[0])
 	}
 
 	flag.Parse()
@@ -423,6 +444,18 @@ EXAMPLES:
 		os.Exit(1)
 	}
 	defer reader.Close()
+
+	// Perform warm reset to ensure clean card state
+	// This is essential when running multiple times without removing the card
+	if err := reader.Reconnect(false); err != nil {
+		// Warm reset failed, try cold reset
+		if err := reader.Reconnect(true); err != nil {
+			// If both fail, just continue - some readers don't support reset
+			if !*outputJSON {
+				output.PrintWarning(fmt.Sprintf("Card reset failed: %v (continuing anyway)", err))
+			}
+		}
+	}
 
 	if !*outputJSON {
 		output.PrintReaderInfo(reader.Name(), reader.ATRHex())
@@ -551,6 +584,112 @@ EXAMPLES:
 	// Always detect AIDs from EF_DIR first (silent, for non-standard cards)
 	// This MUST be done before any write operations!
 	sim.DetectApplicationAIDs(reader)
+
+	// Handle test suite mode
+	if *testMode {
+		fmt.Println()
+		output.PrintSuccess("Running SIM Card Test Suite...")
+
+		// Parse auth config for tests
+		var testAuthK, testAuthOPc []byte
+		if *authK != "" {
+			k, err := sim.ParseHexBytes(*authK)
+			if err == nil {
+				testAuthK = k
+			}
+		}
+		if *authOPc != "" {
+			opc, err := sim.ParseHexBytes(*authOPc)
+			if err == nil {
+				testAuthOPc = opc
+			}
+		} else if *authOP != "" {
+			// Compute OPc from OP
+			op, err := sim.ParseHexBytes(*authOP)
+			if err == nil && len(testAuthK) > 0 {
+				computed, _ := algorithms.ComputeOPc(testAuthK, op)
+				testAuthOPc = computed
+			}
+		}
+
+		// Parse ADM key
+		var admKeyBytes []byte
+		if *admKey != "" {
+			key, err := card.ParseADMKey(*admKey)
+			if err == nil {
+				admKeyBytes = key
+			}
+		}
+
+		// Parse SQN and AMF
+		var sqnBytes, amfBytes []byte
+		if *authSQN != "" {
+			sqn, _ := sim.ParseHexBytes(*authSQN)
+			sqnBytes = sqn
+		}
+		if *authAMF != "" {
+			amf, _ := sim.ParseHexBytes(*authAMF)
+			amfBytes = amf
+		}
+
+		// Create test options
+		opts := testing.TestOptions{
+			ADMKey:    admKeyBytes,
+			PIN1:      *pin1,
+			AuthK:     testAuthK,
+			AuthOPc:   testAuthOPc,
+			AuthSQN:   sqnBytes,
+			AuthAMF:   amfBytes,
+			Algorithm: *authAlgo,
+			Verbose:   true,
+		}
+
+		// Create and run test suite
+		suite := testing.NewTestSuite(reader, opts)
+
+		if *testOnly != "" {
+			// Run specific category
+			categories := strings.Split(*testOnly, ",")
+			for _, cat := range categories {
+				cat = strings.TrimSpace(cat)
+				if err := suite.RunCategory(cat); err != nil {
+					output.PrintWarning(fmt.Sprintf("Category %s: %v", cat, err))
+				}
+			}
+		} else {
+			// Run all tests
+			suite.RunAll()
+		}
+
+		// Convert results for output
+		outResults := make([]output.TestResult, len(suite.Results))
+		for i, r := range suite.Results {
+			outResults[i] = output.TestResult{
+				Name:     r.Name,
+				Category: r.Category,
+				Passed:   r.Passed,
+				Expected: r.Expected,
+				Actual:   r.Actual,
+				APDU:     r.APDU,
+				Response: r.Response,
+				SW:       r.SW,
+				Error:    r.Error,
+				Spec:     r.Spec,
+			}
+		}
+
+		// Print summary
+		output.PrintTestSummary(outResults)
+
+		// Generate reports if output prefix specified
+		if *testOutput != "" {
+			if err := suite.GenerateReport(*testOutput); err != nil {
+				output.PrintError(fmt.Sprintf("Report generation failed: %v", err))
+			}
+		}
+
+		os.Exit(0)
+	}
 
 	// GlobalPlatform secure operations (SCP02) - independent of SIM/USIM reading.
 	// If any -gp-* operation is requested, run it and exit.

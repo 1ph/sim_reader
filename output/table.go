@@ -859,6 +859,153 @@ func PrintProgrammableWriteWarning(dryRun bool) {
 	fmt.Println()
 }
 
+// TestResult is imported from testing package for printing
+type TestResult struct {
+	Name     string
+	Category string
+	Passed   bool
+	Expected string
+	Actual   string
+	APDU     string
+	Response string
+	SW       uint16
+	Error    string
+	Spec     string
+}
+
+// TestSummary for test suite results
+type TestSummary struct {
+	Total       int
+	Passed      int
+	Failed      int
+	PassRate    float64
+	ByCategory  map[string]int
+	FailedTests []string
+}
+
+// PrintTestSummary prints test suite summary
+func PrintTestSummary(results []TestResult) {
+	if len(results) == 0 {
+		PrintWarning("No test results")
+		return
+	}
+
+	// Calculate summary
+	passed := 0
+	failed := 0
+	byCategory := make(map[string]int)
+	var failedTests []string
+
+	for _, r := range results {
+		if r.Passed {
+			passed++
+		} else {
+			failed++
+			failedTests = append(failedTests, r.Name)
+		}
+		byCategory[r.Category]++
+	}
+
+	passRate := float64(passed) / float64(len(results)) * 100
+
+	// Summary table
+	fmt.Println()
+	t := newTable()
+	t.SetTitle("TEST SUITE SUMMARY")
+	t.SetColumnConfigs([]table.ColumnConfig{
+		{Number: 1, Colors: colorLabel, WidthMin: 20},
+		{Number: 2, Colors: colorValue, WidthMin: 15},
+	})
+
+	t.AppendRow(table.Row{"Total Tests", len(results)})
+	t.AppendRow(table.Row{"Passed", colorSuccess.Sprintf("%d", passed)})
+	t.AppendRow(table.Row{"Failed", colorError.Sprintf("%d", failed)})
+	t.AppendRow(table.Row{"Pass Rate", fmt.Sprintf("%.1f%%", passRate)})
+	t.Render()
+
+	// By category
+	if len(byCategory) > 0 {
+		fmt.Println()
+		t2 := newTable()
+		t2.SetTitle("TESTS BY CATEGORY")
+		t2.AppendHeader(table.Row{"Category", "Tests", "Passed", "Failed"})
+		t2.SetColumnConfigs([]table.ColumnConfig{
+			{Number: 1, Colors: colorLabel, WidthMin: 15},
+			{Number: 2, Colors: colorValue, WidthMin: 8},
+			{Number: 3, WidthMin: 8},
+			{Number: 4, WidthMin: 8},
+		})
+
+		// Count passed/failed by category
+		catPassed := make(map[string]int)
+		catFailed := make(map[string]int)
+		for _, r := range results {
+			if r.Passed {
+				catPassed[r.Category]++
+			} else {
+				catFailed[r.Category]++
+			}
+		}
+
+		categories := []string{"usim", "isim", "auth", "apdu", "security"}
+		for _, cat := range categories {
+			if count, ok := byCategory[cat]; ok {
+				p := catPassed[cat]
+				f := catFailed[cat]
+				passedStr := colorSuccess.Sprintf("%d", p)
+				failedStr := fmt.Sprintf("%d", f)
+				if f > 0 {
+					failedStr = colorError.Sprintf("%d", f)
+				}
+				t2.AppendRow(table.Row{cat, count, passedStr, failedStr})
+			}
+		}
+		t2.Render()
+	}
+
+	// Failed tests
+	if len(failedTests) > 0 {
+		fmt.Println()
+		t3 := newTable()
+		t3.SetTitle("FAILED TESTS")
+		t3.SetColumnConfigs([]table.ColumnConfig{
+			{Number: 1, Colors: colorError, WidthMin: 60},
+		})
+		for _, name := range failedTests {
+			t3.AppendRow(table.Row{name})
+		}
+		t3.Render()
+	}
+
+	// Detailed results
+	fmt.Println()
+	t4 := newTable()
+	t4.SetTitle("DETAILED TEST RESULTS")
+	t4.AppendHeader(table.Row{"Status", "Category", "Test Name", "Result"})
+	t4.SetColumnConfigs([]table.ColumnConfig{
+		{Number: 1, WidthMin: 6},
+		{Number: 2, Colors: colorLabel, WidthMin: 10},
+		{Number: 3, Colors: colorValue, WidthMin: 35},
+		{Number: 4, Colors: colorValue, WidthMin: 40},
+	})
+
+	for _, r := range results {
+		status := colorSuccess.Sprint("✓")
+		if !r.Passed {
+			status = colorError.Sprint("✗")
+		}
+		result := r.Actual
+		if !r.Passed && r.Error != "" {
+			result = r.Error
+		}
+		if len(result) > 40 {
+			result = result[:37] + "..."
+		}
+		t4.AppendRow(table.Row{status, r.Category, r.Name, result})
+	}
+	t4.Render()
+}
+
 // PrintAuthResult prints authentication test results
 func PrintAuthResult(result *sim.AuthResult, algorithm string) {
 	if result == nil {
