@@ -6,13 +6,16 @@ The tool supports `.pcom` personalization scripts used by programmable cards.
 
 ```bash
 # Run a .pcom personalization script
-./sim_reader -pcom /path/to/script.pcom
+./sim_reader script pcom /path/to/script.pcom
 
 # Run with stop on first error
-./sim_reader -pcom /path/to/script.pcom -pcom-stop-on-error
+./sim_reader script pcom /path/to/script.pcom --stop-on-error
 
-# Run in quiet mode (no command output)
-./sim_reader -pcom /path/to/script.pcom -pcom-verbose=false
+# Run in quiet mode (less output)
+./sim_reader script pcom /path/to/script.pcom --verbose=false
+
+# Run simple APDU script (pysim format)
+./sim_reader script run /path/to/script.apdu
 ```
 
 ## Supported Syntax
@@ -63,7 +66,24 @@ main_profile.pcom (main script)
 ✓ Script completed: 245 commands, 245 success
 ```
 
+## Simple APDU Script Format
+
+For simple APDU scripts (`script run`), use pysim-compatible format:
+
+```
+# This is a comment
+apdu 00A4040008A0000000041010
+apdu 00C00000FF
+apdu 00B0000010
+```
+
+## Command Flags
+
+| Flag | Description |
+|------|-------------|
+| `--verbose` | Verbose output (default: true) |
+| `--stop-on-error` | Stop on first error |
+
 ## Warning
 
 ⚠️ **WARNING:** PCOM scripts can completely erase and reprogram the card. Use only on test cards!
-

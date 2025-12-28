@@ -1,34 +1,45 @@
 # Usage Guide
 
+## Command Structure
+
+sim_reader uses subcommands for different operations:
+
+```
+sim_reader [global flags] <command> [command flags]
+```
+
 ## Reading Card Data
 
 ```bash
 # List available smart card readers
-./sim_reader -list
+./sim_reader read --list
 
 # Read card (auto-selects reader if only one)
-./sim_reader -adm 77111606
+./sim_reader read -a 77111606
 
 # Read card in specific reader
-./sim_reader -r 0 -adm 77111606
+./sim_reader read -r 0 -a 77111606
 
 # Show all UST/IST services in detail
-./sim_reader -adm 77111606 -services
+./sim_reader read -a 77111606 --services
 
 # Show raw hex data
-./sim_reader -adm 77111606 -raw
+./sim_reader read -a 77111606 --raw
 
 # If card is PIN-protected
-./sim_reader -pin 0000 -adm 77111606
+./sim_reader read -p 0000 -a 77111606
+
+# Export to JSON
+./sim_reader read -a 77111606 --json > config.json
 ```
 
 ## Analyzing Cards
 
 ```bash
 # Detailed card analysis
-./sim_reader -analyze
+./sim_reader read --analyze
 
-# This version (2.5.0) provides:
+# This provides:
 # - Deep ATR analysis (Convention, Voltage, Protocols, Fi/Di)
 # - Historical bytes decoding
 # - Card type detection by ATR
@@ -40,7 +51,7 @@
 
 ```bash
 # Show file access conditions (which ADM key is needed for each file)
-./sim_reader -adm-check
+./sim_reader read --adm-check
 
 # This displays a color-coded table:
 # - PIN1 (green) - user PIN required
@@ -52,10 +63,10 @@
 # - Never (bright red) - operation not allowed
 
 # Combine with analyze for full card examination
-./sim_reader -analyze -adm-check
+./sim_reader read --analyze --adm-check
 
 # Debug FCP data for troubleshooting
-./sim_reader -adm-check -debug-fcp
+./sim_reader read --adm-check --debug-fcp
 ```
 
 ## Using Multiple ADM Keys
@@ -64,34 +75,34 @@ Some cards have multiple ADM keys for different access levels:
 
 ```bash
 # Card with single ADM key
-./sim_reader -adm 77111606 -write config.json
+./sim_reader write -a 77111606 -f config.json
 
 # Card with multiple ADM keys
-./sim_reader -adm KEY1 -adm2 KEY2 -adm3 KEY3 -write config.json
+./sim_reader write -a KEY1 --adm2 KEY2 --adm3 KEY3 -f config.json
 
 # Example with hex keys
-./sim_reader -adm 2AABE9DD20141276 -adm2 248484E2663D34D1 -adm3 4BF91F4D6B25B480 -write config.json
+./sim_reader write -a 2AABE9DD20141276 --adm2 248484E2663D34D1 --adm3 4BF91F4D6B25B480 -f config.json
 
 # Check which ADM key is needed for each file
-./sim_reader -adm-check
+./sim_reader read --adm-check
 ```
 
 **Typical ADM key mapping:**
 
 | Key | Flag | Typical Use |
 |-----|------|-------------|
-| ADM1 | `-adm` | Card management, EF_ARR |
-| ADM2 | `-adm2` | USIM/ISIM file writes (IMSI, SPN, PLMN, etc.) |
-| ADM3 | `-adm3` | Specific protected files |
-| ADM4 | `-adm4` | Reserved/special operations |
+| ADM1 | `-a` | Card management, EF_ARR |
+| ADM2 | `--adm2` | USIM/ISIM file writes (IMSI, SPN, PLMN, etc.) |
+| ADM3 | `--adm3` | Specific protected files |
+| ADM4 | `--adm4` | Reserved/special operations |
 
-**Note:** Use `-adm-check` to determine which ADM key is required for specific files on your card.
+**Note:** Use `read --adm-check` to determine which ADM key is required for specific files on your card.
 
 ## Generating Test Data
 
 ```bash
 # Dump card data as Go test code (for regression testing)
-./sim_reader -adm 77111606 -dump "MyCard"
+./sim_reader read -a 77111606 --dump "MyCard"
 
 # Output can be copied directly to sim/decoder_test.go
 ```
@@ -111,12 +122,12 @@ Many cards have multiple ADM keys for different access levels:
 
 | Flag | Key Type | Description |
 |------|----------|-------------|
-| `-adm` | ADM1 | Primary administrative key |
-| `-adm2` | ADM2 | Secondary administrative key (most write operations) |
-| `-adm3` | ADM3 | Tertiary administrative key |
-| `-adm4` | ADM4 | Quaternary administrative key |
+| `-a` | ADM1 | Primary administrative key |
+| `--adm2` | ADM2 | Secondary administrative key (most write operations) |
+| `--adm3` | ADM3 | Tertiary administrative key |
+| `--adm4` | ADM4 | Quaternary administrative key |
 
-Use `-adm-check` to see which key is required for each file operation.
+Use `read --adm-check` to see which key is required for each file operation.
 
 ## Output Example
 
@@ -162,4 +173,3 @@ Use `-adm-check` to see which key is required for each file operation.
 - **ADM4** - Red (admin key 4)
 - **Always** - Bright Green (no auth needed)
 - **Never** - Bright Red (not allowed)
-

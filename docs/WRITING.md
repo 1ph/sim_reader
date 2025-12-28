@@ -6,14 +6,14 @@ The easiest way to modify card data is to export current settings, edit the JSON
 
 ```bash
 # Step 1: Export current card configuration to JSON
-./sim_reader -adm 77111606 -json > my_card.json
+./sim_reader read -a 77111606 --json > my_card.json
 
 # Step 2: Edit my_card.json with any text editor
 # - Modify writable fields (imsi, spn, hplmn, services, etc.)
 # - Read-only fields (iccid, msisdn, acc) are for reference only
 
 # Step 3: Write the modified configuration back to card
-./sim_reader -adm 77111606 -write my_card.json
+./sim_reader write -a 77111606 -f my_card.json
 ```
 
 This ensures all parameters are correctly formatted and you can see what values are currently on the card.
@@ -22,10 +22,10 @@ This ensures all parameters are correctly formatted and you can see what values 
 
 ```bash
 # Create a sample configuration file (with example values)
-./sim_reader -sample my_config.json
+./sim_reader read --create-sample my_config.json
 
 # Edit the configuration file, then apply it
-./sim_reader -adm 77111606 -write my_config.json
+./sim_reader write -a 77111606 -f my_config.json
 ```
 
 **Sample configuration file:**
@@ -66,74 +66,74 @@ This ensures all parameters are correctly formatted and you can see what values 
 }
 ```
 
-## Method 2: Command Line Flags (Quick individual changes)
+## Method 3: Command Line Flags (Quick individual changes)
 
 ```bash
 # Write IMSI
-./sim_reader -adm 77111606 -write-imsi 250880000000001
+./sim_reader write -a 77111606 --imsi 250880000000001
 
 # Write Service Provider Name
-./sim_reader -adm 77111606 -write-spn "My Operator"
+./sim_reader write -a 77111606 --spn "My Operator"
 
 # Write ISIM parameters
-./sim_reader -adm 77111606 -write-impi "250880000000001@ims.mnc088.mcc250.3gppnetwork.org"
-./sim_reader -adm 77111606 -write-impu "sip:250880000000001@ims.mnc088.mcc250.3gppnetwork.org"
-./sim_reader -adm 77111606 -write-domain "ims.mnc088.mcc250.3gppnetwork.org"
-./sim_reader -adm 77111606 -write-pcscf "pcscf.ims.mnc088.mcc250.3gppnetwork.org"
+./sim_reader write -a 77111606 --impi "250880000000001@ims.mnc088.mcc250.3gppnetwork.org"
+./sim_reader write -a 77111606 --impu "sip:250880000000001@ims.mnc088.mcc250.3gppnetwork.org"
+./sim_reader write -a 77111606 --domain "ims.mnc088.mcc250.3gppnetwork.org"
+./sim_reader write -a 77111606 --pcscf "pcscf.ims.mnc088.mcc250.3gppnetwork.org"
 
 # Enable VoLTE services (UST service 87)
-./sim_reader -adm 77111606 -enable-volte
+./sim_reader write -a 77111606 --enable-volte
 
 # Enable VoWiFi services (UST services 89, 90, 124)
-./sim_reader -adm 77111606 -enable-vowifi
+./sim_reader write -a 77111606 --enable-vowifi
 
 # Enable SMS over IP in ISIM (IST service 7)
-./sim_reader -adm 77111606 -enable-sms-ip
+./sim_reader write -a 77111606 --enable-sms-ip
 
 # Enable Voice Domain Preference in ISIM (IST service 12)
-./sim_reader -adm 77111606 -enable-voice-pref
+./sim_reader write -a 77111606 --enable-voice-pref
 
 # Disable VoLTE services
-./sim_reader -adm 77111606 -disable-volte
+./sim_reader write -a 77111606 --disable-volte
 
 # Disable VoWiFi services
-./sim_reader -adm 77111606 -disable-vowifi
+./sim_reader write -a 77111606 --disable-vowifi
 
 # Disable SMS over IP in ISIM
-./sim_reader -adm 77111606 -disable-sms-ip
+./sim_reader write -a 77111606 --disable-sms-ip
 
 # Disable Voice Domain Preference in ISIM
-./sim_reader -adm 77111606 -disable-voice-pref
+./sim_reader write -a 77111606 --disable-voice-pref
 
 # Clear Forbidden PLMN list
-./sim_reader -adm 77111606 -clear-fplmn
+./sim_reader write -a 77111606 --clear-fplmn
 
 # Write HPLMN (Home PLMN) with Access Technology
-./sim_reader -adm 77111606 -write-hplmn "250:88:eutran,utran,gsm"
+./sim_reader write -a 77111606 --hplmn "250:88:eutran,utran,gsm"
 
 # HPLMN with all technologies
-./sim_reader -adm 77111606 -write-hplmn "250:88:all"
+./sim_reader write -a 77111606 --hplmn "250:88:all"
 
 # Write Operator PLMN (roaming partners)
-./sim_reader -adm 77111606 -write-oplmn "250:20:eutran,utran,gsm"
+./sim_reader write -a 77111606 --oplmn "250:20:eutran,utran,gsm"
 
 # Write User Controlled PLMN (for test networks)
-./sim_reader -adm 77111606 -write-user-plmn "001:01:eutran,utran,gsm"
+./sim_reader write -a 77111606 --user-plmn "001:01:eutran,utran,gsm"
 
 # Set UE Operation Mode for test networks
-./sim_reader -adm 77111606 -set-op-mode cell-test
+./sim_reader write -a 77111606 --op-mode cell-test
 
 # Set normal operation mode
-./sim_reader -adm 77111606 -set-op-mode normal
+./sim_reader write -a 77111606 --op-mode normal
 ```
 
-## Important for Programmable Cards (v2.5.0)
+## Important for Programmable Cards (v2.5.0+)
 
 If you are using programmable cards (sysmocom, Grcard, etc.), the tool will automatically detect the driver and apply necessary settings (like CLA byte or pre-write handshakes).
 
 ```bash
 # Recommended check before writing
-./sim_reader -prog-info
+./sim_reader prog info
 ```
 
 ## Configuration File Reference
@@ -201,4 +201,3 @@ If you are using programmable cards (sysmocom, Grcard, etc.), the tool will auto
 | `cell-test` | 0x80 | Cell test operation (for test PLMNs 001-01, 999-99) |
 
 **Note:** Use `cell-test` mode when working with test networks (MCC 001 or 999).
-

@@ -1,5 +1,124 @@
 # Version History
 
+## v3.2.0 - Cobra CLI Refactoring
+
+### Complete CLI Refactoring with Cobra
+
+The command-line interface has been completely refactored using [spf13/cobra](https://github.com/spf13/cobra) library for better organization and usability:
+
+- **Subcommand Architecture**: All operations are now organized into logical subcommands
+- **~70 flags** reorganized from flat structure into hierarchical commands
+- **main.go** reduced from 1569 lines to 9 lines
+- **Shell Autocomplete**: Built-in completion for bash, zsh, fish, and PowerShell
+
+### New Command Structure
+
+```
+sim_reader [global flags] <command> [command flags]
+
+Commands:
+  read        Read SIM card data (--list, --phonebook, --sms, --analyze, etc.)
+  write       Write SIM card parameters (--imsi, --enable-volte, --dry-run, etc.)
+  gp          GlobalPlatform operations
+    ├── list    List applets via Secure Channel
+    ├── probe   Verify keys
+    ├── delete  Delete by AID
+    ├── load    Load CAP file
+    ├── aram    Add ARA-M rule
+    └── verify  Verify AID
+  auth        Run authentication test
+  test        Run SIM card test suite
+  prog        Programmable card operations
+    └── info    Show card information
+  script      Execute APDU scripts
+    ├── run     Simple APDU script
+    └── pcom    PCOM personalization script
+  completion  Generate shell completion scripts
+```
+
+### Migration from Old Syntax
+
+| Old Syntax | New Syntax |
+|------------|------------|
+| `sim_reader -list` | `sim_reader read --list` |
+| `sim_reader -adm KEY` | `sim_reader read -a KEY` |
+| `sim_reader -adm KEY -phonebook` | `sim_reader read -a KEY --phonebook` |
+| `sim_reader -gp-list -gp-key-enc X` | `sim_reader gp list --key-enc X` |
+| `sim_reader -auth -auth-k X` | `sim_reader auth -k X` |
+| `sim_reader -write config.json` | `sim_reader write -f config.json` |
+| `sim_reader -test` | `sim_reader test` |
+| `sim_reader -pcom script.pcom` | `sim_reader script pcom script.pcom` |
+| `sim_reader -prog-info` | `sim_reader prog info` |
+
+### Global Flags (available for all commands)
+
+| Flag | Short | Description |
+|------|-------|-------------|
+| `--reader` | `-r` | Reader index |
+| `--adm` | `-a` | ADM1 key |
+| `--adm2` | | ADM2 key |
+| `--adm3` | | ADM3 key |
+| `--adm4` | | ADM4 key |
+| `--pin` | `-p` | PIN1 code |
+| `--json` | | JSON output |
+
+### Shell Completion
+
+Generate shell completion scripts for improved CLI experience:
+
+```bash
+# Bash
+sim_reader completion bash > /etc/bash_completion.d/sim_reader
+
+# Zsh
+sim_reader completion zsh > "${fpath[1]}/_sim_reader"
+
+# Fish
+sim_reader completion fish > ~/.config/fish/completions/sim_reader.fish
+
+# PowerShell
+sim_reader completion powershell > sim_reader.ps1
+```
+
+### File Structure Changes
+
+```
+sim_reader/
+├── main.go              # Minimal entry point (9 lines)
+├── cmd/                 # NEW: Cobra commands
+│   ├── root.go          # Root command + global flags
+│   ├── read.go          # Read command
+│   ├── write.go         # Write command
+│   ├── gp.go            # GlobalPlatform commands
+│   ├── auth.go          # Authentication command
+│   ├── test.go          # Test suite command
+│   ├── prog.go          # Programmable card command
+│   ├── script.go        # Script commands
+│   ├── completion.go    # Shell completion
+│   └── common.go        # Common helpers
+├── card/                # Unchanged
+├── sim/                 # Unchanged
+└── ...
+```
+
+### Breaking Changes
+
+⚠️ **The old flat flag syntax is no longer supported.** All commands now require the new subcommand syntax.
+
+### Documentation Updates
+
+All documentation files updated with new command syntax:
+- README.md
+- docs/USAGE.md
+- docs/WRITING.md
+- docs/AUTHENTICATION.md
+- docs/PROGRAMMABLE_CARDS.md
+- docs/TESTING.md
+- docs/GLOBALPLATFORM.md
+- docs/PCOM.md
+
+---
+
 ## v3.1.0 - Comprehensive SIM Card Test Suite
 
 ### Full Test Suite for USIM/ISIM Cards

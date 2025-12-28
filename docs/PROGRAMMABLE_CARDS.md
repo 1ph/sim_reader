@@ -91,14 +91,14 @@
 
 ### 🔴 Safety Rules
 
-1. **ALWAYS use `-prog-dry-run` first!**
+1. **ALWAYS use `--dry-run` first!**
    ```bash
-   ./sim_reader -adm KEY -write config.json -prog-dry-run
+   ./sim_reader write -a KEY -f config.json --dry-run
    ```
 
 2. **Check card type**:
    ```bash
-   ./sim_reader -prog-info
+   ./sim_reader prog info
    ```
 
 3. **Have a backup card** for testing
@@ -127,7 +127,7 @@
 
 ```bash
 # Show programmable card information
-./sim_reader -prog-info
+./sim_reader prog info
 ```
 
 **Output**:
@@ -156,13 +156,13 @@ Proprietary File IDs:
 
 ```bash
 # Test without writing
-./sim_reader -adm 4444444444444444 -write programmable_config.json -prog-dry-run
+./sim_reader write -a 4444444444444444 -f programmable_config.json --dry-run
 ```
 
 **Output**:
 ```
 🧪 DRY RUN MODE: No data will be written
-    Remove -prog-dry-run to actually program the card
+    Remove --dry-run to actually program the card
 
 ⚠️  PROGRAMMABLE CARD DETECTED: Grcard v2 / open5gs (GRv2)
     Description: Programmable USIM card (GRv2 protocol)
@@ -181,7 +181,7 @@ Dry run completed. Review the commands above.
 
 ```bash
 # CAUTION: Real write!
-./sim_reader -adm 4444444444444444 -write programmable_config.json
+./sim_reader write -a 4444444444444444 -f programmable_config.json
 ```
 
 ### 4. Using OP (OPc computed automatically)
@@ -309,13 +309,13 @@ Add a `programmable` section to your JSON config:
 
 ```bash
 # Dry run (safe)
-./sim_reader -adm YOUR_ADM_KEY -write programmable_config.json -prog-dry-run
+./sim_reader write -a YOUR_ADM_KEY -f programmable_config.json --dry-run
 
 # Real write
-./sim_reader -adm YOUR_ADM_KEY -write programmable_config.json
+./sim_reader write -a YOUR_ADM_KEY -f programmable_config.json
 
 # Force on unrecognized cards (dangerous!)
-./sim_reader -adm YOUR_ADM_KEY -write programmable_config.json -prog-force
+./sim_reader write -a YOUR_ADM_KEY -f programmable_config.json --force
 ```
 
 ---
@@ -325,10 +325,10 @@ Add a `programmable` section to your JSON config:
 ### Problem: "Card is not recognized as programmable"
 
 **Solution**:
-1. Check ATR: `./sim_reader -analyze`
-2. Use `-prog-force` (dangerous!):
+1. Check ATR: `./sim_reader read --analyze`
+2. Use `--force` (dangerous!):
    ```bash
-   ./sim_reader -prog-force -write config.json
+   ./sim_reader write --force -f config.json
    ```
 3. Contact support to add your card's ATR
 
@@ -355,14 +355,14 @@ Add a `programmable` section to your JSON config:
 
 **Solution**: 
 - ❌ Cannot be fixed! Card is bricked.
-- Make sure to use `-prog-dry-run` before real write
+- Make sure to use `--dry-run` before real write
 
 ---
 
 ## Important Notes
 
-1. **Always start with `-prog-dry-run`**
-2. **Check card type** with `-prog-info`
+1. **Always start with `--dry-run`**
+2. **Check card type** with `prog info`
 3. **Have backup cards** for testing
 4. **Record parameters** you used
 5. **Don't use on operator cards** - won't work and may damage them

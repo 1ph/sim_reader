@@ -17,11 +17,11 @@ The test suite covers:
 ### Full Test with Reports
 
 ```bash
-./sim_reader -test \
-    -adm 4444444444444444 \
-    -auth-k FFFEFDFCFBFAF9F8F7F6F5F4F3F2F1F0 \
-    -auth-opc 808182838485868788898A8B8C8D8E8F \
-    -test-output baseline
+./sim_reader test \
+    -a 4444444444444444 \
+    -k FFFEFDFCFBFAF9F8F7F6F5F4F3F2F1F0 \
+    --opc 808182838485868788898A8B8C8D8E8F \
+    -o baseline
 ```
 
 This creates:
@@ -31,40 +31,43 @@ This creates:
 ### Test Without Authentication
 
 ```bash
-./sim_reader -test -adm 4444444444444444
+./sim_reader test -a 4444444444444444
 ```
 
 ### Run Specific Categories Only
 
 ```bash
 # USIM files only
-./sim_reader -test -test-only usim -adm 4444444444444444
+./sim_reader test --only usim -a 4444444444444444
 
 # ISIM only
-./sim_reader -test -test-only isim -adm 4444444444444444
+./sim_reader test --only isim -a 4444444444444444
 
 # Authentication only
-./sim_reader -test -test-only auth \
-    -auth-k FFFEFDFCFBFAF9F8F7F6F5F4F3F2F1F0 \
-    -auth-opc 808182838485868788898A8B8C8D8E8F
+./sim_reader test --only auth \
+    -k FFFEFDFCFBFAF9F8F7F6F5F4F3F2F1F0 \
+    --opc 808182838485868788898A8B8C8D8E8F
 
 # Multiple categories
-./sim_reader -test -test-only usim,auth -adm 4444444444444444
+./sim_reader test --only usim,auth -a 4444444444444444
 ```
 
 ## Command Line Flags
 
+```bash
+./sim_reader test [flags]
+```
+
 | Flag | Description |
 |------|-------------|
-| `-test` | Run the test suite |
-| `-test-output <prefix>` | Output file prefix for reports (.json + .html) |
-| `-test-only <categories>` | Run only specified categories: usim, isim, auth, apdu, security |
-| `-adm` | ADM1 key for accessing protected files |
-| `-auth-k` | K key for authentication tests |
-| `-auth-opc` | Pre-computed OPc |
-| `-auth-op` | OP (OPc will be computed automatically) |
-| `-auth-sqn` | Sequence Number (default: 000000000000) |
-| `-auth-amf` | Authentication Management Field (default: 8000) |
+| `-o, --output <prefix>` | Output file prefix for reports (.json + .html) |
+| `--only <categories>` | Run only specified categories: usim, isim, auth, apdu, security |
+| `-a, --adm` | ADM1 key for accessing protected files |
+| `-k, --key` | K key for authentication tests |
+| `--opc` | Pre-computed OPc |
+| `--op` | OP (OPc will be computed automatically) |
+| `--sqn` | Sequence Number (default: 000000000000) |
+| `--amf` | Authentication Management Field (default: 8000) |
 
 ## Test Categories
 
@@ -158,22 +161,22 @@ Command tests:
 
 ```bash
 # Test baseline profile
-./sim_reader -test \
-    -adm 4444444444444444 \
-    -auth-k FFFEFDFCFBFAF9F8F7F6F5F4F3F2F1F0 \
-    -auth-opc 808182838485868788898A8B8C8D8E8F \
-    -test-output baseline_no_applet
+./sim_reader test \
+    -a 4444444444444444 \
+    -k FFFEFDFCFBFAF9F8F7F6F5F4F3F2F1F0 \
+    --opc 808182838485868788898A8B8C8D8E8F \
+    -o baseline_no_applet
 ```
 
 ### Test With Milenage Applet
 
 ```bash
 # After loading the applet, use the applet's key
-./sim_reader -test \
-    -adm 4444444444444444 \
-    -auth-k 000102030405060708090A0B0C0D0E0F \
-    -auth-opc 808182838485868788898A8B8C8D8E8F \
-    -test-output with_applet
+./sim_reader test \
+    -a 4444444444444444 \
+    -k 000102030405060708090A0B0C0D0E0F \
+    --opc 808182838485868788898A8B8C8D8E8F \
+    -o with_applet
 ```
 
 ### Comparing Results
@@ -252,7 +255,7 @@ The HTML report contains:
 When AUTS is received, use the obtained SQNms+1 for the next authentication:
 
 ```bash
-./sim_reader -auth -auth-sqn 000000000043 ...
+./sim_reader auth --sqn 000000000043 ...
 ```
 
 ## Extending the Test Suite

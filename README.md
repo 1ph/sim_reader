@@ -2,7 +2,7 @@
 
 A command-line tool written in Go for reading and writing SIM/USIM/ISIM card parameters using PC/SC smart card readers.
 
-**Version 3.1.0**
+**Version 3.2.0**
 
 ---
 
@@ -41,7 +41,7 @@ This software is provided "AS IS", without warranty of any kind, express or impl
 
 - **Reading**: ICCID, IMSI, MSISDN, PLMN lists, Service Tables, ISIM parameters
 - **Writing**: IMSI, SPN, PLMN lists, ISIM parameters, service configuration
-- **JSON Export/Import**: Full round-trip support (`-json` → edit → `-write`)
+- **JSON Export/Import**: Full round-trip support (`--json` → edit → `write -f`)
 - **Advanced ATR Analysis**: Detailed breakdown of voltage, protocols, and transmission parameters (ISO 7816-3)
 - **Programmable SIM Cards**: Modular driver-based support for blank/programmable cards
   - **Supported**: Grcard v1/v2, sysmocom (GR1, GR2, SJS1, SJA2, SJA5), RuSIM/OX24
@@ -53,11 +53,12 @@ This software is provided "AS IS", without warranty of any kind, express or impl
 - **Authentication**: Test 3G/4G/5G authentication with Milenage and TUAK algorithms
 - **Test Suite**: Comprehensive conformance testing (46+ tests) with JSON/HTML reports
 - **Card Analysis**: Auto-detect card type by ATR, read EF_DIR, file access conditions
-- **Multiple ADM Keys**: Support for up to 4 ADM keys (`-adm`, `-adm2`, `-adm3`, `-adm4`)
+- **Multiple ADM Keys**: Support for up to 4 ADM keys (`-a`, `--adm2`, `--adm3`, `--adm4`)
 - **PCOM Scripts**: Execute personalization scripts for programmable cards
 - **GlobalPlatform**: Secure channel (SCP02/SCP03) for applet management
 - **Extended APDU**: Support for large file operations (up to 64KB)
 - **Proprietary Profiles**: Plug-and-play drivers for switching USIM authentication algorithms.
+- **Shell Autocomplete**: Built-in completion for bash, zsh, fish, and PowerShell
 
 ## Supported Card Types
 
@@ -110,173 +111,277 @@ make build-windows
 ## Quick Start
 
 ```bash
+# Show help
+./sim_reader --help
+
 # List readers
-./sim_reader -list
+./sim_reader read --list
 
 # Read card
-./sim_reader -adm YOUR_ADM_KEY
+./sim_reader read -a YOUR_ADM_KEY
 
 # Export card data to JSON (for editing and re-importing)
-./sim_reader -adm YOUR_ADM_KEY -json > card_config.json
+./sim_reader read -a YOUR_ADM_KEY --json > card_config.json
 
 # Write configuration from JSON
-./sim_reader -adm YOUR_ADM_KEY -write card_config.json
+./sim_reader write -a YOUR_ADM_KEY -f card_config.json
 
 # Analyze card
-./sim_reader -analyze
+./sim_reader read --analyze
 
 # Check file access conditions
-./sim_reader -adm-check
+./sim_reader read --adm-check
 
 # Test authentication (compute vectors)
-./sim_reader -auth -auth-k YOUR_K -auth-opc YOUR_OPC -auth-mcc 250 -auth-mnc 88 -auth-no-card
+./sim_reader auth -k YOUR_K --opc YOUR_OPC --mcc 250 --mnc 88 --no-card
 
 # Test authentication with card
-./sim_reader -auth -auth-k YOUR_K -auth-opc YOUR_OPC -auth-mcc 250 -auth-mnc 88
+./sim_reader auth -k YOUR_K --opc YOUR_OPC --mcc 250 --mnc 88
 
 # Run comprehensive test suite
-./sim_reader -test -adm YOUR_ADM -auth-k YOUR_K -auth-opc YOUR_OPC -test-output report
+./sim_reader test -a YOUR_ADM -k YOUR_K --opc YOUR_OPC -o report
 
-# (Programmable cards only) Show / set proprietary USIM algorithm selector (EF 8F90)
-# Supported values: milenage, s3g-128, tuak, s3g-256
-./sim_reader -adm YOUR_ADM_KEY -show-card-algo
-./sim_reader -adm YOUR_ADM_KEY -set-card-algo milenage -show-card-algo
+# (Programmable cards only) Show / set proprietary USIM algorithm selector
+./sim_reader write -a YOUR_ADM_KEY --show-algo
+./sim_reader write -a YOUR_ADM_KEY --set-algo milenage
 
 # Program blank SIM cards (Grcard, open5gs)
 # Show programmable card info
-./sim_reader -prog-info
+./sim_reader prog info
 
 # Safe test (dry run) - no data written
-./sim_reader -adm YOUR_ADM_KEY -write programmable_config.json -prog-dry-run
+./sim_reader write -a YOUR_ADM_KEY -f programmable_config.json --dry-run
 
 # Actually program the card (PERMANENT!)
-./sim_reader -adm YOUR_ADM_KEY -write programmable_config.json
+./sim_reader write -a YOUR_ADM_KEY -f programmable_config.json
+
+# Generate shell completion
+./sim_reader completion bash > /etc/bash_completion.d/sim_reader
 ```
 
-## Command Line Reference
+## Command Structure
 
-### Reading Options
+sim_reader uses subcommands for different operations:
 
-| Flag | Description |
-|------|-------------|
-| `-list` | List available smart card readers |
-| `-r N` | Use reader index N (default: auto-select if only one) |
-| `-adm KEY` | ADM1 key (hex or decimal format) |
-| `-adm2 KEY` | ADM2 key for higher access level |
-| `-adm3 KEY` | ADM3 key for even higher access level |
-| `-adm4 KEY` | ADM4 key |
-| `-pin CODE` | PIN1 code (if card is PIN-protected) |
-| `-raw` | Show raw hex data |
-| `-services` | Show all UST/IST services in detail |
-| `-phonebook` | Show phonebook entries (EF_ADN) |
-| `-json` | Output in JSON format (for editing and re-importing with -write) |
-| `-analyze` | Analyze card structure and applications |
-| `-adm-check` | Show file access conditions (which key is needed for each file) |
-| `-debug-fcp` | Debug FCP (File Control Parameters) parsing |
+```
+sim_reader [global flags] <command> [command flags]
 
-### Writing Options
+Commands:
+  read        Read SIM card data
+  write       Write SIM card parameters
+  gp          GlobalPlatform operations
+  auth        Run authentication test
+  test        Run SIM card test suite
+  prog        Programmable card operations
+  script      Execute APDU scripts
+  completion  Generate shell completion scripts
+```
+
+### Global Flags (available for all commands)
 
 | Flag | Description |
 |------|-------------|
-| `-write FILE` | Write configuration from JSON file |
-| `-sample FILE` | Create sample configuration file |
-| `-write-imsi VALUE` | Write IMSI |
-| `-write-spn VALUE` | Write Service Provider Name |
-| `-write-hplmn MCC:MNC:ACT` | Write Home PLMN with Access Technology |
-| `-write-oplmn MCC:MNC:ACT` | Write Operator PLMN |
-| `-write-user-plmn MCC:MNC:ACT` | Write User Controlled PLMN |
-| `-set-op-mode MODE` | Set UE Operation Mode (normal, cell-test, etc.) |
-| `-clear-fplmn` | Clear Forbidden PLMN list |
-| `-enable-volte` | Enable VoLTE services |
-| `-disable-volte` | Disable VoLTE services |
-| `-enable-vowifi` | Enable VoWiFi services |
-| `-disable-vowifi` | Disable VoWiFi services |
+| `-r, --reader N` | Use reader index N (default: auto-select) |
+| `-a, --adm KEY` | ADM1 key (hex or decimal format) |
+| `--adm2 KEY` | ADM2 key for higher access level |
+| `--adm3 KEY` | ADM3 key for even higher access level |
+| `--adm4 KEY` | ADM4 key |
+| `-p, --pin CODE` | PIN1 code (if card is PIN-protected) |
+| `--json` | Output in JSON format |
 
-### Authentication Options
+### Read Command
+
+```bash
+./sim_reader read [flags]
+```
 
 | Flag | Description |
 |------|-------------|
-| `-auth` | Enable authentication mode |
-| `-auth-k KEY` | Subscriber key K (hex) |
-| `-auth-op OP` | Operator key OP (hex) |
-| `-auth-opc OPC` | Pre-computed OPc (hex) |
-| `-auth-sqn SQN` | Sequence number (hex, default: 000000000000) |
-| `-auth-amf AMF` | Authentication Management Field (hex, default: 8000) |
-| `-auth-rand RAND` | Random challenge (hex, auto-generated if not provided) |
-| `-auth-autn AUTN` | Pre-computed AUTN (for card-only mode) |
-| `-auth-auts AUTS` | AUTS for SQN resynchronization |
-| `-auth-algo ALGO` | Algorithm: milenage or tuak (default: milenage) |
-| `-auth-mcc MCC` | Mobile Country Code (for KASME) |
-| `-auth-mnc MNC` | Mobile Network Code (for KASME) |
-| `-auth-no-card` | Compute vectors without card |
+| `-l, --list` | List available smart card readers |
+| `--analyze` | Analyze card structure and applications |
+| `--phonebook` | Show phonebook entries (EF_ADN) |
+| `--sms` | Show SMS messages |
+| `--applets` | Show GlobalPlatform applets |
+| `--services` | Show all UST/IST services in detail |
+| `--raw` | Show raw hex data |
+| `--adm-check` | Show file access conditions |
+| `--dump NAME` | Dump card data as Go test code |
+| `--create-sample FILE` | Create sample configuration file |
 
-### GlobalPlatform Options
+### Write Command
 
-| Flag | Description |
-|------|-------------|
-| `-applets` | List GlobalPlatform applets |
-| `-gp-key KEY` | GlobalPlatform key (hex) |
-| `-gp-key-enc` | Separate ENC key |
-| `-gp-key-mac` | Separate MAC key |
-| `-gp-key-dek` | Separate DEK key |
-| `-gp-kvn N` | Key Version Number (0-255) |
-| `-gp-scp VER` | Secure Channel Protocol (auto, 02, 03) |
-
-### Script Execution
+```bash
+./sim_reader write [flags]
+```
 
 | Flag | Description |
 |------|-------------|
-| `-pcom FILE` | Execute PCOM personalization script |
-| `-pcom-verbose` | Show detailed script execution |
-| `-pcom-stop-on-error` | Stop on first error |
-| `-script FILE` | Execute APDU script (pysim format) |
+| `-f, --file FILE` | Apply configuration from JSON file |
+| `--imsi VALUE` | Write IMSI |
+| `--impi VALUE` | Write IMPI (IMS Private Identity) |
+| `--impu VALUE` | Write IMPU (IMS Public Identity) |
+| `--domain VALUE` | Write Home Network Domain |
+| `--pcscf VALUE` | Write P-CSCF address |
+| `--spn VALUE` | Write Service Provider Name |
+| `--hplmn MCC:MNC:ACT` | Write Home PLMN with Access Technology |
+| `--oplmn MCC:MNC:ACT` | Write Operator PLMN |
+| `--user-plmn MCC:MNC:ACT` | Write User Controlled PLMN |
+| `--op-mode MODE` | Set UE Operation Mode |
+| `--enable-volte` | Enable VoLTE services |
+| `--disable-volte` | Disable VoLTE services |
+| `--enable-vowifi` | Enable VoWiFi services |
+| `--disable-vowifi` | Disable VoWiFi services |
+| `--clear-fplmn` | Clear Forbidden PLMN list |
+| `--change-adm1 KEY` | Change ADM1 key |
+| `--show-algo` | Show current USIM auth algorithm |
+| `--set-algo ALGO` | Set USIM algorithm (milenage, tuak, etc.) |
+| `--dry-run` | Simulate without writing (safe mode) |
+| `--force` | Force on unrecognized cards (DANGEROUS!) |
 
-### Programmable Card Options
+### Auth Command
 
-| Flag | Description |
-|------|-------------|
-| `-prog-info` | Show programmable card information (card type, supported operations) |
-| `-prog-dry-run` | Test programmable card operations without writing (safe mode) |
-| `-prog-force` | Force programming on unrecognized cards (DANGEROUS!) |
-| `-show-card-algo` | Show current USIM algorithm selector (EF 8F90) |
-| `-set-card-algo ALGO` | Set USIM algorithm (milenage, s3g-128, tuak, s3g-256) |
-
-**Note**: Programmable card write operations use JSON configuration with `programmable` section. See [docs/PROGRAMMABLE_CARDS.md](docs/PROGRAMMABLE_CARDS.md) for details.
-
-### Test Suite Options
-
-| Flag | Description |
-|------|-------------|
-| `-test` | Run comprehensive SIM card test suite (46+ tests) |
-| `-test-output PREFIX` | Output file prefix for JSON and HTML reports |
-| `-test-only CATEGORIES` | Run specific categories: usim,isim,auth,apdu,security |
-
-**Test Categories:**
-- `usim` - 24 tests for USIM EF files (IMSI, AD, UST, PLMN lists, Keys, etc.)
-- `isim` - 8 tests for ISIM parameters (IMPI, IMPU, Domain, IST, PCSCF)
-- `auth` - 4 tests for 3G/GSM authentication and Milenage vectors
-- `apdu` - 10 tests for low-level APDU commands (SELECT, READ, VERIFY)
-- `security` - 7 negative tests (wrong PIN, CLA, INS, file not found)
-
-See [docs/TESTING.md](docs/TESTING.md) for detailed test documentation.
-
-### Other Options
+```bash
+./sim_reader auth [flags]
+```
 
 | Flag | Description |
 |------|-------------|
-| `-version` | Show version |
-| `-dump NAME` | Dump card data as Go test code |
+| `-k, --key KEY` | Subscriber key K (hex) |
+| `--op OP` | Operator key OP (hex) |
+| `--opc OPC` | Pre-computed OPc (hex) |
+| `--sqn SQN` | Sequence number (default: 000000000000) |
+| `--amf AMF` | Authentication Management Field (default: 8000) |
+| `--rand RAND` | Random challenge (auto-generated if empty) |
+| `--autn AUTN` | Pre-computed AUTN |
+| `--auts AUTS` | AUTS for SQN resynchronization |
+| `--algo ALGO` | Algorithm: milenage or tuak |
+| `--mcc MCC` | Mobile Country Code (for KASME) |
+| `--mnc MNC` | Mobile Network Code (for KASME) |
+| `--no-card` | Compute vectors without card |
+
+### GlobalPlatform Commands
+
+```bash
+./sim_reader gp <subcommand> [flags]
+
+Subcommands:
+  list      List applets via Secure Channel
+  probe     Verify keys without EXTERNAL AUTH
+  delete    Delete applets/packages by AID
+  load      Load and install CAP file
+  aram      Add ARA-M access rule
+  verify    Verify applet AID (SELECT)
+```
+
+Common GP flags:
+| Flag | Description |
+|------|-------------|
+| `--kvn N` | Key Version Number (0-255) |
+| `--sec LEVEL` | Security level: mac or mac+enc |
+| `--key-enc KEY` | Static ENC key |
+| `--key-mac KEY` | Static MAC key |
+| `--key-dek KEY` | Static DEK key |
+| `--key-psk KEY` | Convenience: ENC=MAC=PSK |
+| `--sd-aid AID` | Security Domain AID |
+| `--dms FILE` | DMS var_out key file |
+| `--auto` | Auto-probe KVN+keyset |
+
+### Test Command
+
+```bash
+./sim_reader test [flags]
+```
+
+| Flag | Description |
+|------|-------------|
+| `-o, --output PREFIX` | Output file prefix for reports (.json + .html) |
+| `--only CATEGORIES` | Run specific categories: usim,isim,auth,apdu,security |
+| `-k, --key KEY` | K key for auth tests |
+| `--opc OPC` | OPc for auth tests |
+| `--sqn SQN` | Sequence number |
+
+### Script Commands
+
+```bash
+./sim_reader script run <file>    # Run simple APDU script
+./sim_reader script pcom <file>   # Run PCOM personalization script
+```
+
+| Flag | Description |
+|------|-------------|
+| `--verbose` | Verbose output (default: true) |
+| `--stop-on-error` | Stop on first error |
+
+### Prog Command
+
+```bash
+./sim_reader prog info    # Show programmable card information
+```
+
+## Usage Examples
+
+```bash
+# List readers
+./sim_reader read --list
+
+# Read card with ADM key
+./sim_reader read -a 77111606
+
+# Read with all services
+./sim_reader read -a 77111606 --services
+
+# Export to JSON
+./sim_reader read -a 77111606 --json > config.json
+
+# Write from JSON
+./sim_reader write -a 77111606 -f config.json
+
+# Write individual parameters
+./sim_reader write -a 77111606 --imsi 250880000000001
+./sim_reader write -a 77111606 --pcscf pcscf.ims.domain.org
+
+# Enable services
+./sim_reader write -a 77111606 --enable-volte --enable-vowifi
+
+# Clear forbidden networks
+./sim_reader write -a 77111606 --clear-fplmn
+
+# Run PCOM script
+./sim_reader script pcom /path/to/script.pcom
+
+# Authentication test (compute only)
+./sim_reader auth -k F2464E3293019A7E51ABAA7B1262B7D8 \
+  --opc B10B351A0CCD8BE31E0C9F088945A812 --no-card
+
+# Authentication with card
+./sim_reader auth -k F2464E3293019A7E51ABAA7B1262B7D8 \
+  --opc B10B351A0CCD8BE31E0C9F088945A812 --mcc 250 --mnc 88
+
+# Run full test suite
+./sim_reader test -a 4444444444444444 \
+  -k FFFEFDFCFBFAF9F8F7F6F5F4F3F2F1F0 \
+  --opc 808182838485868788898A8B8C8D8E8F -o baseline
+
+# GlobalPlatform list applets
+./sim_reader gp list --key-enc AABBCC... --key-mac DDEEFF...
+
+# Programmable card: dry run
+./sim_reader write -a 4444444444444444 -f prog_config.json --dry-run
+
+# Generate bash completion
+./sim_reader completion bash
+```
 
 ## JSON Configuration Format
 
-The `-json` flag exports all readable card parameters. Edit and re-import with `-write`:
+The `--json` flag exports all readable card parameters. Edit and re-import with `write -f`:
 
 ```bash
 # Export current card configuration
-./sim_reader -adm YOUR_KEY -json > config.json
+./sim_reader read -a YOUR_KEY --json > config.json
 
 # Edit config.json, then write back
-./sim_reader -adm YOUR_KEY -write config.json
+./sim_reader write -a YOUR_KEY -f config.json
 ```
 
 ### JSON Fields
@@ -348,6 +453,16 @@ The `-json` flag exports all readable card parameters. Edit and re-import with `
 ```
 sim_reader/
 ├── main.go              # CLI entry point
+├── cmd/                 # Cobra commands
+│   ├── root.go          # Root command and global flags
+│   ├── read.go          # Read command
+│   ├── write.go         # Write command
+│   ├── gp.go            # GlobalPlatform commands
+│   ├── auth.go          # Authentication command
+│   ├── test.go          # Test suite command
+│   ├── prog.go          # Programmable card command
+│   ├── script.go        # Script execution commands
+│   └── completion.go    # Shell completion
 ├── algorithms/          # Milenage and TUAK authentication algorithms
 ├── card/                # PC/SC reader, APDU commands, authentication
 ├── sim/                 # USIM/ISIM readers, decoders, writers
@@ -383,7 +498,7 @@ go build .
 
 - [github.com/ebfe/scard](https://github.com/ebfe/scard) - PC/SC bindings for Go
 - [github.com/jedib0t/go-pretty/v6](https://github.com/jedib0t/go-pretty) - Tables
-- [github.com/fatih/color](https://github.com/fatih/color) - Colored output
+- [github.com/spf13/cobra](https://github.com/spf13/cobra) - CLI framework
 
 ## References
 
