@@ -132,6 +132,53 @@ type GPAppletLoadConfig struct {
 	// but reserved here for future compatibility (e.g., delegated management, ARA-M params, etc.).
 	InstallParameters string   `json:"install_parameters,omitempty"`
 	Privileges        []string `json:"privileges,omitempty"`
+
+	// Personalization contains applet-specific personalization configuration.
+	// Used for post-install STORE DATA commands or similar operations.
+	Personalization *AppletPersonalizationConfig `json:"personalization,omitempty"`
+}
+
+// AppletPersonalizationConfig contains applet personalization settings.
+// This is used to configure applets after installation, typically via STORE DATA APDUs.
+type AppletPersonalizationConfig struct {
+	// APDUs is a list of personalization APDUs in hex format.
+	// These are sent to the applet after installation (e.g., via STORE DATA).
+	APDUs []string `json:"apdus,omitempty"`
+
+	// MilenageUSIM contains structured configuration for Milenage USIM applets.
+	// If set, APDUs will be generated automatically for Ki, OPc, etc.
+	MilenageUSIM *MilenageUSIMPersonalization `json:"milenage_usim,omitempty"`
+
+	// Generic contains key-value parameters for other applet types.
+	// Keys are tag names (e.g., "ki", "opc"), values are hex data.
+	Generic map[string]string `json:"generic,omitempty"`
+}
+
+// MilenageUSIMPersonalization contains parameters for Milenage USIM applet personalization.
+// This is compatible with common Java Card USIM applets that implement Milenage authentication.
+type MilenageUSIMPersonalization struct {
+	// Ki is the 128-bit subscriber key (32 hex chars).
+	Ki string `json:"ki"`
+
+	// OPc is the 128-bit derived operator key (32 hex chars).
+	// Either OPc or OP should be provided.
+	OPc string `json:"opc,omitempty"`
+
+	// OP is the 128-bit operator key (32 hex chars).
+	// If provided without OPc, OPc will be computed from OP and Ki.
+	OP string `json:"op,omitempty"`
+
+	// AMF is the 16-bit Authentication Management Field (4 hex chars).
+	// Default: "8000" if not specified.
+	AMF string `json:"amf,omitempty"`
+
+	// SQN is the initial Sequence Number (12 hex chars = 6 bytes).
+	// Used for replay protection in AKA. Default: "000000000000".
+	SQN string `json:"sqn,omitempty"`
+
+	// IMSI is the subscriber identity (15 digits).
+	// Some applets require IMSI for personalization.
+	IMSI string `json:"imsi,omitempty"`
 }
 
 // GPKeySetConfig represents one GlobalPlatform static keyset.

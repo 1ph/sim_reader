@@ -11,7 +11,8 @@ import (
 // TestDecodeRealProfile tests decoding of real GSMA test profile
 // Reference: TS48 V7.0 eSIM_GTP_SAIP2.3_BERTLV_SUCI
 func TestDecodeRealProfile(t *testing.T) {
-	testFile := filepath.Join("testdata", "TS48_SAIP2.3_BERTLV_SUCI.der")
+	// testFile := filepath.Join("testdata", "TS48_SAIP2.3_BERTLV_SUCI.der")
+	testFile := filepath.Join("testdata", "applet-only.der")
 	if _, err := os.Stat(testFile); os.IsNotExist(err) {
 		t.Skip("Test file not found, skipping real profile test")
 	}

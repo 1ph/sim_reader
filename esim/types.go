@@ -27,6 +27,7 @@ type Profile struct {
 	GFM             []*GenericFileManagement
 	SecurityDomains []*SecurityDomain
 	RFM             []*RFMConfig
+	Applications    []*Application
 	End             *EndElement
 }
 
@@ -635,7 +636,49 @@ type ADFRFMAccess struct {
 }
 
 // ============================================================================
-// End [63]
+// Application [8] - PE-Application for Java Card applets
+// ============================================================================
+
+// Application represents PE-Application (Tag 8) - Java Card applet
+// This is used for loading CAP files and installing applet instances in eSIM profiles
+type Application struct {
+	Header       *ElementHeader
+	LoadBlock    *ApplicationLoadPackage  // CAP file data (optional if only instances)
+	InstanceList []*ApplicationInstance   // Applet instances
+	// RawBytes preserves original encoding for lossless round-trip
+	RawBytes []byte
+}
+
+// ApplicationLoadPackage represents the load block containing CAP file
+// ASN.1: ApplicationLoadPackage ::= SEQUENCE { ... }
+type ApplicationLoadPackage struct {
+	LoadPackageAID         []byte // [APPLICATION 15] - Package AID
+	SecurityDomainAID      []byte // [APPLICATION 15] OPTIONAL - Target SD AID
+	NonVolatileCodeLimitC6 []byte // [PRIVATE 6] OPTIONAL - NV code limit
+	VolatileDataLimitC7    []byte // [PRIVATE 7] OPTIONAL - Volatile data limit
+	NonVolatileDataLimitC8 []byte // [PRIVATE 8] OPTIONAL - NV data limit
+	HashValue              []byte // [PRIVATE 1] OPTIONAL - DAP hash
+	LoadBlockObject        []byte // [PRIVATE 4] - CAP file content (IJC format)
+}
+
+// ApplicationInstance represents one applet instance configuration
+// ASN.1: ApplicationInstance ::= SEQUENCE { ... }
+type ApplicationInstance struct {
+	ApplicationLoadPackageAID    []byte // [APPLICATION 15] - Package AID reference
+	ClassAID                     []byte // [APPLICATION 15] - Applet class AID
+	InstanceAID                  []byte // [APPLICATION 15] - Instance AID
+	ExtraditeSecurityDomainAID   []byte // [APPLICATION 15] OPTIONAL - Extradition SD
+	ApplicationPrivileges        []byte // [2] - Privileges byte(s)
+	LifeCycleState               byte   // [3] - GP lifecycle state (default 0x07)
+	ApplicationSpecificParamsC9  []byte // [PRIVATE 9] - C9 install params
+	SystemSpecificParams         []byte // [PRIVATE 15] OPTIONAL - System params
+	ApplicationParameters        []byte // [PRIVATE 10] OPTIONAL - UICC app params
+	ProcessData                  [][]byte // Personalization APDU commands (executed after install)
+	ControlReferenceTemplate     []byte // [16] OPTIONAL - CRT for SCP
+}
+
+// ============================================================================
+// End [10]
 // ============================================================================
 
 // EndElement represents profile end element

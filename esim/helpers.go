@@ -335,6 +335,10 @@ func assignToProfile(profile *Profile, elem *ProfileElement) {
 		if r, ok := elem.Value.(*RFMConfig); ok {
 			profile.RFM = append(profile.RFM, r)
 		}
+	case TagApplication:
+		if a, ok := elem.Value.(*Application); ok {
+			profile.Applications = append(profile.Applications, a)
+		}
 	case TagEnd:
 		if e, ok := elem.Value.(*EndElement); ok {
 			profile.End = e

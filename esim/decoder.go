@@ -81,6 +81,8 @@ func decodeProfileElement(a *asn1.ASN1, rawBytes []byte) (*ProfileElement, error
 		elem.Value, err = decodeSecurityDomain(inner)
 	case TagRFM:
 		elem.Value, err = decodeRFM(inner)
+	case TagApplication:
+		elem.Value, err = decodeApplication(inner)
 	case TagEnd:
 		elem.Value, err = decodeEnd(inner)
 	default:
@@ -890,29 +892,62 @@ func decodeAKAParameter(a *asn1.ASN1) (*AKAParameter, error) {
 func decodeAlgoConfiguration(a *asn1.ASN1) *AlgoConfiguration {
 	ac := &AlgoConfiguration{}
 
-	for a.Unmarshal() {
-		tagNum := getContextTag(a)
-		switch tagNum {
-		case 0: // algorithmID
-			ac.AlgorithmID = AlgorithmID(decodeInteger(a.Data))
-		case 1: // algorithmOptions
-			if len(a.Data) > 0 {
-				ac.AlgorithmOptions = a.Data[0]
+	// AlgoConfiguration may be:
+	// 1. Direct fields (tag [0] algorithmID, etc.) - simple encoding
+	// 2. CHOICE wrapper with [0] or [1] containing AlgoParameter - SAIP 2.3 style
+	
+	// Try to parse first element
+	if !a.Unmarshal() {
+		return ac
+	}
+	
+	firstTag := getContextTag(a)
+	
+	// Check if this is a CHOICE wrapper (tag [0] or [1] with inner AlgoParameter)
+	if (firstTag == 0 || firstTag == 1) && len(a.Data) > 5 {
+		// Check if inner data starts with [0] (algorithmID)
+		innerProbe := asn1.Init(a.Data)
+		if innerProbe.Unmarshal() && getContextTag(innerProbe) == 0 {
+			// This is CHOICE wrapper style - parse from inside
+			inner := asn1.Init(a.Data)
+			for inner.Unmarshal() {
+				parseAlgoField(inner, ac)
 			}
-		case 2: // key
-			ac.Key = copyBytes(a.Data)
-		case 3: // opc
-			ac.OPC = copyBytes(a.Data)
-		case 4: // rotationConstants
-			ac.RotationConstants = copyBytes(a.Data)
-		case 5: // xoringConstants
-			ac.XoringConstants = copyBytes(a.Data)
-		case 6: // numberOfKeccak
-			ac.NumberOfKeccak = decodeInteger(a.Data)
+			return ac
 		}
+	}
+	
+	// Direct style - first element is already a field
+	parseAlgoField(a, ac)
+	
+	// Parse remaining fields
+	for a.Unmarshal() {
+		parseAlgoField(a, ac)
 	}
 
 	return ac
+}
+
+func parseAlgoField(a *asn1.ASN1, ac *AlgoConfiguration) {
+	tagNum := getContextTag(a)
+	switch tagNum {
+	case 0: // algorithmID
+		ac.AlgorithmID = AlgorithmID(decodeInteger(a.Data))
+	case 1: // algorithmOptions
+		if len(a.Data) > 0 {
+			ac.AlgorithmOptions = a.Data[0]
+		}
+	case 2: // key
+		ac.Key = copyBytes(a.Data)
+	case 3: // opc
+		ac.OPC = copyBytes(a.Data)
+	case 4: // rotationConstants
+		ac.RotationConstants = copyBytes(a.Data)
+	case 5: // xoringConstants
+		ac.XoringConstants = copyBytes(a.Data)
+	case 6: // numberOfKeccak
+		ac.NumberOfKeccak = decodeInteger(a.Data)
+	}
 }
 
 // ============================================================================
@@ -1035,27 +1070,42 @@ func decodeSecurityDomain(a *asn1.ASN1) (*SecurityDomain, error) {
 func decodeSDInstance(a *asn1.ASN1) *SDInstance {
 	inst := &SDInstance{}
 
-	for a.Unmarshal() {
-		tagNum := getContextTag(a)
-		inner := asn1.Init(a.Data)
+	// Track APPLICATION 15 tag occurrences for ordered fields
+	appTagCount := 0
 
-		switch tagNum {
-		case 0: // applicationLoadPackageAID
-			inst.ApplicationLoadPackageAID = copyBytes(a.Data)
-		case 1: // classAID
-			inst.ClassAID = copyBytes(a.Data)
-		case 2: // instanceAID
-			inst.InstanceAID = copyBytes(a.Data)
-		case 3: // applicationPrivileges
-			inst.ApplicationPrivileges = copyBytes(a.Data)
-		case 4: // lifeCycleState
-			if len(a.Data) > 0 {
-				inst.LifeCycleState = a.Data[0]
+	for a.Unmarshal() {
+		switch {
+		case a.Class == asn1.ClassApplication && getTagNumber(a) == 15:
+			// [APPLICATION 15] fields in order:
+			// 0: applicationLoadPackageAID
+			// 1: classAID
+			// 2: instanceAID
+			switch appTagCount {
+			case 0:
+				inst.ApplicationLoadPackageAID = copyBytes(a.Data)
+			case 1:
+				inst.ClassAID = copyBytes(a.Data)
+			case 2:
+				inst.InstanceAID = copyBytes(a.Data)
 			}
-		case 5: // applicationSpecificParametersC9
-			inst.ApplicationSpecificParamsC9 = copyBytes(a.Data)
-		case 6: // applicationParameters
-			inst.ApplicationParameters = decodeApplicationParameters(inner)
+			appTagCount++
+
+		case a.Class == asn1.ClassContextSpecific:
+			tagNum := getContextTag(a)
+			inner := asn1.Init(a.Data)
+
+			switch tagNum {
+			case 2: // applicationPrivileges
+				inst.ApplicationPrivileges = copyBytes(a.Data)
+			case 3: // lifeCycleState
+				if len(a.Data) > 0 {
+					inst.LifeCycleState = a.Data[0]
+				}
+			case 5: // applicationSpecificParametersC9
+				inst.ApplicationSpecificParamsC9 = copyBytes(a.Data)
+			case 6: // applicationParameters
+				inst.ApplicationParameters = decodeApplicationParameters(inner)
+			}
 		}
 	}
 
@@ -1143,32 +1193,47 @@ func decodeRFM(a *asn1.ASN1) (*RFMConfig, error) {
 	}
 
 	for a.Unmarshal() {
-		tagNum := getContextTag(a)
-		inner := asn1.Init(a.Data)
-
-		switch tagNum {
-		case 0: // rfm-header
-			rfm.Header = decodeElementHeader(inner)
-		case 1: // instanceAID
+		switch {
+		case a.Class == asn1.ClassApplication && getTagNumber(a) == 15:
+			// [APPLICATION 15] instanceAID
 			rfm.InstanceAID = copyBytes(a.Data)
-		case 2: // tarList
-			for inner.Unmarshal() {
-				rfm.TARList = append(rfm.TARList, copyBytes(inner.Data))
+
+		case a.Class == asn1.ClassContextSpecific:
+			tagNum := getContextTag(a)
+			inner := asn1.Init(a.Data)
+
+			switch tagNum {
+			case 0: // rfm-header or tarList (context-specific [0])
+				// Check if this contains header fields (has mandated/identification)
+				// or TAR values (raw octet strings)
+				probe := asn1.Init(a.Data)
+				if probe.Unmarshal() && probe.Class == asn1.ClassContextSpecific {
+					// It's the header
+					rfm.Header = decodeElementHeader(inner)
+				} else {
+					// It's tarList
+					for inner.Unmarshal() {
+						rfm.TARList = append(rfm.TARList, copyBytes(inner.Data))
+					}
+				}
+			case 1: // minimumSecurityLevel
+				if len(a.Data) > 0 {
+					rfm.MinimumSecurityLevel = a.Data[0]
+				}
+			case 2: // uiccAccessDomain
+				if len(a.Data) > 0 {
+					rfm.UICCAccessDomain = a.Data[0]
+				}
+			case 3: // uiccAdminAccessDomain
+				if len(a.Data) > 0 {
+					rfm.UICCAdminAccessDomain = a.Data[0]
+				}
+			case 4: // adfRFMAccess
+				rfm.ADFRFMAccess = decodeADFRFMAccess(inner)
 			}
-		case 3: // minimumSecurityLevel
-			if len(a.Data) > 0 {
-				rfm.MinimumSecurityLevel = a.Data[0]
-			}
-		case 4: // uiccAccessDomain
-			if len(a.Data) > 0 {
-				rfm.UICCAccessDomain = a.Data[0]
-			}
-		case 5: // uiccAdminAccessDomain
-			if len(a.Data) > 0 {
-				rfm.UICCAdminAccessDomain = a.Data[0]
-			}
-		case 6: // adfRFMAccess
-			rfm.ADFRFMAccess = decodeADFRFMAccess(inner)
+
+		case a.Class == asn1.ClassUniversal:
+			// Handle universal types if any
 		}
 	}
 
@@ -1198,7 +1263,137 @@ func decodeADFRFMAccess(a *asn1.ASN1) *ADFRFMAccess {
 }
 
 // ============================================================================
-// End [63]
+// Application [8] - PE-Application for Java Card applets
+// ============================================================================
+
+func decodeApplication(a *asn1.ASN1) (*Application, error) {
+	app := &Application{
+		InstanceList: make([]*ApplicationInstance, 0),
+	}
+
+	for a.Unmarshal() {
+		tagNum := getContextTag(a)
+		inner := asn1.Init(a.Data)
+
+		switch tagNum {
+		case 0: // app-Header
+			app.Header = decodeElementHeader(inner)
+		case 1: // loadBlock
+			app.LoadBlock = decodeApplicationLoadPackage(inner)
+		case 2: // instanceList
+			for inner.Unmarshal() {
+				inst := decodeApplicationInstance(asn1.Init(inner.Data))
+				app.InstanceList = append(app.InstanceList, inst)
+			}
+		}
+	}
+
+	return app, nil
+}
+
+func decodeApplicationLoadPackage(a *asn1.ASN1) *ApplicationLoadPackage {
+	pkg := &ApplicationLoadPackage{}
+
+	for a.Unmarshal() {
+		// APPLICATION and PRIVATE class tags
+		switch {
+		case a.Class == asn1.ClassApplication && getTagNumber(a) == 15:
+			// [APPLICATION 15] - could be loadPackageAID or securityDomainAID
+			// First occurrence is loadPackageAID, second is securityDomainAID
+			if pkg.LoadPackageAID == nil {
+				pkg.LoadPackageAID = copyBytes(a.Data)
+			} else {
+				pkg.SecurityDomainAID = copyBytes(a.Data)
+			}
+		case a.Class == asn1.ClassPrivate:
+			tagNum := getTagNumber(a)
+			switch tagNum {
+			case 1: // hashValue
+				pkg.HashValue = copyBytes(a.Data)
+			case 4: // loadBlockObject
+				pkg.LoadBlockObject = copyBytes(a.Data)
+			case 6: // nonVolatileCodeLimitC6
+				pkg.NonVolatileCodeLimitC6 = copyBytes(a.Data)
+			case 7: // volatileDataLimitC7
+				pkg.VolatileDataLimitC7 = copyBytes(a.Data)
+			case 8: // nonVolatileDataLimitC8
+				pkg.NonVolatileDataLimitC8 = copyBytes(a.Data)
+			}
+		}
+	}
+
+	return pkg
+}
+
+func decodeApplicationInstance(a *asn1.ASN1) *ApplicationInstance {
+	inst := &ApplicationInstance{
+		LifeCycleState: 0x07, // default per GP spec
+		ProcessData:    make([][]byte, 0),
+	}
+
+	// Track APPLICATION 15 tag occurrences for ordered fields
+	appTagCount := 0
+
+	for a.Unmarshal() {
+		switch {
+		case a.Class == asn1.ClassApplication && getTagNumber(a) == 15:
+			// [APPLICATION 15] fields in order:
+			// 0: applicationLoadPackageAID
+			// 1: classAID
+			// 2: instanceAID
+			// 3: extraditeSecurityDomainAID (optional)
+			switch appTagCount {
+			case 0:
+				inst.ApplicationLoadPackageAID = copyBytes(a.Data)
+			case 1:
+				inst.ClassAID = copyBytes(a.Data)
+			case 2:
+				inst.InstanceAID = copyBytes(a.Data)
+			case 3:
+				inst.ExtraditeSecurityDomainAID = copyBytes(a.Data)
+			}
+			appTagCount++
+
+		case a.Class == asn1.ClassContextSpecific:
+			tagNum := getContextTag(a)
+			switch tagNum {
+			case 2: // applicationPrivileges
+				inst.ApplicationPrivileges = copyBytes(a.Data)
+			case 3: // lifeCycleState
+				if len(a.Data) > 0 {
+					inst.LifeCycleState = a.Data[0]
+				}
+			case 16: // controlReferenceTemplate
+				inst.ControlReferenceTemplate = copyBytes(a.Data)
+			}
+
+		case a.Class == asn1.ClassPrivate:
+			tagNum := getTagNumber(a)
+			switch tagNum {
+			case 9: // applicationSpecificParametersC9
+				inst.ApplicationSpecificParamsC9 = copyBytes(a.Data)
+			case 10: // applicationParameters (UICCApplicationParameters)
+				inst.ApplicationParameters = copyBytes(a.Data)
+			case 15: // systemSpecificParameters
+				inst.SystemSpecificParams = copyBytes(a.Data)
+			}
+
+		case a.Class == asn1.ClassUniversal && a.Tag == 0x30:
+			// SEQUENCE - this is processData (SEQUENCE OF OCTET STRING)
+			inner := asn1.Init(a.Data)
+			for inner.Unmarshal() {
+				if inner.Tag == 0x04 { // OCTET STRING
+					inst.ProcessData = append(inst.ProcessData, copyBytes(inner.Data))
+				}
+			}
+		}
+	}
+
+	return inst
+}
+
+// ============================================================================
+// End [10]
 // ============================================================================
 
 func decodeEnd(a *asn1.ASN1) (*EndElement, error) {

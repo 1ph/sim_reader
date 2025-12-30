@@ -69,6 +69,8 @@ func encodeProfileElement(elem *ProfileElement) ([]byte, error) {
 		data, err = encodeSecurityDomain(elem.Value.(*SecurityDomain))
 	case TagRFM:
 		data, err = encodeRFM(elem.Value.(*RFMConfig))
+	case TagApplication:
+		data, err = encodeApplication(elem.Value.(*Application))
 	case TagEnd:
 		data, err = encodeEnd(elem.Value.(*EndElement))
 	default:
@@ -1084,7 +1086,142 @@ func encodeADFRFMAccess(acc *ADFRFMAccess) []byte {
 }
 
 // ============================================================================
-// End [63]
+// Application [8] - PE-Application for Java Card applets
+// ============================================================================
+
+func encodeApplication(app *Application) ([]byte, error) {
+	// If RawBytes available, use for lossless round-trip
+	if len(app.RawBytes) > 0 {
+		return app.RawBytes, nil
+	}
+
+	var data []byte
+
+	// [0] app-Header
+	if app.Header != nil {
+		ehData := encodeElementHeader(app.Header)
+		data = append(data, asn1.Marshal(0xA0, nil, ehData...)...)
+	}
+
+	// [1] loadBlock
+	if app.LoadBlock != nil {
+		lbData := encodeApplicationLoadPackage(app.LoadBlock)
+		data = append(data, asn1.Marshal(0xA1, nil, lbData...)...)
+	}
+
+	// [2] instanceList
+	if len(app.InstanceList) > 0 {
+		var instListData []byte
+		for _, inst := range app.InstanceList {
+			instData := encodeApplicationInstance(inst)
+			instListData = append(instListData, asn1.Marshal(0x30, nil, instData...)...)
+		}
+		data = append(data, asn1.Marshal(0xA2, nil, instListData...)...)
+	}
+
+	return data, nil
+}
+
+func encodeApplicationLoadPackage(pkg *ApplicationLoadPackage) []byte {
+	var data []byte
+
+	// [APPLICATION 15] loadPackageAID (0x4F = APPLICATION 15)
+	if len(pkg.LoadPackageAID) > 0 {
+		data = append(data, asn1.Marshal(0x4F, nil, pkg.LoadPackageAID...)...)
+	}
+
+	// [APPLICATION 15] securityDomainAID (optional, same tag)
+	if len(pkg.SecurityDomainAID) > 0 {
+		data = append(data, asn1.Marshal(0x4F, nil, pkg.SecurityDomainAID...)...)
+	}
+
+	// [PRIVATE 6] nonVolatileCodeLimitC6 (0xC6)
+	if len(pkg.NonVolatileCodeLimitC6) > 0 {
+		data = append(data, asn1.Marshal(0xC6, nil, pkg.NonVolatileCodeLimitC6...)...)
+	}
+
+	// [PRIVATE 7] volatileDataLimitC7 (0xC7)
+	if len(pkg.VolatileDataLimitC7) > 0 {
+		data = append(data, asn1.Marshal(0xC7, nil, pkg.VolatileDataLimitC7...)...)
+	}
+
+	// [PRIVATE 8] nonVolatileDataLimitC8 (0xC8)
+	if len(pkg.NonVolatileDataLimitC8) > 0 {
+		data = append(data, asn1.Marshal(0xC8, nil, pkg.NonVolatileDataLimitC8...)...)
+	}
+
+	// [PRIVATE 1] hashValue (0xC1)
+	if len(pkg.HashValue) > 0 {
+		data = append(data, asn1.Marshal(0xC1, nil, pkg.HashValue...)...)
+	}
+
+	// [PRIVATE 4] loadBlockObject (0xC4) - CAP file content
+	if len(pkg.LoadBlockObject) > 0 {
+		data = append(data, asn1.Marshal(0xC4, nil, pkg.LoadBlockObject...)...)
+	}
+
+	return data
+}
+
+func encodeApplicationInstance(inst *ApplicationInstance) []byte {
+	var data []byte
+
+	// [APPLICATION 15] fields in order (0x4F)
+	if len(inst.ApplicationLoadPackageAID) > 0 {
+		data = append(data, asn1.Marshal(0x4F, nil, inst.ApplicationLoadPackageAID...)...)
+	}
+	if len(inst.ClassAID) > 0 {
+		data = append(data, asn1.Marshal(0x4F, nil, inst.ClassAID...)...)
+	}
+	if len(inst.InstanceAID) > 0 {
+		data = append(data, asn1.Marshal(0x4F, nil, inst.InstanceAID...)...)
+	}
+	if len(inst.ExtraditeSecurityDomainAID) > 0 {
+		data = append(data, asn1.Marshal(0x4F, nil, inst.ExtraditeSecurityDomainAID...)...)
+	}
+
+	// [2] applicationPrivileges (0x82)
+	if len(inst.ApplicationPrivileges) > 0 {
+		data = append(data, asn1.Marshal(0x82, nil, inst.ApplicationPrivileges...)...)
+	}
+
+	// [3] lifeCycleState (0x83)
+	data = append(data, asn1.Marshal(0x83, nil, inst.LifeCycleState)...)
+
+	// [PRIVATE 9] applicationSpecificParametersC9 (0xC9)
+	if len(inst.ApplicationSpecificParamsC9) > 0 {
+		data = append(data, asn1.Marshal(0xC9, nil, inst.ApplicationSpecificParamsC9...)...)
+	}
+
+	// [PRIVATE 15] systemSpecificParameters (0xCF)
+	if len(inst.SystemSpecificParams) > 0 {
+		data = append(data, asn1.Marshal(0xCF, nil, inst.SystemSpecificParams...)...)
+	}
+
+	// [PRIVATE 10] applicationParameters (0xCA)
+	if len(inst.ApplicationParameters) > 0 {
+		data = append(data, asn1.Marshal(0xCA, nil, inst.ApplicationParameters...)...)
+	}
+
+	// processData - SEQUENCE OF OCTET STRING
+	if len(inst.ProcessData) > 0 {
+		var pdData []byte
+		for _, apdu := range inst.ProcessData {
+			pdData = append(pdData, asn1.Marshal(0x04, nil, apdu...)...) // OCTET STRING
+		}
+		data = append(data, asn1.Marshal(0x30, nil, pdData...)...) // SEQUENCE
+	}
+
+	// [16] controlReferenceTemplate (0xB0 = context-specific constructed 16)
+	if len(inst.ControlReferenceTemplate) > 0 {
+		data = append(data, asn1.Marshal(0xB0, nil, inst.ControlReferenceTemplate...)...)
+	}
+
+	return data
+}
+
+// ============================================================================
+// End [10]
 // ============================================================================
 
 func encodeEnd(end *EndElement) ([]byte, error) {
