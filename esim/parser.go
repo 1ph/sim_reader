@@ -604,35 +604,15 @@ func (p *Parser) parseFileDescriptor() (*FileDescriptor, error) {
 		case "fileDescriptor":
 			fd.FileDescriptor, err = p.parseHexValue()
 		case "fileID":
-			hexVal, hexErr := p.parseHexValue()
-			if hexErr != nil {
-				return nil, hexErr
-			}
-			fd.FileID = decodeUint16BE(hexVal)
+			fd.FileID, err = p.parseHexValue()
 		case "lcsi":
-			hexVal, hexErr := p.parseHexValue()
-			if hexErr != nil {
-				return nil, hexErr
-			}
-			if len(hexVal) > 0 {
-				fd.LCSI = hexVal[0]
-			}
+			fd.LCSI, err = p.parseHexValue()
 		case "securityAttributesReferenced":
 			fd.SecurityAttributesReferenced, err = p.parseHexValue()
 		case "shortEFID":
-			hexVal, hexErr := p.parseHexValue()
-			if hexErr != nil {
-				return nil, hexErr
-			}
-			if len(hexVal) > 0 {
-				fd.ShortEFID = hexVal[0]
-			}
+			fd.ShortEFID, err = p.parseHexValue()
 		case "efFileSize":
-			hexVal, hexErr := p.parseHexValue()
-			if hexErr != nil {
-				return nil, hexErr
-			}
-			fd.EFFileSize = decodeInteger(hexVal)
+			fd.EFFileSize, err = p.parseHexValue()
 		case "dfName":
 			fd.DFName, err = p.parseHexValue()
 		case "pinStatusTemplateDO":
@@ -674,27 +654,26 @@ func (p *Parser) parseProprietaryEFInfo() (*ProprietaryEFInfo, error) {
 			return nil, err
 		}
 
+		var fieldErr error
 		switch fieldName.Value {
 		case "specialFileInformation":
-			hexVal, hexErr := p.parseHexValue()
-			if hexErr != nil {
-				return nil, hexErr
-			}
-			if len(hexVal) > 0 {
-				pei.SpecialFileInformation = hexVal[0]
-			}
+			pei.SpecialFileInformation, fieldErr = p.parseHexValue()
 		case "fillPattern":
-			pei.FillPattern, err = p.parseHexValue()
+			pei.FillPattern, fieldErr = p.parseHexValue()
 		case "repeatPattern":
-			pei.RepeatPattern, err = p.parseHexValue()
+			pei.RepeatPattern, fieldErr = p.parseHexValue()
+		case "maximumFileSize":
+			pei.MaximumFileSize, fieldErr = p.parseHexValue()
+		case "fileDetails":
+			pei.FileDetails, fieldErr = p.parseHexValue()
 		default:
 			if err := p.skipValue(); err != nil {
 				return nil, err
 			}
 		}
 
-		if err != nil {
-			return nil, fmt.Errorf("field %s: %w", fieldName.Value, err)
+		if fieldErr != nil {
+			return nil, fmt.Errorf("field %s: %w", fieldName.Value, fieldErr)
 		}
 
 		p.skipComma()
@@ -2314,7 +2293,7 @@ func (p *Parser) parseSDKey() (*SDKey, error) {
 				key.KeyVersionNumber = hexVal[0]
 			}
 		case "keyCompontents":
-			key.KeyComponents, err = p.parseKeyComponents()
+			key.KeyCompontents, err = p.parseKeyComponents()
 		default:
 			if err := p.skipValue(); err != nil {
 				return nil, err

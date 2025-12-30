@@ -79,6 +79,7 @@ type MasterFile struct {
 	EF_DIR     *ElementaryFile
 	EF_ARR     *ElementaryFile
 	EF_UMPC    *ElementaryFile
+	EFList     []*ElementaryFile
 	// RawBytes preserves original encoding for lossless round-trip
 	RawBytes []byte
 }
@@ -96,11 +97,11 @@ type ElementHeader struct {
 // FileDescriptor represents file/directory description
 type FileDescriptor struct {
 	FileDescriptor               []byte
-	FileID                       uint16
-	LCSI                         byte
+	FileID                       []byte
+	LCSI                         []byte
 	SecurityAttributesReferenced []byte
-	ShortEFID                    byte
-	EFFileSize                   int
+	ShortEFID                    []byte
+	EFFileSize                   []byte
 	DFName                       []byte // AID for ADF
 	PinStatusTemplateDO          []byte
 	ProprietaryEFInfo            *ProprietaryEFInfo
@@ -109,9 +110,11 @@ type FileDescriptor struct {
 
 // ProprietaryEFInfo represents proprietary file information
 type ProprietaryEFInfo struct {
-	SpecialFileInformation byte
+	SpecialFileInformation []byte
 	FillPattern            []byte
 	RepeatPattern          []byte
+	MaximumFileSize        []byte
+	FileDetails            []byte
 }
 
 // FileElementType represents the type of File CHOICE element
@@ -193,19 +196,32 @@ type TelecomDF struct {
 	TemplateID    OID
 	DFTelecom     *FileDescriptor
 	EF_ARR        *ElementaryFile
+	EF_RMA        *ElementaryFile
 	EF_SUME       *ElementaryFile
+	EF_ICE_DN     *ElementaryFile
+	EF_ICE_FF     *ElementaryFile
 	EF_PSISMSC    *ElementaryFile
 	DFGraphics    *FileDescriptor
 	EF_IMG        *ElementaryFile
+	EF_IIDF       *ElementaryFile
+	EF_ICE_Graphics *ElementaryFile
 	EF_LaunchSCWS *ElementaryFile
+	EF_ICON       *ElementaryFile
 	DFPhonebook   *FileDescriptor
 	EF_PBR        *ElementaryFile
+	EF_EXT1       *ElementaryFile
+	EF_AAS        *ElementaryFile
+	EF_GAS        *ElementaryFile
 	EF_PSC        *ElementaryFile
 	EF_CC         *ElementaryFile
 	EF_PUID       *ElementaryFile
+	EF_IAP        *ElementaryFile
+	EF_ADN        *ElementaryFile
 	DFMMSS        *FileDescriptor
 	EF_MLPL       *ElementaryFile
 	EF_MSPL       *ElementaryFile
+	EF_MMSSCONF   *ElementaryFile
+	EF_MMSSID     *ElementaryFile
 	// Additional fields as needed
 	AdditionalEFs map[string]*ElementaryFile
 	// RawBytes preserves original encoding for lossless round-trip
@@ -608,7 +624,7 @@ type SDKey struct {
 	KeyAccess         byte
 	KeyIdentifier     byte
 	KeyVersionNumber  byte
-	KeyComponents     []KeyComponent
+	KeyCompontents     []KeyComponent
 }
 
 // KeyComponent represents key component

@@ -241,8 +241,8 @@ func encodeFileDescriptor(fd *FileDescriptor) []byte {
 	// Fcp field order by tag: [0], [2], [3], [4], [5], [8], [10], [11], [PRIVATE 6], [PRIVATE 7]
 
 	// [0] efFileSize
-	if fd.EFFileSize > 0 {
-		data = append(data, asn1.Marshal(0x80, nil, encodeInteger(fd.EFFileSize)...)...)
+	if len(fd.EFFileSize) > 0 {
+		data = append(data, asn1.Marshal(0x80, nil, fd.EFFileSize...)...)
 	}
 
 	// [2] fileDescriptor
@@ -251,8 +251,8 @@ func encodeFileDescriptor(fd *FileDescriptor) []byte {
 	}
 
 	// [3] fileID
-	if fd.FileID != 0 {
-		data = append(data, asn1.Marshal(0x83, nil, encodeUint16BE(fd.FileID)...)...)
+	if len(fd.FileID) > 0 {
+		data = append(data, asn1.Marshal(0x83, nil, fd.FileID...)...)
 	}
 
 	// [4] dfName
@@ -267,13 +267,13 @@ func encodeFileDescriptor(fd *FileDescriptor) []byte {
 	}
 
 	// [8] shortEFID
-	if fd.ShortEFID != 0 {
-		data = append(data, asn1.Marshal(0x88, nil, fd.ShortEFID)...)
+	if len(fd.ShortEFID) > 0 {
+		data = append(data, asn1.Marshal(0x88, nil, fd.ShortEFID...)...)
 	}
 
 	// [10] lcsi
-	if fd.LCSI != 0 {
-		data = append(data, asn1.Marshal(0x8A, nil, fd.LCSI)...)
+	if len(fd.LCSI) > 0 {
+		data = append(data, asn1.Marshal(0x8A, nil, fd.LCSI...)...)
 	}
 
 	// [11] securityAttributesReferenced
@@ -298,7 +298,9 @@ func encodeProprietaryEFInfo(pei *ProprietaryEFInfo) []byte {
 	var data []byte
 
 	// [0] specialFileInformation
-	data = append(data, asn1.Marshal(0x80, nil, pei.SpecialFileInformation)...)
+	if len(pei.SpecialFileInformation) > 0 {
+		data = append(data, asn1.Marshal(0x80, nil, pei.SpecialFileInformation...)...)
+	}
 
 	// [1] fillPattern
 	if len(pei.FillPattern) > 0 {
@@ -308,6 +310,16 @@ func encodeProprietaryEFInfo(pei *ProprietaryEFInfo) []byte {
 	// [2] repeatPattern
 	if len(pei.RepeatPattern) > 0 {
 		data = append(data, asn1.Marshal(0x82, nil, pei.RepeatPattern...)...)
+	}
+
+	// [4] fileDetails
+	if len(pei.FileDetails) > 0 {
+		data = append(data, asn1.Marshal(0x84, nil, pei.FileDetails...)...)
+	}
+
+	// [6] maximumFileSize
+	if len(pei.MaximumFileSize) > 0 {
+		data = append(data, asn1.Marshal(0x86, nil, pei.MaximumFileSize...)...)
 	}
 
 	return data
@@ -419,7 +431,9 @@ func encodePINCodes(pin *PINCodes) ([]byte, error) {
 			configData := encodePINConfig(config)
 			configsData = append(configsData, asn1.Marshal(0x30, nil, configData...)...)
 		}
-		data = append(data, asn1.Marshal(0xA1, nil, configsData...)...)
+		// Wrap in CHOICE [0] pinconfig
+		choice0Data := asn1.Marshal(0xA0, nil, configsData...)
+		data = append(data, asn1.Marshal(0xA1, nil, choice0Data...)...)
 	}
 
 	return data, nil
@@ -1011,9 +1025,9 @@ func encodeSDKey(key SDKey) []byte {
 	data = append(data, asn1.Marshal(0x82, nil, key.KeyIdentifier)...)
 	data = append(data, asn1.Marshal(0x83, nil, key.KeyVersionNumber)...)
 
-	if len(key.KeyComponents) > 0 {
+	if len(key.KeyCompontents) > 0 {
 		var compData []byte
-		for _, comp := range key.KeyComponents {
+		for _, comp := range key.KeyCompontents {
 			cd := encodeKeyComponent(comp)
 			compData = append(compData, asn1.Marshal(0x30, nil, cd...)...)
 		}

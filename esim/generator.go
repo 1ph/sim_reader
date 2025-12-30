@@ -46,6 +46,23 @@ func (g *Generator) writeIndent() {
 	}
 }
 
+func (g *Generator) writeFields(fields []string) {
+	for i, f := range fields {
+		suffix := ""
+		if i < len(fields)-1 {
+			suffix = ","
+		}
+		g.writeLine(f + suffix)
+	}
+}
+
+func (g *Generator) formatHex(b []byte) string {
+	if b == nil {
+		return "''H"
+	}
+	return fmt.Sprintf("'%s'H", strings.ToUpper(hex.EncodeToString(b)))
+}
+
 func (g *Generator) generateProfile(p *Profile) {
 	for _, elem := range p.Elements {
 		g.valueNum++
@@ -96,6 +113,8 @@ func (g *Generator) generateProfileElement(elem *ProfileElement, num int) {
 		g.generateSecurityDomain(elem.Value.(*SecurityDomain))
 	case TagRFM:
 		g.generateRFM(elem.Value.(*RFMConfig))
+	case TagApplication:
+		g.generateApplication(elem.Value.(*Application))
 	case TagEnd:
 		g.generateEnd(elem.Value.(*EndElement))
 	default:
@@ -160,80 +179,108 @@ func (g *Generator) generateProfileHeader(h *ProfileHeader) {
 	g.write("{\n")
 	g.indent++
 
-	g.writeLine(fmt.Sprintf("major-version %d,", h.MajorVersion))
-	g.writeLine(fmt.Sprintf("minor-version %d,", h.MinorVersion))
+	fields := make([]string, 0)
+	fields = append(fields, fmt.Sprintf("major-version %d", h.MajorVersion))
+	fields = append(fields, fmt.Sprintf("minor-version %d", h.MinorVersion))
 
 	if h.ProfileType != "" {
-		g.writeLine(fmt.Sprintf("profileType \"%s\",", h.ProfileType))
+		fields = append(fields, fmt.Sprintf("profileType \"%s\"", h.ProfileType))
 	}
 
 	if len(h.ICCID) > 0 {
-		g.writeLine(fmt.Sprintf("iccid '%s'H,", strings.ToUpper(hex.EncodeToString(h.ICCID))))
+		fields = append(fields, fmt.Sprintf("iccid %s", g.formatHex(h.ICCID)))
 	}
 
 	if h.MandatoryServices != nil {
-		g.generateMandatoryServices(h.MandatoryServices)
+		fields = append(fields, g.sgenerateMandatoryServices(h.MandatoryServices))
 	}
 
 	if len(h.MandatoryGFSTEList) > 0 {
-		g.generateOIDList("eUICC-Mandatory-GFSTEList", h.MandatoryGFSTEList)
+		fields = append(fields, g.sgenerateOIDList("eUICC-Mandatory-GFSTEList", h.MandatoryGFSTEList))
 	}
+
+	g.writeFields(fields)
 
 	g.indent--
 	g.writeLine("}")
 }
 
-func (g *Generator) generateMandatoryServices(ms *MandatoryServices) {
-	g.writeLine("eUICC-Mandatory-services {")
+func (g *Generator) sgenerateMandatoryServices(ms *MandatoryServices) string {
+	var sb strings.Builder
+	sb.WriteString("eUICC-Mandatory-services {\n")
 	g.indent++
 
+	fields := make([]string, 0)
 	if ms.USIM {
-		g.writeLine("usim NULL,")
+		fields = append(fields, "usim NULL")
 	}
 	if ms.ISIM {
-		g.writeLine("isim NULL,")
+		fields = append(fields, "isim NULL")
 	}
 	if ms.CSIM {
-		g.writeLine("csim NULL,")
+		fields = append(fields, "csim NULL")
 	}
 	if ms.USIMTestAlgorithm {
-		g.writeLine("usim-test-algorithm NULL,")
+		fields = append(fields, "usim-test-algorithm NULL")
 	}
 	if ms.BERTLV {
-		g.writeLine("ber-tlv NULL,")
+		fields = append(fields, "ber-tlv NULL")
 	}
 	if ms.GetIdentity {
-		g.writeLine("get-identity NULL,")
+		fields = append(fields, "get-identity NULL")
 	}
 	if ms.ProfileAX25519 {
-		g.writeLine("profile-a-x25519 NULL,")
+		fields = append(fields, "profile-a-x25519 NULL")
 	}
 	if ms.ProfileBP256 {
-		g.writeLine("profile-b-p256 NULL")
+		fields = append(fields, "profile-b-p256 NULL")
+	}
+
+	for i, f := range fields {
+		for j := 0; j < g.indent; j++ {
+			sb.WriteString("  ")
+		}
+		sb.WriteString(f)
+		if i < len(fields)-1 {
+			sb.WriteString(",")
+		}
+		sb.WriteString("\n")
 	}
 
 	g.indent--
-	g.writeLine("},")
+	for j := 0; j < g.indent; j++ {
+		sb.WriteString("  ")
+	}
+	sb.WriteString("}")
+	return sb.String()
 }
 
-func (g *Generator) generateOIDList(name string, oids []OID) {
-	g.writeLine(name + " {")
+func (g *Generator) sgenerateOIDList(name string, oids []OID) string {
+	var sb strings.Builder
+	sb.WriteString(name + " {\n")
 	g.indent++
 
 	for i, oid := range oids {
+		for j := 0; j < g.indent; j++ {
+			sb.WriteString("  ")
+		}
 		parts := make([]string, len(oid))
 		for j, n := range oid {
 			parts[j] = fmt.Sprintf("%d", n)
 		}
-		suffix := ","
-		if i == len(oids)-1 {
-			suffix = ""
+		sb.WriteString("{ " + strings.Join(parts, " ") + " }")
+		if i < len(oids)-1 {
+			sb.WriteString(",")
 		}
-		g.writeLine("{ " + strings.Join(parts, " ") + " }" + suffix)
+		sb.WriteString("\n")
 	}
 
 	g.indent--
-	g.writeLine("}")
+	for j := 0; j < g.indent; j++ {
+		sb.WriteString("  ")
+	}
+	sb.WriteString("}")
+	return sb.String()
 }
 
 func (g *Generator) generateOID(oid OID) string {
@@ -252,53 +299,77 @@ func (g *Generator) generateMasterFile(mf *MasterFile) {
 	g.write("{\n")
 	g.indent++
 
+	fields := make([]string, 0)
 	if mf.MFHeader != nil {
-		g.generateElementHeader("mf-header", mf.MFHeader)
+		fields = append(fields, g.sgenerateElementHeader("mf-header", mf.MFHeader))
 	}
 
 	if len(mf.TemplateID) > 0 {
-		g.writeLine(fmt.Sprintf("templateID %s,", g.generateOID(mf.TemplateID)))
+		fields = append(fields, fmt.Sprintf("templateID %s", g.generateOID(mf.TemplateID)))
 	}
 
 	if mf.MF != nil {
-		g.writeLine("mf {")
-		g.indent++
-		g.generateFileDescriptorInner("fileDescriptor", mf.MF)
-		g.indent--
-		g.writeLine("},")
+		fields = append(fields, g.sgenerateFileDescriptorWrapper("mf", mf.MF))
 	}
 
 	if mf.EF_PL != nil {
-		g.generateElementaryFile("ef-pl", mf.EF_PL)
+		fields = append(fields, g.sgenerateElementaryFile("ef-pl", mf.EF_PL))
 	}
 	if mf.EF_ICCID != nil {
-		g.generateElementaryFile("ef-iccid", mf.EF_ICCID)
+		fields = append(fields, g.sgenerateElementaryFile("ef-iccid", mf.EF_ICCID))
 	}
 	if mf.EF_DIR != nil {
-		g.generateElementaryFile("ef-dir", mf.EF_DIR)
+		fields = append(fields, g.sgenerateElementaryFile("ef-dir", mf.EF_DIR))
 	}
 	if mf.EF_ARR != nil {
-		g.generateElementaryFile("ef-arr", mf.EF_ARR)
+		fields = append(fields, g.sgenerateElementaryFile("ef-arr", mf.EF_ARR))
 	}
 	if mf.EF_UMPC != nil {
-		g.generateElementaryFile("ef-umpc", mf.EF_UMPC)
+		fields = append(fields, g.sgenerateElementaryFile("ef-umpc", mf.EF_UMPC))
 	}
+
+	for _, ef := range mf.EFList {
+		fields = append(fields, g.sgenerateElementaryFile("efList", ef))
+	}
+
+	g.writeFields(fields)
 
 	g.indent--
 	g.writeLine("}")
 }
 
-func (g *Generator) generateElementHeader(name string, eh *ElementHeader) {
-	g.writeLine(name + " {")
+func (g *Generator) sgenerateElementHeader(name string, eh *ElementHeader) string {
+	var sb strings.Builder
+	sb.WriteString(name + " {\n")
 	g.indent++
 
+	fields := make([]string, 0)
 	if eh.Mandated {
-		g.writeLine("mandated NULL,")
+		fields = append(fields, "mandated NULL")
 	}
-	g.writeLine(fmt.Sprintf("identification %d", eh.Identification))
+	fields = append(fields, fmt.Sprintf("identification %d", eh.Identification))
+
+	for i, f := range fields {
+		for j := 0; j < g.indent; j++ {
+			sb.WriteString("  ")
+		}
+		sb.WriteString(f)
+		if i < len(fields)-1 {
+			sb.WriteString(",")
+		}
+		sb.WriteString("\n")
+	}
 
 	g.indent--
-	g.writeLine("},")
+	for j := 0; j < g.indent; j++ {
+		sb.WriteString("  ")
+	}
+	sb.WriteString("}")
+	return sb.String()
+}
+
+func (g *Generator) generateElementHeader(name string, eh *ElementHeader) {
+	g.writeLine(g.sgenerateElementHeader(name, eh))
 }
 
 func (g *Generator) generateFileDescriptorWrapper(name string, fd *FileDescriptor) {
@@ -306,107 +377,190 @@ func (g *Generator) generateFileDescriptorWrapper(name string, fd *FileDescripto
 	g.indent++
 	g.generateFileDescriptorInner("fileDescriptor", fd)
 	g.indent--
-	g.writeLine("},")
+	g.writeLine("}")
 }
 
 func (g *Generator) generateFileDescriptorInner(name string, fd *FileDescriptor) {
 	g.writeLine(name + " : {")
 	g.indent++
 
+	fields := make([]string, 0)
 	if len(fd.FileDescriptor) > 0 {
-		g.writeLine(fmt.Sprintf("fileDescriptor '%s'H,", strings.ToUpper(hex.EncodeToString(fd.FileDescriptor))))
+		fields = append(fields, fmt.Sprintf("fileDescriptor %s", g.formatHex(fd.FileDescriptor)))
 	}
-	if fd.FileID != 0 {
-		g.writeLine(fmt.Sprintf("fileID '%04X'H,", fd.FileID))
+	if len(fd.FileID) > 0 {
+		fields = append(fields, fmt.Sprintf("fileID %s", g.formatHex(fd.FileID)))
 	}
-	if fd.LCSI != 0 {
-		g.writeLine(fmt.Sprintf("lcsi '%02X'H,", fd.LCSI))
+	// Always print lcsi if we have it
+	if len(fd.LCSI) > 0 {
+		fields = append(fields, fmt.Sprintf("lcsi %s", g.formatHex(fd.LCSI)))
 	}
 	if len(fd.SecurityAttributesReferenced) > 0 {
-		g.writeLine(fmt.Sprintf("securityAttributesReferenced '%s'H,", strings.ToUpper(hex.EncodeToString(fd.SecurityAttributesReferenced))))
+		fields = append(fields, fmt.Sprintf("securityAttributesReferenced %s", g.formatHex(fd.SecurityAttributesReferenced)))
 	}
-	if fd.EFFileSize > 0 {
-		hexStr := fmt.Sprintf("%X", fd.EFFileSize)
-		if len(hexStr)%2 != 0 {
-			hexStr = "0" + hexStr
-		}
-		g.writeLine(fmt.Sprintf("efFileSize '%s'H,", hexStr))
+	if len(fd.EFFileSize) > 0 {
+		fields = append(fields, fmt.Sprintf("efFileSize %s", g.formatHex(fd.EFFileSize)))
 	}
-	if fd.ShortEFID != 0 {
-		g.writeLine(fmt.Sprintf("shortEFID '%02X'H,", fd.ShortEFID))
+	if fd.ShortEFID != nil {
+		fields = append(fields, fmt.Sprintf("shortEFID %s", g.formatHex(fd.ShortEFID)))
 	}
 	if len(fd.DFName) > 0 {
-		g.writeLine(fmt.Sprintf("dfName '%s'H,", strings.ToUpper(hex.EncodeToString(fd.DFName))))
+		fields = append(fields, fmt.Sprintf("dfName %s", g.formatHex(fd.DFName)))
 	}
 	if len(fd.PinStatusTemplateDO) > 0 {
-		g.writeLine(fmt.Sprintf("pinStatusTemplateDO '%s'H,", strings.ToUpper(hex.EncodeToString(fd.PinStatusTemplateDO))))
+		fields = append(fields, fmt.Sprintf("pinStatusTemplateDO %s", g.formatHex(fd.PinStatusTemplateDO)))
 	}
 	if len(fd.LinkPath) > 0 {
-		g.writeLine(fmt.Sprintf("linkPath '%s'H,", strings.ToUpper(hex.EncodeToString(fd.LinkPath))))
+		fields = append(fields, fmt.Sprintf("linkPath %s", g.formatHex(fd.LinkPath)))
 	}
 	if fd.ProprietaryEFInfo != nil {
-		g.generateProprietaryEFInfo(fd.ProprietaryEFInfo)
+		fields = append(fields, g.sgenerateProprietaryEFInfo(fd.ProprietaryEFInfo))
 	}
+
+	g.writeFields(fields)
 
 	g.indent--
 	g.writeLine("}")
 }
 
-func (g *Generator) generateProprietaryEFInfo(pei *ProprietaryEFInfo) {
-	g.writeLine("proprietaryEFInfo {")
+func (g *Generator) sgenerateProprietaryEFInfo(pei *ProprietaryEFInfo) string {
+	var sb strings.Builder
+	sb.WriteString("proprietaryEFInfo {\n")
 	g.indent++
 
-	g.writeLine(fmt.Sprintf("specialFileInformation '%02X'H,", pei.SpecialFileInformation))
-
+	fields := make([]string, 0)
+	// Always print specialFileInformation if we have it
+	if len(pei.SpecialFileInformation) > 0 {
+		fields = append(fields, fmt.Sprintf("specialFileInformation %s", g.formatHex(pei.SpecialFileInformation)))
+	}
 	if len(pei.FillPattern) > 0 {
-		g.writeLine(fmt.Sprintf("fillPattern '%s'H,", strings.ToUpper(hex.EncodeToString(pei.FillPattern))))
+		fields = append(fields, fmt.Sprintf("fillPattern %s", g.formatHex(pei.FillPattern)))
 	}
 	if len(pei.RepeatPattern) > 0 {
-		g.writeLine(fmt.Sprintf("repeatPattern '%s'H", strings.ToUpper(hex.EncodeToString(pei.RepeatPattern))))
+		fields = append(fields, fmt.Sprintf("repeatPattern %s", g.formatHex(pei.RepeatPattern)))
+	}
+	if len(pei.MaximumFileSize) > 0 {
+		fields = append(fields, fmt.Sprintf("maximumFileSize %s", g.formatHex(pei.MaximumFileSize)))
+	}
+	if len(pei.FileDetails) > 0 {
+		fields = append(fields, fmt.Sprintf("fileDetails %s", g.formatHex(pei.FileDetails)))
+	}
+
+	for i, f := range fields {
+		for j := 0; j < g.indent; j++ {
+			sb.WriteString("  ")
+		}
+		sb.WriteString(f)
+		if i < len(fields)-1 {
+			sb.WriteString(",")
+		}
+		sb.WriteString("\n")
 	}
 
 	g.indent--
-	g.writeLine("}")
+	for j := 0; j < g.indent; j++ {
+		sb.WriteString("  ")
+	}
+	sb.WriteString("}")
+	return sb.String()
 }
 
 func (g *Generator) generateElementaryFile(name string, ef *ElementaryFile) {
 	g.writeLine(name + " {")
 	g.indent++
 
+	fields := make([]string, 0)
+
 	// Use Raw elements if available for exact round-trip
 	if len(ef.Raw) > 0 {
 		for _, elem := range ef.Raw {
 			switch elem.Type {
 			case FileElementDoNotCreate:
-				g.writeLine("doNotCreate NULL,")
+				fields = append(fields, "doNotCreate NULL")
 			case FileElementDescriptor:
 				if elem.Descriptor != nil {
-					g.generateFileDescriptorInner("fileDescriptor", elem.Descriptor)
-					g.write(",\n")
+					fields = append(fields, g.sgenerateFileDescriptorInner("fileDescriptor", elem.Descriptor))
 				}
 			case FileElementOffset:
-				g.writeLine(fmt.Sprintf("fillFileOffset : %d,", elem.Offset))
+				fields = append(fields, fmt.Sprintf("fillFileOffset : %d", elem.Offset))
 			case FileElementContent:
-				g.writeLine(fmt.Sprintf("fillFileContent : '%s'H,", strings.ToUpper(hex.EncodeToString(elem.Content))))
+				fields = append(fields, fmt.Sprintf("fillFileContent : %s", g.formatHex(elem.Content)))
 			}
 		}
 	} else {
 		// Fallback to simplified structure
 		if ef.Descriptor != nil {
-			g.generateFileDescriptorInner("fileDescriptor", ef.Descriptor)
-			g.write(",\n")
+			fields = append(fields, g.sgenerateFileDescriptorInner("fileDescriptor", ef.Descriptor))
 		}
 
 		for _, fc := range ef.FillContents {
 			if fc.Offset > 0 {
-				g.writeLine(fmt.Sprintf("fillFileOffset : %d,", fc.Offset))
+				fields = append(fields, fmt.Sprintf("fillFileOffset : %d", fc.Offset))
 			}
-			g.writeLine(fmt.Sprintf("fillFileContent : '%s'H,", strings.ToUpper(hex.EncodeToString(fc.Content))))
+			fields = append(fields, fmt.Sprintf("fillFileContent : %s", g.formatHex(fc.Content)))
 		}
 	}
 
+	g.writeFields(fields)
+
 	g.indent--
-	g.writeLine("},")
+	g.writeLine("}")
+}
+
+func (g *Generator) sgenerateFileDescriptorInner(name string, fd *FileDescriptor) string {
+	var sb strings.Builder
+	sb.WriteString(name + " : {\n")
+	g.indent++
+
+	fields := make([]string, 0)
+	if len(fd.FileDescriptor) > 0 {
+		fields = append(fields, fmt.Sprintf("fileDescriptor %s", g.formatHex(fd.FileDescriptor)))
+	}
+	if len(fd.FileID) > 0 {
+		fields = append(fields, fmt.Sprintf("fileID %s", g.formatHex(fd.FileID)))
+	}
+	if len(fd.LCSI) > 0 {
+		fields = append(fields, fmt.Sprintf("lcsi %s", g.formatHex(fd.LCSI)))
+	}
+	if len(fd.SecurityAttributesReferenced) > 0 {
+		fields = append(fields, fmt.Sprintf("securityAttributesReferenced %s", g.formatHex(fd.SecurityAttributesReferenced)))
+	}
+	if len(fd.EFFileSize) > 0 {
+		fields = append(fields, fmt.Sprintf("efFileSize %s", g.formatHex(fd.EFFileSize)))
+	}
+	if fd.ShortEFID != nil {
+		fields = append(fields, fmt.Sprintf("shortEFID %s", g.formatHex(fd.ShortEFID)))
+	}
+	if len(fd.DFName) > 0 {
+		fields = append(fields, fmt.Sprintf("dfName %s", g.formatHex(fd.DFName)))
+	}
+	if len(fd.PinStatusTemplateDO) > 0 {
+		fields = append(fields, fmt.Sprintf("pinStatusTemplateDO %s", g.formatHex(fd.PinStatusTemplateDO)))
+	}
+	if len(fd.LinkPath) > 0 {
+		fields = append(fields, fmt.Sprintf("linkPath %s", g.formatHex(fd.LinkPath)))
+	}
+	if fd.ProprietaryEFInfo != nil {
+		fields = append(fields, g.sgenerateProprietaryEFInfo(fd.ProprietaryEFInfo))
+	}
+
+	for i, f := range fields {
+		for j := 0; j < g.indent; j++ {
+			sb.WriteString("  ")
+		}
+		sb.WriteString(f)
+		if i < len(fields)-1 {
+			sb.WriteString(",")
+		}
+		sb.WriteString("\n")
+	}
+
+	g.indent--
+	for j := 0; j < g.indent; j++ {
+		sb.WriteString("  ")
+	}
+	sb.WriteString("}")
+	return sb.String()
 }
 
 // ============================================================================
@@ -417,33 +571,59 @@ func (g *Generator) generatePUKCodes(puk *PUKCodes) {
 	g.write("{\n")
 	g.indent++
 
+	fields := make([]string, 0)
 	if puk.Header != nil {
-		g.generateElementHeader("puk-Header", puk.Header)
+		fields = append(fields, g.sgenerateElementHeader("puk-Header", puk.Header))
 	}
 
 	if len(puk.Codes) > 0 {
-		g.writeLine("pukCodes {")
+		var sb strings.Builder
+		sb.WriteString("pukCodes {\n")
 		g.indent++
 
 		for i, code := range puk.Codes {
-			g.writeLine("{")
+			for j := 0; j < g.indent; j++ {
+				sb.WriteString("  ")
+			}
+			sb.WriteString("{\n")
 			g.indent++
 
-			g.writeLine(fmt.Sprintf("keyReference %s,", g.getKeyRefName(code.KeyReference, true)))
-			g.writeLine(fmt.Sprintf("pukValue '%s'H,", strings.ToUpper(hex.EncodeToString(code.PUKValue))))
-			g.writeLine(fmt.Sprintf("maxNumOfAttemps-retryNumLeft %d", code.MaxNumOfAttempsRetryNumLeft))
+			cfields := make([]string, 0)
+			cfields = append(cfields, fmt.Sprintf("keyReference %s", g.getKeyRefName(code.KeyReference, true)))
+			cfields = append(cfields, fmt.Sprintf("pukValue %s", g.formatHex(code.PUKValue)))
+			cfields = append(cfields, fmt.Sprintf("maxNumOfAttemps-retryNumLeft %d", code.MaxNumOfAttempsRetryNumLeft))
+
+			for j, f := range cfields {
+				for k := 0; k < g.indent; k++ {
+					sb.WriteString("  ")
+				}
+				sb.WriteString(f)
+				if j < len(cfields)-1 {
+					sb.WriteString(",")
+				}
+				sb.WriteString("\n")
+			}
 
 			g.indent--
-			suffix := ","
-			if i == len(puk.Codes)-1 {
-				suffix = ""
+			for j := 0; j < g.indent; j++ {
+				sb.WriteString("  ")
 			}
-			g.writeLine("}" + suffix)
+			sb.WriteString("}")
+			if i < len(puk.Codes)-1 {
+				sb.WriteString(",")
+			}
+			sb.WriteString("\n")
 		}
 
 		g.indent--
-		g.writeLine("}")
+		for j := 0; j < g.indent; j++ {
+			sb.WriteString("  ")
+		}
+		sb.WriteString("}")
+		fields = append(fields, sb.String())
 	}
+
+	g.writeFields(fields)
 
 	g.indent--
 	g.writeLine("}")
@@ -465,13 +645,22 @@ func (g *Generator) generatePINCodes(pin *PINCodes) {
 			g.writeLine("{")
 			g.indent++
 
-			g.writeLine(fmt.Sprintf("keyReference %s,", g.getKeyRefName(config.KeyReference, false)))
-			g.writeLine(fmt.Sprintf("pinValue '%s'H,", strings.ToUpper(hex.EncodeToString(config.PINValue))))
+			fields := make([]string, 0)
+			fields = append(fields, fmt.Sprintf("keyReference %s", g.getKeyRefName(config.KeyReference, false)))
+			fields = append(fields, fmt.Sprintf("pinValue %s", g.formatHex(config.PINValue)))
 			if config.UnblockingPINReference != 0 {
-				g.writeLine(fmt.Sprintf("unblockingPINReference %s,", g.getKeyRefName(config.UnblockingPINReference, true)))
+				fields = append(fields, fmt.Sprintf("unblockingPINReference %s", g.getKeyRefName(config.UnblockingPINReference, true)))
 			}
-			g.writeLine(fmt.Sprintf("pinAttributes %d,", config.PINAttributes))
-			g.writeLine(fmt.Sprintf("maxNumOfAttemps-retryNumLeft %d", config.MaxNumOfAttempsRetryNumLeft))
+			fields = append(fields, fmt.Sprintf("pinAttributes %d", config.PINAttributes))
+			fields = append(fields, fmt.Sprintf("maxNumOfAttemps-retryNumLeft %d", config.MaxNumOfAttempsRetryNumLeft))
+
+			for j, f := range fields {
+				suffix := ""
+				if j < len(fields)-1 {
+					suffix = ","
+				}
+				g.writeLine(f + suffix)
+			}
 
 			g.indent--
 			suffix := ","
@@ -524,56 +713,65 @@ func (g *Generator) generateTelecom(t *TelecomDF) {
 		g.generateElementHeader("telecom-header", t.Header)
 	}
 
+	fields := make([]string, 0)
 	if len(t.TemplateID) > 0 {
-		g.writeLine(fmt.Sprintf("templateID %s,", g.generateOID(t.TemplateID)))
+		fields = append(fields, fmt.Sprintf("templateID %s", g.generateOID(t.TemplateID)))
 	}
 
 	if t.DFTelecom != nil {
-		g.generateFileDescriptorWrapper("df-telecom", t.DFTelecom)
+		fields = append(fields, g.sgenerateFileDescriptorWrapper("df-telecom", t.DFTelecom))
 	}
 
-	if t.EF_ARR != nil {
-		g.generateElementaryFile("ef-arr", t.EF_ARR)
+	efFields := []struct {
+		name string
+		ef   *ElementaryFile
+	}{
+		{"ef-arr", t.EF_ARR},
+		{"ef-sume", t.EF_SUME},
+		{"ef-psismsc", t.EF_PSISMSC},
 	}
-	if t.EF_SUME != nil {
-		g.generateElementaryFile("ef-sume", t.EF_SUME)
+
+	for _, f := range efFields {
+		if f.ef != nil {
+			fields = append(fields, g.sgenerateElementaryFile(f.name, f.ef))
+		}
 	}
-	if t.EF_PSISMSC != nil {
-		g.generateElementaryFile("ef-psismsc", t.EF_PSISMSC)
-	}
+
 	if t.DFGraphics != nil {
-		g.generateFileDescriptorWrapper("df-graphics", t.DFGraphics)
+		fields = append(fields, g.sgenerateFileDescriptorWrapper("df-graphics", t.DFGraphics))
 	}
 	if t.EF_IMG != nil {
-		g.generateElementaryFile("ef-img", t.EF_IMG)
+		fields = append(fields, g.sgenerateElementaryFile("ef-img", t.EF_IMG))
 	}
 	if t.EF_LaunchSCWS != nil {
-		g.generateElementaryFile("ef-launch-scws", t.EF_LaunchSCWS)
+		fields = append(fields, g.sgenerateElementaryFile("ef-launch-scws", t.EF_LaunchSCWS))
 	}
 	if t.DFPhonebook != nil {
-		g.generateFileDescriptorWrapper("df-phonebook", t.DFPhonebook)
+		fields = append(fields, g.sgenerateFileDescriptorWrapper("df-phonebook", t.DFPhonebook))
 	}
 	if t.EF_PBR != nil {
-		g.generateElementaryFile("ef-pbr", t.EF_PBR)
+		fields = append(fields, g.sgenerateElementaryFile("ef-pbr", t.EF_PBR))
 	}
 	if t.EF_PSC != nil {
-		g.generateElementaryFile("ef-psc", t.EF_PSC)
+		fields = append(fields, g.sgenerateElementaryFile("ef-psc", t.EF_PSC))
 	}
 	if t.EF_CC != nil {
-		g.generateElementaryFile("ef-cc", t.EF_CC)
+		fields = append(fields, g.sgenerateElementaryFile("ef-cc", t.EF_CC))
 	}
 	if t.EF_PUID != nil {
-		g.generateElementaryFile("ef-puid", t.EF_PUID)
+		fields = append(fields, g.sgenerateElementaryFile("ef-puid", t.EF_PUID))
 	}
 	if t.DFMMSS != nil {
-		g.generateFileDescriptorWrapper("df-mmss", t.DFMMSS)
+		fields = append(fields, g.sgenerateFileDescriptorWrapper("df-mmss", t.DFMMSS))
 	}
 	if t.EF_MLPL != nil {
-		g.generateElementaryFile("ef-mlpl", t.EF_MLPL)
+		fields = append(fields, g.sgenerateElementaryFile("ef-mlpl", t.EF_MLPL))
 	}
 	if t.EF_MSPL != nil {
-		g.generateElementaryFile("ef-mspl", t.EF_MSPL)
+		fields = append(fields, g.sgenerateElementaryFile("ef-mspl", t.EF_MSPL))
 	}
+
+	g.writeFields(fields)
 
 	g.indent--
 	g.writeLine("}")
@@ -591,12 +789,13 @@ func (g *Generator) generateUSIM(u *USIMApplication) {
 		g.generateElementHeader("usim-header", u.Header)
 	}
 
+	fields := make([]string, 0)
 	if len(u.TemplateID) > 0 {
-		g.writeLine(fmt.Sprintf("templateID %s,", g.generateOID(u.TemplateID)))
+		fields = append(fields, fmt.Sprintf("templateID %s", g.generateOID(u.TemplateID)))
 	}
 
 	if u.ADFUSIM != nil {
-		g.generateFileDescriptorWrapper("adf-usim", u.ADFUSIM)
+		fields = append(fields, g.sgenerateFileDescriptorWrapper("adf-usim", u.ADFUSIM))
 	}
 
 	// Generate all EF files
@@ -631,12 +830,87 @@ func (g *Generator) generateUSIM(u *USIMApplication) {
 
 	for _, f := range efFields {
 		if f.ef != nil {
-			g.generateElementaryFile(f.name, f.ef)
+			fields = append(fields, g.sgenerateElementaryFile(f.name, f.ef))
 		}
 	}
 
+	g.writeFields(fields)
+
 	g.indent--
 	g.writeLine("}")
+}
+
+func (g *Generator) sgenerateFileDescriptorWrapper(name string, fd *FileDescriptor) string {
+	var sb strings.Builder
+	sb.WriteString(name + " {\n")
+	g.indent++
+	for j := 0; j < g.indent; j++ {
+		sb.WriteString("  ")
+	}
+	sb.WriteString(g.sgenerateFileDescriptorInner("fileDescriptor", fd))
+	sb.WriteString("\n")
+	g.indent--
+	for j := 0; j < g.indent; j++ {
+		sb.WriteString("  ")
+	}
+	sb.WriteString("}")
+	return sb.String()
+}
+
+func (g *Generator) sgenerateElementaryFile(name string, ef *ElementaryFile) string {
+	var sb strings.Builder
+	sb.WriteString(name + " {\n")
+	g.indent++
+
+	fields := make([]string, 0)
+
+	// Use Raw elements if available for exact round-trip
+	if len(ef.Raw) > 0 {
+		for _, elem := range ef.Raw {
+			switch elem.Type {
+			case FileElementDoNotCreate:
+				fields = append(fields, "doNotCreate NULL")
+			case FileElementDescriptor:
+				if elem.Descriptor != nil {
+					fields = append(fields, g.sgenerateFileDescriptorInner("fileDescriptor", elem.Descriptor))
+				}
+			case FileElementOffset:
+				fields = append(fields, fmt.Sprintf("fillFileOffset : %d", elem.Offset))
+			case FileElementContent:
+				fields = append(fields, fmt.Sprintf("fillFileContent : %s", g.formatHex(elem.Content)))
+			}
+		}
+	} else {
+		// Fallback to simplified structure
+		if ef.Descriptor != nil {
+			fields = append(fields, g.sgenerateFileDescriptorInner("fileDescriptor", ef.Descriptor))
+		}
+
+		for _, fc := range ef.FillContents {
+			if fc.Offset > 0 {
+				fields = append(fields, fmt.Sprintf("fillFileOffset : %d", fc.Offset))
+			}
+			fields = append(fields, fmt.Sprintf("fillFileContent : %s", g.formatHex(fc.Content)))
+		}
+	}
+
+	for i, f := range fields {
+		for j := 0; j < g.indent; j++ {
+			sb.WriteString("  ")
+		}
+		sb.WriteString(f)
+		if i < len(fields)-1 {
+			sb.WriteString(",")
+		}
+		sb.WriteString("\n")
+	}
+
+	g.indent--
+	for j := 0; j < g.indent; j++ {
+		sb.WriteString("  ")
+	}
+	sb.WriteString("}")
+	return sb.String()
 }
 
 func (g *Generator) generateOptUSIM(u *OptionalUSIM) {
@@ -647,8 +921,9 @@ func (g *Generator) generateOptUSIM(u *OptionalUSIM) {
 		g.generateElementHeader("optusim-header", u.Header)
 	}
 
+	fields := make([]string, 0)
 	if len(u.TemplateID) > 0 {
-		g.writeLine(fmt.Sprintf("templateID %s,", g.generateOID(u.TemplateID)))
+		fields = append(fields, fmt.Sprintf("templateID %s", g.generateOID(u.TemplateID)))
 	}
 
 	// Generate all optional EF files
@@ -711,9 +986,11 @@ func (g *Generator) generateOptUSIM(u *OptionalUSIM) {
 
 	for _, f := range efFields {
 		if f.ef != nil {
-			g.generateElementaryFile(f.name, f.ef)
+			fields = append(fields, g.sgenerateElementaryFile(f.name, f.ef))
 		}
 	}
+
+	g.writeFields(fields)
 
 	g.indent--
 	g.writeLine("}")
@@ -731,12 +1008,13 @@ func (g *Generator) generateISIM(i *ISIMApplication) {
 		g.generateElementHeader("isim-header", i.Header)
 	}
 
+	fields := make([]string, 0)
 	if len(i.TemplateID) > 0 {
-		g.writeLine(fmt.Sprintf("templateID %s,", g.generateOID(i.TemplateID)))
+		fields = append(fields, fmt.Sprintf("templateID %s", g.generateOID(i.TemplateID)))
 	}
 
 	if i.ADFISIM != nil {
-		g.generateFileDescriptorWrapper("adf-isim", i.ADFISIM)
+		fields = append(fields, g.sgenerateFileDescriptorWrapper("adf-isim", i.ADFISIM))
 	}
 
 	efFields := []struct {
@@ -753,9 +1031,11 @@ func (g *Generator) generateISIM(i *ISIMApplication) {
 
 	for _, f := range efFields {
 		if f.ef != nil {
-			g.generateElementaryFile(f.name, f.ef)
+			fields = append(fields, g.sgenerateElementaryFile(f.name, f.ef))
 		}
 	}
+
+	g.writeFields(fields)
 
 	g.indent--
 	g.writeLine("}")
@@ -769,8 +1049,9 @@ func (g *Generator) generateOptISIM(i *OptionalISIM) {
 		g.generateElementHeader("optisim-header", i.Header)
 	}
 
+	fields := make([]string, 0)
 	if len(i.TemplateID) > 0 {
-		g.writeLine(fmt.Sprintf("templateID %s,", g.generateOID(i.TemplateID)))
+		fields = append(fields, fmt.Sprintf("templateID %s", g.generateOID(i.TemplateID)))
 	}
 
 	efFields := []struct {
@@ -784,9 +1065,11 @@ func (g *Generator) generateOptISIM(i *OptionalISIM) {
 
 	for _, f := range efFields {
 		if f.ef != nil {
-			g.generateElementaryFile(f.name, f.ef)
+			fields = append(fields, g.sgenerateElementaryFile(f.name, f.ef))
 		}
 	}
+
+	g.writeFields(fields)
 
 	g.indent--
 	g.writeLine("}")
@@ -804,17 +1087,62 @@ func (g *Generator) generateCSIM(c *CSIMApplication) {
 		g.generateElementHeader("csim-header", c.Header)
 	}
 
+	fields := make([]string, 0)
 	if len(c.TemplateID) > 0 {
-		g.writeLine(fmt.Sprintf("templateID %s,", g.generateOID(c.TemplateID)))
+		fields = append(fields, fmt.Sprintf("templateID %s", g.generateOID(c.TemplateID)))
 	}
 
 	if c.ADFCSIM != nil {
-		g.generateFileDescriptorWrapper("adf-csim", c.ADFCSIM)
+		fields = append(fields, g.sgenerateFileDescriptorWrapper("adf-csim", c.ADFCSIM))
 	}
 
-	if c.EF_ARR != nil {
-		g.generateElementaryFile("ef-arr", c.EF_ARR)
+	efFields := []struct {
+		name string
+		ef   *ElementaryFile
+	}{
+		{"ef-arr", c.EF_ARR},
+		{"ef-call-count", c.EF_CallCount},
+		{"ef-imsi-m", c.EF_IMSI_M},
+		{"ef-imsi-t", c.EF_IMSI_T},
+		{"ef-tmsi", c.EF_TMSI},
+		{"ef-ah", c.EF_AH},
+		{"ef-aop", c.EF_AOP},
+		{"ef-aloc", c.EF_ALOC},
+		{"ef-cdmahome", c.EF_CDMAHOME},
+		{"ef-znregi", c.EF_ZNREGI},
+		{"ef-snregi", c.EF_SNREGI},
+		{"ef-distregi", c.EF_DISTREGI},
+		{"ef-accolc", c.EF_ACCOLC},
+		{"ef-term", c.EF_TERM},
+		{"ef-acp", c.EF_ACP},
+		{"ef-prl", c.EF_PRL},
+		{"ef-ruimid", c.EF_RUIMID},
+		{"ef-csim-st", c.EF_CSIM_ST},
+		{"ef-spc", c.EF_SPC},
+		{"ef-otapaspc", c.EF_OTAPASPC},
+		{"ef-namlock", c.EF_NAMLOCK},
+		{"ef-ota", c.EF_OTA},
+		{"ef-sp", c.EF_SP},
+		{"ef-esn-meid-me", c.EF_ESN_MEID_ME},
+		{"ef-li", c.EF_LI},
+		{"ef-usgind", c.EF_USGIND},
+		{"ef-ad", c.EF_AD},
+		{"ef-max-prl", c.EF_MAX_PRL},
+		{"ef-spcs", c.EF_SPCS},
+		{"ef-mecrp", c.EF_MECRP},
+		{"ef-home-tag", c.EF_HOME_TAG},
+		{"ef-group-tag", c.EF_GROUP_TAG},
+		{"ef-specific-tag", c.EF_SPECIFIC_TAG},
+		{"ef-call-prompt", c.EF_CALL_PROMPT},
 	}
+
+	for _, f := range efFields {
+		if f.ef != nil {
+			fields = append(fields, g.sgenerateElementaryFile(f.name, f.ef))
+		}
+	}
+
+	g.writeFields(fields)
 
 	g.indent--
 	g.writeLine("}")
@@ -828,9 +1156,67 @@ func (g *Generator) generateOptCSIM(c *OptionalCSIM) {
 		g.generateElementHeader("optcsim-header", c.Header)
 	}
 
+	fields := make([]string, 0)
 	if len(c.TemplateID) > 0 {
-		g.writeLine(fmt.Sprintf("templateID %s,", g.generateOID(c.TemplateID)))
+		fields = append(fields, fmt.Sprintf("templateID %s", g.generateOID(c.TemplateID)))
 	}
+
+	efFields := []struct {
+		name string
+		ef   *ElementaryFile
+	}{
+		{"ef-ssci", c.EF_SSCI},
+		{"ef-fdn", c.EF_FDN},
+		{"ef-sms", c.EF_SMS},
+		{"ef-smsp", c.EF_SMSP},
+		{"ef-smss", c.EF_SMSS},
+		{"ef-ssfc", c.EF_SSFC},
+		{"ef-spn", c.EF_SPN},
+		{"ef-mdn", c.EF_MDN},
+		{"ef-ecc", c.EF_ECC},
+		{"ef-me3gpdopc", c.EF_ME3GPDOPC},
+		{"ef-3gpdopm", c.EF_3GPDOPM},
+		{"ef-sipcap", c.EF_SIPCAP},
+		{"ef-mipcap", c.EF_MIPCAP},
+		{"ef-sipupp", c.EF_SIPUPP},
+		{"ef-mipupp", c.EF_MIPUPP},
+		{"ef-sipsp", c.EF_SIPSP},
+		{"ef-mipsp", c.EF_MIPSP},
+		{"ef-sippapss", c.EF_SIPPAPSS},
+		{"ef-hrpdcap", c.EF_HRPDCAP},
+		{"ef-hrpdupp", c.EF_HRPDUPP},
+		{"ef-csspr", c.EF_CSSPR},
+		{"ef-atc", c.EF_ATC},
+		{"ef-eprl", c.EF_EPRL},
+		{"ef-bcsmsp", c.EF_BCSMSP},
+		{"ef-mmsn", c.EF_MMSN},
+		{"ef-ext8", c.EF_EXT8},
+		{"ef-mmsicp", c.EF_MMSICP},
+		{"ef-mmsup", c.EF_MMSUP},
+		{"ef-mmsucp", c.EF_MMSUCP},
+		{"ef-3gcik", c.EF_3GCIK},
+		{"ef-gid1", c.EF_GID1},
+		{"ef-gid2", c.EF_GID2},
+		{"ef-sf-euimid", c.EF_SF_EUIMID},
+		{"ef-est", c.EF_EST},
+		{"ef-hidden-key", c.EF_HIDDEN_KEY},
+		{"ef-sdn", c.EF_SDN},
+		{"ef-ext2", c.EF_EXT2},
+		{"ef-ext3", c.EF_EXT3},
+		{"ef-ici", c.EF_ICI},
+		{"ef-oci", c.EF_OCI},
+		{"ef-ext5", c.EF_EXT5},
+		{"ef-ccp2", c.EF_CCP2},
+		{"ef-model", c.EF_MODEL},
+	}
+
+	for _, f := range efFields {
+		if f.ef != nil {
+			fields = append(fields, g.sgenerateElementaryFile(f.name, f.ef))
+		}
+	}
+
+	g.writeFields(fields)
 
 	g.indent--
 	g.writeLine("}")
@@ -848,12 +1234,13 @@ func (g *Generator) generateGSMAccess(gsm *GSMAccessDF) {
 		g.generateElementHeader("gsm-access-header", gsm.Header)
 	}
 
+	fields := make([]string, 0)
 	if len(gsm.TemplateID) > 0 {
-		g.writeLine(fmt.Sprintf("templateID %s,", g.generateOID(gsm.TemplateID)))
+		fields = append(fields, fmt.Sprintf("templateID %s", g.generateOID(gsm.TemplateID)))
 	}
 
 	if gsm.DFGSMAccess != nil {
-		g.generateFileDescriptorWrapper("df-gsm-access", gsm.DFGSMAccess)
+		fields = append(fields, g.sgenerateFileDescriptorWrapper("df-gsm-access", gsm.DFGSMAccess))
 	}
 
 	efFields := []struct {
@@ -868,9 +1255,11 @@ func (g *Generator) generateGSMAccess(gsm *GSMAccessDF) {
 
 	for _, f := range efFields {
 		if f.ef != nil {
-			g.generateElementaryFile(f.name, f.ef)
+			fields = append(fields, g.sgenerateElementaryFile(f.name, f.ef))
 		}
 	}
+
+	g.writeFields(fields)
 
 	g.indent--
 	g.writeLine("}")
@@ -888,12 +1277,13 @@ func (g *Generator) generateDF5GS(d *DF5GS) {
 		g.generateElementHeader("df-5gs-header", d.Header)
 	}
 
+	fields := make([]string, 0)
 	if len(d.TemplateID) > 0 {
-		g.writeLine(fmt.Sprintf("templateID %s,", g.generateOID(d.TemplateID)))
+		fields = append(fields, fmt.Sprintf("templateID %s", g.generateOID(d.TemplateID)))
 	}
 
 	if d.DFDF5GS != nil {
-		g.generateFileDescriptorWrapper("df-df-5gs", d.DFDF5GS)
+		fields = append(fields, g.sgenerateFileDescriptorWrapper("df-df-5gs", d.DFDF5GS))
 	}
 
 	efFields := []struct {
@@ -913,9 +1303,11 @@ func (g *Generator) generateDF5GS(d *DF5GS) {
 
 	for _, f := range efFields {
 		if f.ef != nil {
-			g.generateElementaryFile(f.name, f.ef)
+			fields = append(fields, g.sgenerateElementaryFile(f.name, f.ef))
 		}
 	}
+
+	g.writeFields(fields)
 
 	g.indent--
 	g.writeLine("}")
@@ -933,17 +1325,20 @@ func (g *Generator) generateDFSAIP(d *DFSAIP) {
 		g.generateElementHeader("df-saip-header", d.Header)
 	}
 
+	fields := make([]string, 0)
 	if len(d.TemplateID) > 0 {
-		g.writeLine(fmt.Sprintf("templateID %s,", g.generateOID(d.TemplateID)))
+		fields = append(fields, fmt.Sprintf("templateID %s", g.generateOID(d.TemplateID)))
 	}
 
 	if d.DFDFSAIP != nil {
-		g.generateFileDescriptorWrapper("df-df-saip", d.DFDFSAIP)
+		fields = append(fields, g.sgenerateFileDescriptorWrapper("df-df-saip", d.DFDFSAIP))
 	}
 
 	if d.EF_SUCI_CALC_INFO_USIM != nil {
-		g.generateElementaryFile("ef-suci-calc-info-usim", d.EF_SUCI_CALC_INFO_USIM)
+		fields = append(fields, g.sgenerateElementaryFile("ef-suci-calc-info-usim", d.EF_SUCI_CALC_INFO_USIM))
 	}
+
+	g.writeFields(fields)
 
 	g.indent--
 	g.writeLine("}")
@@ -961,58 +1356,94 @@ func (g *Generator) generateAKAParameter(aka *AKAParameter) {
 		g.generateElementHeader("aka-header", aka.Header)
 	}
 
+	fields := make([]string, 0)
 	if aka.AlgoConfig != nil {
-		g.writeLine("algoConfiguration algoParameter : {")
-		g.indent++
-
-		g.writeLine(fmt.Sprintf("algorithmID %s,", g.getAlgorithmIDName(aka.AlgoConfig.AlgorithmID)))
-		g.writeLine(fmt.Sprintf("algorithmOptions '%02X'H,", aka.AlgoConfig.AlgorithmOptions))
-
-		if len(aka.AlgoConfig.Key) > 0 {
-			g.writeLine(fmt.Sprintf("key '%s'H,", strings.ToUpper(hex.EncodeToString(aka.AlgoConfig.Key))))
-		}
-		if len(aka.AlgoConfig.OPC) > 0 {
-			g.writeLine(fmt.Sprintf("opc '%s'H,", strings.ToUpper(hex.EncodeToString(aka.AlgoConfig.OPC))))
-		}
-		if len(aka.AlgoConfig.RotationConstants) > 0 {
-			g.writeLine(fmt.Sprintf("rotationConstants '%s'H,", strings.ToUpper(hex.EncodeToString(aka.AlgoConfig.RotationConstants))))
-		}
-		if len(aka.AlgoConfig.XoringConstants) > 0 {
-			g.writeLine(fmt.Sprintf("xoringConstants '%s'H,", strings.ToUpper(hex.EncodeToString(aka.AlgoConfig.XoringConstants))))
-		}
-		if aka.AlgoConfig.NumberOfKeccak > 0 {
-			g.writeLine(fmt.Sprintf("numberOfKeccak %d", aka.AlgoConfig.NumberOfKeccak))
-		}
-
-		g.indent--
-		g.writeLine("},")
+		fields = append(fields, g.sgenerateAlgoConfiguration(aka.AlgoConfig))
 	}
 
-	g.writeLine(fmt.Sprintf("sqnOptions '%02X'H,", aka.SQNOptions))
+	fields = append(fields, fmt.Sprintf("sqnOptions '%02X'H", aka.SQNOptions))
 
 	if len(aka.SQNDelta) > 0 {
-		g.writeLine(fmt.Sprintf("sqnDelta '%s'H,", strings.ToUpper(hex.EncodeToString(aka.SQNDelta))))
+		fields = append(fields, fmt.Sprintf("sqnDelta %s", g.formatHex(aka.SQNDelta)))
 	}
 	if len(aka.SQNAgeLimit) > 0 {
-		g.writeLine(fmt.Sprintf("sqnAgeLimit '%s'H,", strings.ToUpper(hex.EncodeToString(aka.SQNAgeLimit))))
+		fields = append(fields, fmt.Sprintf("sqnAgeLimit %s", g.formatHex(aka.SQNAgeLimit)))
 	}
 
 	if len(aka.SQNInit) > 0 {
-		g.writeLine("sqnInit {")
-		g.indent++
-		for i, sqn := range aka.SQNInit {
-			suffix := ","
-			if i == len(aka.SQNInit)-1 {
-				suffix = ""
-			}
-			g.writeLine(fmt.Sprintf("'%s'H%s", strings.ToUpper(hex.EncodeToString(sqn)), suffix))
-		}
-		g.indent--
-		g.writeLine("}")
+		fields = append(fields, g.sgenerateSQNInit(aka.SQNInit))
 	}
+
+	g.writeFields(fields)
 
 	g.indent--
 	g.writeLine("}")
+}
+
+func (g *Generator) sgenerateAlgoConfiguration(ac *AlgoConfiguration) string {
+	var sb strings.Builder
+	sb.WriteString("algoConfiguration algoParameter : {\n")
+	g.indent++
+
+	fields := make([]string, 0)
+	fields = append(fields, fmt.Sprintf("algorithmID %s", g.getAlgorithmIDName(ac.AlgorithmID)))
+	fields = append(fields, fmt.Sprintf("algorithmOptions '%02X'H", ac.AlgorithmOptions))
+
+	if len(ac.Key) > 0 {
+		fields = append(fields, fmt.Sprintf("key %s", g.formatHex(ac.Key)))
+	}
+	if len(ac.OPC) > 0 {
+		fields = append(fields, fmt.Sprintf("opc %s", g.formatHex(ac.OPC)))
+	}
+	if len(ac.RotationConstants) > 0 {
+		fields = append(fields, fmt.Sprintf("rotationConstants %s", g.formatHex(ac.RotationConstants)))
+	}
+	if len(ac.XoringConstants) > 0 {
+		fields = append(fields, fmt.Sprintf("xoringConstants %s", g.formatHex(ac.XoringConstants)))
+	}
+	if ac.NumberOfKeccak > 0 {
+		fields = append(fields, fmt.Sprintf("numberOfKeccak %d", ac.NumberOfKeccak))
+	}
+
+	for i, f := range fields {
+		for j := 0; j < g.indent; j++ {
+			sb.WriteString("  ")
+		}
+		sb.WriteString(f)
+		if i < len(fields)-1 {
+			sb.WriteString(",")
+		}
+		sb.WriteString("\n")
+	}
+
+	g.indent--
+	for j := 0; j < g.indent; j++ {
+		sb.WriteString("  ")
+	}
+	sb.WriteString("}")
+	return sb.String()
+}
+
+func (g *Generator) sgenerateSQNInit(sqns [][]byte) string {
+	var sb strings.Builder
+	sb.WriteString("sqnInit {\n")
+	g.indent++
+	for i, sqn := range sqns {
+		for j := 0; j < g.indent; j++ {
+			sb.WriteString("  ")
+		}
+		sb.WriteString(fmt.Sprintf("%s", g.formatHex(sqn)))
+		if i < len(sqns)-1 {
+			sb.WriteString(",")
+		}
+		sb.WriteString("\n")
+	}
+	g.indent--
+	for j := 0; j < g.indent; j++ {
+		sb.WriteString("  ")
+	}
+	sb.WriteString("}")
+	return sb.String()
 }
 
 func (g *Generator) getAlgorithmIDName(id AlgorithmID) string {
@@ -1040,21 +1471,24 @@ func (g *Generator) generateCDMAParameter(cdma *CDMAParameter) {
 		g.generateElementHeader("cdma-header", cdma.Header)
 	}
 
+	fields := make([]string, 0)
 	if len(cdma.AuthenticationKey) > 0 {
-		g.writeLine(fmt.Sprintf("authenticationKey '%s'H,", strings.ToUpper(hex.EncodeToString(cdma.AuthenticationKey))))
+		fields = append(fields, fmt.Sprintf("authenticationKey %s", g.formatHex(cdma.AuthenticationKey)))
 	}
 	if len(cdma.SSD) > 0 {
-		g.writeLine(fmt.Sprintf("ssd '%s'H,", strings.ToUpper(hex.EncodeToString(cdma.SSD))))
+		fields = append(fields, fmt.Sprintf("ssd %s", g.formatHex(cdma.SSD)))
 	}
 	if len(cdma.HRPDAccessAuthenticationData) > 0 {
-		g.writeLine(fmt.Sprintf("hrpdAccessAuthenticationData '%s'H,", strings.ToUpper(hex.EncodeToString(cdma.HRPDAccessAuthenticationData))))
+		fields = append(fields, fmt.Sprintf("hrpdAccessAuthenticationData %s", g.formatHex(cdma.HRPDAccessAuthenticationData)))
 	}
 	if len(cdma.SimpleIPAuthenticationData) > 0 {
-		g.writeLine(fmt.Sprintf("simpleIPAuthenticationData '%s'H,", strings.ToUpper(hex.EncodeToString(cdma.SimpleIPAuthenticationData))))
+		fields = append(fields, fmt.Sprintf("simpleIPAuthenticationData %s", g.formatHex(cdma.SimpleIPAuthenticationData)))
 	}
 	if len(cdma.MobileIPAuthenticationData) > 0 {
-		g.writeLine(fmt.Sprintf("mobileIPAuthenticationData '%s'H", strings.ToUpper(hex.EncodeToString(cdma.MobileIPAuthenticationData))))
+		fields = append(fields, fmt.Sprintf("mobileIPAuthenticationData %s", g.formatHex(cdma.MobileIPAuthenticationData)))
 	}
+
+	g.writeFields(fields)
 
 	g.indent--
 	g.writeLine("}")
@@ -1076,31 +1510,40 @@ func (g *Generator) generateGenericFileManagement(gfm *GenericFileManagement) {
 		g.writeLine("fileManagementCMD {")
 		g.indent++
 
-		for _, cmd := range gfm.FileManagementCMDs {
+		for i, cmd := range gfm.FileManagementCMDs {
 			g.writeLine("{")
 			g.indent++
 
+			fields := make([]string, 0)
 			for _, item := range cmd {
 				switch item.ItemType {
 				case 0: // filePath
-					g.writeLine(fmt.Sprintf("filePath : '%s'H,", strings.ToUpper(hex.EncodeToString(item.FilePath))))
+					fields = append(fields, fmt.Sprintf("filePath : %s", g.formatHex(item.FilePath)))
 				case 1: // createFCP
 					if item.CreateFCP != nil {
-						g.writeLine("createFCP : {")
-						g.indent++
-						g.generateFileDescriptorContent(item.CreateFCP)
-						g.indent--
-						g.writeLine("},")
+						fields = append(fields, g.sgenerateFileDescriptorContent(item.CreateFCP))
 					}
 				case 2: // fillFileContent
-					g.writeLine(fmt.Sprintf("fillFileContent : '%s'H,", strings.ToUpper(hex.EncodeToString(item.FillFileContent))))
+					fields = append(fields, fmt.Sprintf("fillFileContent : %s", g.formatHex(item.FillFileContent)))
 				case 3: // fillFileOffset
-					g.writeLine(fmt.Sprintf("fillFileOffset : %d,", item.FillFileOffset))
+					fields = append(fields, fmt.Sprintf("fillFileOffset : %d", item.FillFileOffset))
 				}
 			}
 
+			for j, f := range fields {
+				suffix := ""
+				if j < len(fields)-1 {
+					suffix = ","
+				}
+				g.writeLine(f + suffix)
+			}
+
 			g.indent--
-			g.writeLine("}")
+			suffix := ","
+			if i == len(gfm.FileManagementCMDs)-1 {
+				suffix = ""
+			}
+			g.writeLine("}" + suffix)
 		}
 
 		g.indent--
@@ -1111,41 +1554,60 @@ func (g *Generator) generateGenericFileManagement(gfm *GenericFileManagement) {
 	g.writeLine("}")
 }
 
-func (g *Generator) generateFileDescriptorContent(fd *FileDescriptor) {
+func (g *Generator) sgenerateFileDescriptorContent(fd *FileDescriptor) string {
+	var sb strings.Builder
+	sb.WriteString("createFCP : {\n")
+	g.indent++
+
+	fields := make([]string, 0)
 	if len(fd.FileDescriptor) > 0 {
-		g.writeLine(fmt.Sprintf("fileDescriptor '%s'H,", strings.ToUpper(hex.EncodeToString(fd.FileDescriptor))))
+		fields = append(fields, fmt.Sprintf("fileDescriptor %s", g.formatHex(fd.FileDescriptor)))
 	}
-	if fd.FileID != 0 {
-		g.writeLine(fmt.Sprintf("fileID '%04X'H,", fd.FileID))
+	if len(fd.FileID) > 0 {
+		fields = append(fields, fmt.Sprintf("fileID %s", g.formatHex(fd.FileID)))
 	}
-	if fd.LCSI != 0 {
-		g.writeLine(fmt.Sprintf("lcsi '%02X'H,", fd.LCSI))
+	if len(fd.LCSI) > 0 {
+		fields = append(fields, fmt.Sprintf("lcsi %s", g.formatHex(fd.LCSI)))
 	}
 	if len(fd.SecurityAttributesReferenced) > 0 {
-		g.writeLine(fmt.Sprintf("securityAttributesReferenced '%s'H,", strings.ToUpper(hex.EncodeToString(fd.SecurityAttributesReferenced))))
+		fields = append(fields, fmt.Sprintf("securityAttributesReferenced %s", g.formatHex(fd.SecurityAttributesReferenced)))
 	}
-	if fd.EFFileSize > 0 {
-		hexStr := fmt.Sprintf("%X", fd.EFFileSize)
-		if len(hexStr)%2 != 0 {
-			hexStr = "0" + hexStr
-		}
-		g.writeLine(fmt.Sprintf("efFileSize '%s'H,", hexStr))
+	if len(fd.EFFileSize) > 0 {
+		fields = append(fields, fmt.Sprintf("efFileSize %s", g.formatHex(fd.EFFileSize)))
 	}
-	if fd.ShortEFID != 0 {
-		g.writeLine(fmt.Sprintf("shortEFID '%02X'H,", fd.ShortEFID))
+	if fd.ShortEFID != nil {
+		fields = append(fields, fmt.Sprintf("shortEFID %s", g.formatHex(fd.ShortEFID)))
 	}
 	if len(fd.DFName) > 0 {
-		g.writeLine(fmt.Sprintf("dfName '%s'H,", strings.ToUpper(hex.EncodeToString(fd.DFName))))
+		fields = append(fields, fmt.Sprintf("dfName %s", g.formatHex(fd.DFName)))
 	}
 	if len(fd.PinStatusTemplateDO) > 0 {
-		g.writeLine(fmt.Sprintf("pinStatusTemplateDO '%s'H,", strings.ToUpper(hex.EncodeToString(fd.PinStatusTemplateDO))))
+		fields = append(fields, fmt.Sprintf("pinStatusTemplateDO %s", g.formatHex(fd.PinStatusTemplateDO)))
 	}
 	if len(fd.LinkPath) > 0 {
-		g.writeLine(fmt.Sprintf("linkPath '%s'H,", strings.ToUpper(hex.EncodeToString(fd.LinkPath))))
+		fields = append(fields, fmt.Sprintf("linkPath %s", g.formatHex(fd.LinkPath)))
 	}
 	if fd.ProprietaryEFInfo != nil {
-		g.generateProprietaryEFInfo(fd.ProprietaryEFInfo)
+		fields = append(fields, g.sgenerateProprietaryEFInfo(fd.ProprietaryEFInfo))
 	}
+
+	for i, f := range fields {
+		for j := 0; j < g.indent; j++ {
+			sb.WriteString("  ")
+		}
+		sb.WriteString(f)
+		if i < len(fields)-1 {
+			sb.WriteString(",")
+		}
+		sb.WriteString("\n")
+	}
+
+	g.indent--
+	for j := 0; j < g.indent; j++ {
+		sb.WriteString("  ")
+	}
+	sb.WriteString("}")
+	return sb.String()
 }
 
 // ============================================================================
@@ -1160,93 +1622,173 @@ func (g *Generator) generateSecurityDomain(sd *SecurityDomain) {
 		g.generateElementHeader("sd-Header", sd.Header)
 	}
 
+	fields := make([]string, 0)
 	if sd.Instance != nil {
-		g.writeLine("instance {")
+		var sb strings.Builder
+		sb.WriteString("instance {\n")
 		g.indent++
 
+		ifields := make([]string, 0)
 		if len(sd.Instance.ApplicationLoadPackageAID) > 0 {
-			g.writeLine(fmt.Sprintf("applicationLoadPackageAID '%s'H,", strings.ToUpper(hex.EncodeToString(sd.Instance.ApplicationLoadPackageAID))))
+			ifields = append(ifields, fmt.Sprintf("applicationLoadPackageAID %s", g.formatHex(sd.Instance.ApplicationLoadPackageAID)))
 		}
 		if len(sd.Instance.ClassAID) > 0 {
-			g.writeLine(fmt.Sprintf("classAID '%s'H,", strings.ToUpper(hex.EncodeToString(sd.Instance.ClassAID))))
+			ifields = append(ifields, fmt.Sprintf("classAID %s", g.formatHex(sd.Instance.ClassAID)))
 		}
 		if len(sd.Instance.InstanceAID) > 0 {
-			g.writeLine(fmt.Sprintf("instanceAID '%s'H,", strings.ToUpper(hex.EncodeToString(sd.Instance.InstanceAID))))
+			ifields = append(ifields, fmt.Sprintf("instanceAID %s", g.formatHex(sd.Instance.InstanceAID)))
 		}
 		if len(sd.Instance.ApplicationPrivileges) > 0 {
-			g.writeLine(fmt.Sprintf("applicationPrivileges '%s'H,", strings.ToUpper(hex.EncodeToString(sd.Instance.ApplicationPrivileges))))
+			ifields = append(ifields, fmt.Sprintf("applicationPrivileges %s", g.formatHex(sd.Instance.ApplicationPrivileges)))
 		}
-		g.writeLine(fmt.Sprintf("lifeCycleState '%02X'H,", sd.Instance.LifeCycleState))
+		ifields = append(ifields, fmt.Sprintf("lifeCycleState '%02X'H", sd.Instance.LifeCycleState))
 		if len(sd.Instance.ApplicationSpecificParamsC9) > 0 {
-			g.writeLine(fmt.Sprintf("applicationSpecificParametersC9 '%s'H,", strings.ToUpper(hex.EncodeToString(sd.Instance.ApplicationSpecificParamsC9))))
+			ifields = append(ifields, fmt.Sprintf("applicationSpecificParametersC9 %s", g.formatHex(sd.Instance.ApplicationSpecificParamsC9)))
 		}
 		if sd.Instance.ApplicationParameters != nil && len(sd.Instance.ApplicationParameters.UIICToolkitApplicationSpecificParametersField) > 0 {
-			g.writeLine("applicationParameters {")
-			g.indent++
-			g.writeLine(fmt.Sprintf("uiccToolkitApplicationSpecificParametersField '%s'H", strings.ToUpper(hex.EncodeToString(sd.Instance.ApplicationParameters.UIICToolkitApplicationSpecificParametersField))))
-			g.indent--
-			g.writeLine("}")
+			ifields = append(ifields, g.sgenerateApplicationParameters(sd.Instance.ApplicationParameters))
+		}
+
+		for i, f := range ifields {
+			for j := 0; j < g.indent; j++ {
+				sb.WriteString("  ")
+			}
+			sb.WriteString(f)
+			if i < len(ifields)-1 {
+				sb.WriteString(",")
+			}
+			sb.WriteString("\n")
 		}
 
 		g.indent--
-		g.writeLine("},")
+		for j := 0; j < g.indent; j++ {
+			sb.WriteString("  ")
+		}
+		sb.WriteString("}")
+		fields = append(fields, sb.String())
 	}
 
 	if len(sd.KeyList) > 0 {
-		g.writeLine("keyList {")
+		var sb strings.Builder
+		sb.WriteString("keyList {\n")
 		g.indent++
 
 		for i, key := range sd.KeyList {
-			g.writeLine("{")
+			for j := 0; j < g.indent; j++ {
+				sb.WriteString("  ")
+			}
+			sb.WriteString("{\n")
 			g.indent++
 
-			g.writeLine(fmt.Sprintf("keyUsageQualifier '%02X'H,", key.KeyUsageQualifier))
-			g.writeLine(fmt.Sprintf("keyAccess '%02X'H,", key.KeyAccess))
-			g.writeLine(fmt.Sprintf("keyIdentifier '%02X'H,", key.KeyIdentifier))
-			g.writeLine(fmt.Sprintf("keyVersionNumber '%02X'H,", key.KeyVersionNumber))
+			kfields := make([]string, 0)
+			kfields = append(kfields, fmt.Sprintf("keyUsageQualifier '%02X'H", key.KeyUsageQualifier))
+			kfields = append(kfields, fmt.Sprintf("keyAccess '%02X'H", key.KeyAccess))
+			kfields = append(kfields, fmt.Sprintf("keyIdentifier '%02X'H", key.KeyIdentifier))
+			kfields = append(kfields, fmt.Sprintf("keyVersionNumber '%02X'H", key.KeyVersionNumber))
 
-			if len(key.KeyComponents) > 0 {
-				g.writeLine("keyCompontents {")
-				g.indent++
-				for j, comp := range key.KeyComponents {
-					g.writeLine("{")
-					g.indent++
-					g.writeLine(fmt.Sprintf("keyType '%02X'H,", comp.KeyType))
-					g.writeLine(fmt.Sprintf("keyData '%s'H,", strings.ToUpper(hex.EncodeToString(comp.KeyData))))
-					g.writeLine(fmt.Sprintf("macLength %d", comp.MACLength))
-					g.indent--
-					ksuffix := ","
-					if j == len(key.KeyComponents)-1 {
-						ksuffix = ""
-					}
-					g.writeLine("}" + ksuffix)
+			if len(key.KeyCompontents) > 0 {
+				kfields = append(kfields, g.sgenerateKeyCompontents(key.KeyCompontents))
+			}
+
+			for j, f := range kfields {
+				for k := 0; k < g.indent; k++ {
+					sb.WriteString("  ")
 				}
-				g.indent--
-				g.writeLine("}")
+				sb.WriteString(f)
+				if j < len(kfields)-1 {
+					sb.WriteString(",")
+				}
+				sb.WriteString("\n")
 			}
 
 			g.indent--
-			suffix := ","
-			if i == len(sd.KeyList)-1 {
-				suffix = ""
+			for j := 0; j < g.indent; j++ {
+				sb.WriteString("  ")
 			}
-			g.writeLine("}" + suffix)
+			sb.WriteString("}")
+			if i < len(sd.KeyList)-1 {
+				sb.WriteString(",")
+			}
+			sb.WriteString("\n")
 		}
 
 		g.indent--
-		g.writeLine("},")
+		for j := 0; j < g.indent; j++ {
+			sb.WriteString("  ")
+		}
+		sb.WriteString("}")
+		fields = append(fields, sb.String())
 	}
 
 	if len(sd.SDPersoData) > 0 {
-		g.writeLine("sdPersoData {")
-		g.indent++
-		g.writeLine(fmt.Sprintf("'%s'H", strings.ToUpper(hex.EncodeToString(sd.SDPersoData))))
-		g.indent--
-		g.writeLine("}")
+		fields = append(fields, "sdPersoData {\n  "+g.formatHex(sd.SDPersoData)+"\n}")
 	}
+
+	g.writeFields(fields)
 
 	g.indent--
 	g.writeLine("}")
+}
+
+func (g *Generator) sgenerateApplicationParameters(ap *ApplicationParameters) string {
+	var sb strings.Builder
+	sb.WriteString("applicationParameters {\n")
+	g.indent++
+	for j := 0; j < g.indent; j++ {
+		sb.WriteString("  ")
+	}
+	sb.WriteString(fmt.Sprintf("uiccToolkitApplicationSpecificParametersField %s\n", g.formatHex(ap.UIICToolkitApplicationSpecificParametersField)))
+	g.indent--
+	for j := 0; j < g.indent; j++ {
+		sb.WriteString("  ")
+	}
+	sb.WriteString("}")
+	return sb.String()
+}
+
+func (g *Generator) sgenerateKeyCompontents(comps []KeyComponent) string {
+	var sb strings.Builder
+	sb.WriteString("keyCompontents {\n")
+	g.indent++
+	for i, comp := range comps {
+		for j := 0; j < g.indent; j++ {
+			sb.WriteString("  ")
+		}
+		sb.WriteString("{\n")
+		g.indent++
+
+		fields := make([]string, 0)
+		fields = append(fields, fmt.Sprintf("keyType '%02X'H", comp.KeyType))
+		fields = append(fields, fmt.Sprintf("keyData %s", g.formatHex(comp.KeyData)))
+		fields = append(fields, fmt.Sprintf("macLength %d", comp.MACLength))
+
+		for j, f := range fields {
+			for k := 0; k < g.indent; k++ {
+				sb.WriteString("  ")
+			}
+			sb.WriteString(f)
+			if j < len(fields)-1 {
+				sb.WriteString(",")
+			}
+			sb.WriteString("\n")
+		}
+
+		g.indent--
+		for j := 0; j < g.indent; j++ {
+			sb.WriteString("  ")
+		}
+		sb.WriteString("}")
+		if i < len(comps)-1 {
+			sb.WriteString(",")
+		}
+		sb.WriteString("\n")
+	}
+	g.indent--
+	for j := 0; j < g.indent; j++ {
+		sb.WriteString("  ")
+	}
+	sb.WriteString("}")
+	return sb.String()
 }
 
 // ============================================================================
@@ -1261,40 +1803,246 @@ func (g *Generator) generateRFM(rfm *RFMConfig) {
 		g.generateElementHeader("rfm-header", rfm.Header)
 	}
 
+	fields := make([]string, 0)
 	if len(rfm.InstanceAID) > 0 {
-		g.writeLine(fmt.Sprintf("instanceAID '%s'H,", strings.ToUpper(hex.EncodeToString(rfm.InstanceAID))))
+		fields = append(fields, fmt.Sprintf("instanceAID %s", g.formatHex(rfm.InstanceAID)))
 	}
 
 	if len(rfm.TARList) > 0 {
-		g.writeLine("tarList {")
-		g.indent++
-		for i, tar := range rfm.TARList {
-			suffix := ","
-			if i == len(rfm.TARList)-1 {
-				suffix = ""
-			}
-			g.writeLine(fmt.Sprintf("'%s'H%s", strings.ToUpper(hex.EncodeToString(tar)), suffix))
-		}
-		g.indent--
-		g.writeLine("},")
+		fields = append(fields, g.sgenerateTARList(rfm.TARList))
 	}
 
-	g.writeLine(fmt.Sprintf("minimumSecurityLevel '%02X'H,", rfm.MinimumSecurityLevel))
-	g.writeLine(fmt.Sprintf("uiccAccessDomain '%02X'H,", rfm.UICCAccessDomain))
-	g.writeLine(fmt.Sprintf("uiccAdminAccessDomain '%02X'H,", rfm.UICCAdminAccessDomain))
+	fields = append(fields, fmt.Sprintf("minimumSecurityLevel '%02X'H", rfm.MinimumSecurityLevel))
+	fields = append(fields, fmt.Sprintf("uiccAccessDomain '%02X'H", rfm.UICCAccessDomain))
+	fields = append(fields, fmt.Sprintf("uiccAdminAccessDomain '%02X'H", rfm.UICCAdminAccessDomain))
 
 	if rfm.ADFRFMAccess != nil {
-		g.writeLine("adfRFMAccess {")
-		g.indent++
-		g.writeLine(fmt.Sprintf("adfAID '%s'H,", strings.ToUpper(hex.EncodeToString(rfm.ADFRFMAccess.ADFAID))))
-		g.writeLine(fmt.Sprintf("adfAccessDomain '%02X'H,", rfm.ADFRFMAccess.ADFAccessDomain))
-		g.writeLine(fmt.Sprintf("adfAdminAccessDomain '%02X'H", rfm.ADFRFMAccess.ADFAdminAccessDomain))
-		g.indent--
-		g.writeLine("}")
+		fields = append(fields, g.sgenerateADFRFMAccess(rfm.ADFRFMAccess))
 	}
+
+	g.writeFields(fields)
 
 	g.indent--
 	g.writeLine("}")
+}
+
+func (g *Generator) sgenerateTARList(tars [][]byte) string {
+	var sb strings.Builder
+	sb.WriteString("tarList {\n")
+	g.indent++
+	for i, tar := range tars {
+		for j := 0; j < g.indent; j++ {
+			sb.WriteString("  ")
+		}
+		sb.WriteString(fmt.Sprintf("%s", g.formatHex(tar)))
+		if i < len(tars)-1 {
+			sb.WriteString(",")
+		}
+		sb.WriteString("\n")
+	}
+	g.indent--
+	for j := 0; j < g.indent; j++ {
+		sb.WriteString("  ")
+	}
+	sb.WriteString("}")
+	return sb.String()
+}
+
+func (g *Generator) sgenerateADFRFMAccess(acc *ADFRFMAccess) string {
+	var sb strings.Builder
+	sb.WriteString("adfRFMAccess {\n")
+	g.indent++
+
+	fields := make([]string, 0)
+	fields = append(fields, fmt.Sprintf("adfAID %s", g.formatHex(acc.ADFAID)))
+	fields = append(fields, fmt.Sprintf("adfAccessDomain '%02X'H", acc.ADFAccessDomain))
+	fields = append(fields, fmt.Sprintf("adfAdminAccessDomain '%02X'H", acc.ADFAdminAccessDomain))
+
+	for i, f := range fields {
+		for j := 0; j < g.indent; j++ {
+			sb.WriteString("  ")
+		}
+		sb.WriteString(f)
+		if i < len(fields)-1 {
+			sb.WriteString(",")
+		}
+		sb.WriteString("\n")
+	}
+
+	g.indent--
+	for j := 0; j < g.indent; j++ {
+		sb.WriteString("  ")
+	}
+	sb.WriteString("}")
+	return sb.String()
+}
+
+// ============================================================================
+// Application generator
+// ============================================================================
+
+func (g *Generator) generateApplication(app *Application) {
+	g.write("{\n")
+	g.indent++
+
+	if app.Header != nil {
+		g.generateElementHeader("app-Header", app.Header)
+	}
+
+	fields := make([]string, 0)
+	if app.LoadBlock != nil {
+		fields = append(fields, g.sgenerateApplicationLoadPackage(app.LoadBlock))
+	}
+
+	if len(app.InstanceList) > 0 {
+		fields = append(fields, g.sgenerateApplicationInstanceList(app.InstanceList))
+	}
+
+	g.writeFields(fields)
+
+	g.indent--
+	g.writeLine("}")
+}
+
+func (g *Generator) sgenerateApplicationLoadPackage(pkg *ApplicationLoadPackage) string {
+	var sb strings.Builder
+	sb.WriteString("loadBlock {\n")
+	g.indent++
+
+	fields := make([]string, 0)
+	if len(pkg.LoadPackageAID) > 0 {
+		fields = append(fields, fmt.Sprintf("loadPackageAID %s", g.formatHex(pkg.LoadPackageAID)))
+	}
+	if len(pkg.SecurityDomainAID) > 0 {
+		fields = append(fields, fmt.Sprintf("securityDomainAID %s", g.formatHex(pkg.SecurityDomainAID)))
+	}
+	if len(pkg.HashValue) > 0 {
+		fields = append(fields, fmt.Sprintf("hashValue %s", g.formatHex(pkg.HashValue)))
+	}
+	if len(pkg.LoadBlockObject) > 0 {
+		fields = append(fields, fmt.Sprintf("loadBlockObject %s", g.formatHex(pkg.LoadBlockObject)))
+	}
+	if len(pkg.NonVolatileCodeLimitC6) > 0 {
+		fields = append(fields, fmt.Sprintf("nonVolatileCodeLimitC6 %s", g.formatHex(pkg.NonVolatileCodeLimitC6)))
+	}
+	if len(pkg.VolatileDataLimitC7) > 0 {
+		fields = append(fields, fmt.Sprintf("volatileDataLimitC7 %s", g.formatHex(pkg.VolatileDataLimitC7)))
+	}
+	if len(pkg.NonVolatileDataLimitC8) > 0 {
+		fields = append(fields, fmt.Sprintf("nonVolatileDataLimitC8 %s", g.formatHex(pkg.NonVolatileDataLimitC8)))
+	}
+
+	for i, f := range fields {
+		for j := 0; j < g.indent; j++ {
+			sb.WriteString("  ")
+		}
+		sb.WriteString(f)
+		if i < len(fields)-1 {
+			sb.WriteString(",")
+		}
+		sb.WriteString("\n")
+	}
+
+	g.indent--
+	for j := 0; j < g.indent; j++ {
+		sb.WriteString("  ")
+	}
+	sb.WriteString("}")
+	return sb.String()
+}
+
+func (g *Generator) sgenerateApplicationInstanceList(instances []*ApplicationInstance) string {
+	var sb strings.Builder
+	sb.WriteString("instanceList {\n")
+	g.indent++
+
+	for i, inst := range instances {
+		for j := 0; j < g.indent; j++ {
+			sb.WriteString("  ")
+		}
+		sb.WriteString("{\n")
+		g.indent++
+
+		fields := make([]string, 0)
+		if len(inst.ApplicationLoadPackageAID) > 0 {
+			fields = append(fields, fmt.Sprintf("applicationLoadPackageAID %s", g.formatHex(inst.ApplicationLoadPackageAID)))
+		}
+		if len(inst.ClassAID) > 0 {
+			fields = append(fields, fmt.Sprintf("classAID %s", g.formatHex(inst.ClassAID)))
+		}
+		if len(inst.InstanceAID) > 0 {
+			fields = append(fields, fmt.Sprintf("instanceAID %s", g.formatHex(inst.InstanceAID)))
+		}
+		if len(inst.ExtraditeSecurityDomainAID) > 0 {
+			fields = append(fields, fmt.Sprintf("extraditeSecurityDomainAID %s", g.formatHex(inst.ExtraditeSecurityDomainAID)))
+		}
+		if len(inst.ApplicationPrivileges) > 0 {
+			fields = append(fields, fmt.Sprintf("applicationPrivileges %s", g.formatHex(inst.ApplicationPrivileges)))
+		}
+		fields = append(fields, fmt.Sprintf("lifeCycleState '%02X'H", inst.LifeCycleState))
+		if len(inst.ApplicationSpecificParamsC9) > 0 {
+			fields = append(fields, fmt.Sprintf("applicationSpecificParametersC9 %s", g.formatHex(inst.ApplicationSpecificParamsC9)))
+		}
+		if len(inst.SystemSpecificParams) > 0 {
+			fields = append(fields, fmt.Sprintf("systemSpecificParameters %s", g.formatHex(inst.SystemSpecificParams)))
+		}
+		if len(inst.ControlReferenceTemplate) > 0 {
+			fields = append(fields, fmt.Sprintf("controlReferenceTemplate %s", g.formatHex(inst.ControlReferenceTemplate)))
+		}
+		if len(inst.ProcessData) > 0 {
+			fields = append(fields, g.sgenerateProcessData(inst.ProcessData))
+		}
+
+		for j, f := range fields {
+			for k := 0; k < g.indent; k++ {
+				sb.WriteString("  ")
+			}
+			sb.WriteString(f)
+			if j < len(fields)-1 {
+				sb.WriteString(",")
+			}
+			sb.WriteString("\n")
+		}
+
+		g.indent--
+		for j := 0; j < g.indent; j++ {
+			sb.WriteString("  ")
+		}
+		sb.WriteString("}")
+		if i < len(instances)-1 {
+			sb.WriteString(",")
+		}
+		sb.WriteString("\n")
+	}
+
+	g.indent--
+	for j := 0; j < g.indent; j++ {
+		sb.WriteString("  ")
+	}
+	sb.WriteString("}")
+	return sb.String()
+}
+
+func (g *Generator) sgenerateProcessData(data [][]byte) string {
+	var sb strings.Builder
+	sb.WriteString("processData {\n")
+	g.indent++
+	for i, d := range data {
+		for j := 0; j < g.indent; j++ {
+			sb.WriteString("  ")
+		}
+		sb.WriteString(fmt.Sprintf("%s", g.formatHex(d)))
+		if i < len(data)-1 {
+			sb.WriteString(",")
+		}
+		sb.WriteString("\n")
+	}
+	g.indent--
+	for j := 0; j < g.indent; j++ {
+		sb.WriteString("  ")
+	}
+	sb.WriteString("}")
+	return sb.String()
 }
 
 // ============================================================================
@@ -1306,7 +2054,7 @@ func (g *Generator) generateEnd(end *EndElement) {
 	g.indent++
 
 	if end.Header != nil {
-		g.generateElementHeader("end-header", end.Header)
+		g.writeLine(g.sgenerateElementHeader("end-header", end.Header))
 	}
 
 	g.indent--
