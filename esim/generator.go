@@ -1075,30 +1075,34 @@ func (g *Generator) generateGenericFileManagement(gfm *GenericFileManagement) {
 	if len(gfm.FileManagementCMDs) > 0 {
 		g.writeLine("fileManagementCMD {")
 		g.indent++
-		g.writeLine("{")
-		g.indent++
 
 		for _, cmd := range gfm.FileManagementCMDs {
-			if len(cmd.FilePath) > 0 {
-				g.writeLine(fmt.Sprintf("filePath : '%s'H,", strings.ToUpper(hex.EncodeToString(cmd.FilePath))))
-			}
-			if cmd.CreateFCP != nil {
-				g.writeLine("createFCP : {")
-				g.indent++
-				g.generateFileDescriptorContent(cmd.CreateFCP)
-				g.indent--
-				g.writeLine("},")
-			}
-			for _, fc := range cmd.FillFileContent {
-				if fc.Offset > 0 {
-					g.writeLine(fmt.Sprintf("fillFileOffset : %d,", fc.Offset))
+			g.writeLine("{")
+			g.indent++
+
+			for _, item := range cmd {
+				switch item.ItemType {
+				case 0: // filePath
+					g.writeLine(fmt.Sprintf("filePath : '%s'H,", strings.ToUpper(hex.EncodeToString(item.FilePath))))
+				case 1: // createFCP
+					if item.CreateFCP != nil {
+						g.writeLine("createFCP : {")
+						g.indent++
+						g.generateFileDescriptorContent(item.CreateFCP)
+						g.indent--
+						g.writeLine("},")
+					}
+				case 2: // fillFileContent
+					g.writeLine(fmt.Sprintf("fillFileContent : '%s'H,", strings.ToUpper(hex.EncodeToString(item.FillFileContent))))
+				case 3: // fillFileOffset
+					g.writeLine(fmt.Sprintf("fillFileOffset : %d,", item.FillFileOffset))
 				}
-				g.writeLine(fmt.Sprintf("fillFileContent : '%s'H,", strings.ToUpper(hex.EncodeToString(fc.Content))))
 			}
+
+			g.indent--
+			g.writeLine("}")
 		}
 
-		g.indent--
-		g.writeLine("}")
 		g.indent--
 		g.writeLine("}")
 	}

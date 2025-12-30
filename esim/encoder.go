@@ -894,7 +894,8 @@ func encodeGenericFileManagement(gfm *GenericFileManagement) ([]byte, error) {
 		var cmdsData []byte
 		for _, cmd := range gfm.FileManagementCMDs {
 			cmdData := encodeFileManagementCMD(cmd)
-			cmdsData = append(cmdsData, cmdData...)
+			// Each FileManagementCMD is a SEQUENCE
+			cmdsData = append(cmdsData, asn1.Marshal(0x30, nil, cmdData...)...)
 		}
 		data = append(data, asn1.Marshal(0xA1, nil, cmdsData...)...)
 	}
@@ -905,20 +906,20 @@ func encodeGenericFileManagement(gfm *GenericFileManagement) ([]byte, error) {
 func encodeFileManagementCMD(cmd FileManagementCMD) []byte {
 	var data []byte
 
-	if len(cmd.FilePath) > 0 {
-		data = append(data, asn1.Marshal(0x80, nil, cmd.FilePath...)...)
-	}
-
-	if cmd.CreateFCP != nil {
-		fdData := encodeFileDescriptor(cmd.CreateFCP)
-		data = append(data, asn1.Marshal(0xA1, nil, fdData...)...)
-	}
-
-	for _, fc := range cmd.FillFileContent {
-		if fc.Offset > 0 {
-			data = append(data, asn1.Marshal(0x83, nil, encodeInteger(fc.Offset)...)...)
+	for _, item := range cmd {
+		switch item.ItemType {
+		case 0: // filePath
+			data = append(data, asn1.Marshal(0x80, nil, item.FilePath...)...)
+		case 1: // createFCP - uses FCP template tag 0x62
+			if item.CreateFCP != nil {
+				fdData := encodeFileDescriptor(item.CreateFCP)
+				data = append(data, asn1.Marshal(0x62, nil, fdData...)...)
+			}
+		case 2: // fillFileContent
+			data = append(data, asn1.Marshal(0x82, nil, item.FillFileContent...)...)
+		case 3: // fillFileOffset
+			data = append(data, asn1.Marshal(0x83, nil, encodeInteger(item.FillFileOffset)...)...)
 		}
-		data = append(data, asn1.Marshal(0x82, nil, fc.Content...)...)
 	}
 
 	return data

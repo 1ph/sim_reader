@@ -559,11 +559,18 @@ type GenericFileManagement struct {
 }
 
 // FileManagementCMD represents single file management command
-type FileManagementCMD struct {
+// FileManagementItem represents a single command in FileManagementCMD
+// FileManagementCMD ::= SEQUENCE OF CHOICE { filePath, createFCP, fillFileContent, fillFileOffset }
+type FileManagementItem struct {
+	ItemType        int // 0=filePath, 1=createFCP, 2=fillFileContent, 3=fillFileOffset
 	FilePath        []byte
 	CreateFCP       *FileDescriptor
-	FillFileContent []FillContent
+	FillFileContent []byte
+	FillFileOffset  int
 }
+
+// FileManagementCMD represents a sequence of file management operations
+type FileManagementCMD []FileManagementItem
 
 // ============================================================================
 // Security Domain [55]

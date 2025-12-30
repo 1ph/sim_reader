@@ -185,8 +185,8 @@ func decodeMasterFile(a *asn1.ASN1) (*MasterFile, error) {
 			mf.MFHeader = decodeElementHeader(inner)
 		case 1: // templateID
 			mf.TemplateID = decodeOID(a.Data)
-		case 2: // mf
-			mf.MF = decodeFileDescriptor(inner)
+		case 2: // mf - File (SEQUENCE OF CHOICE)
+			mf.MF = decodeFileFromFile(inner)
 		case 3: // ef-pl
 			mf.EF_PL = decodeElementaryFile(inner)
 		case 4: // ef-iccid
@@ -289,6 +289,18 @@ func decodeProprietaryEFInfo(a *asn1.ASN1) *ProprietaryEFInfo {
 	return pei
 }
 
+// decodeFileFromFile extracts FileDescriptor from File (SEQUENCE OF CHOICE)
+// This is used for DF/ADF entries which are File type containing fileDescriptor [1] Fcp
+func decodeFileFromFile(a *asn1.ASN1) *FileDescriptor {
+	for a.Unmarshal() {
+		tagNum := getContextTag(a)
+		if tagNum == 1 { // fileDescriptor [1] Fcp
+			return decodeFileDescriptor(asn1.Init(a.Data))
+		}
+	}
+	return &FileDescriptor{}
+}
+
 func decodeElementaryFile(a *asn1.ASN1) *ElementaryFile {
 	ef := &ElementaryFile{
 		FillContents: make([]FillContent, 0),
@@ -358,16 +370,12 @@ func decodePUKCode(a *asn1.ASN1) PUKCode {
 	for a.Unmarshal() {
 		tagNum := getContextTag(a)
 		switch tagNum {
-		case 0: // keyReference
-			if len(a.Data) > 0 {
-				code.KeyReference = a.Data[0]
-			}
+		case 0: // keyReference - INTEGER encoded, may have leading zero for values >= 0x80
+			code.KeyReference = byte(decodeInteger(a.Data))
 		case 1: // pukValue
 			code.PUKValue = copyBytes(a.Data)
-		case 2: // maxNumOfAttemps-retryNumLeft
-			if len(a.Data) > 0 {
-				code.MaxNumOfAttempsRetryNumLeft = a.Data[0]
-			}
+		case 2: // maxNumOfAttemps-retryNumLeft - INTEGER encoded
+			code.MaxNumOfAttempsRetryNumLeft = byte(decodeInteger(a.Data))
 		}
 	}
 
@@ -386,10 +394,24 @@ func decodePINCodes(a *asn1.ASN1) (*PINCodes, error) {
 		switch tagNum {
 		case 0: // pin-Header
 			pin.Header = decodeElementHeader(inner)
-		case 1: // pinCodes (CHOICE - pinconfig)
-			for inner.Unmarshal() {
-				config := decodePINConfig(asn1.Init(inner.Data))
-				pin.Configs = append(pin.Configs, config)
+		case 1: // pinCodes (CHOICE: [0] pinconfig or [1] pincodesUncompressed)
+			// First parse the CHOICE tag
+			if inner.Unmarshal() {
+				choiceTag := getContextTag(inner)
+				choiceInner := asn1.Init(inner.Data)
+
+				switch choiceTag {
+				case 0: // pinconfig - SEQUENCE OF PINConfiguration
+					for choiceInner.Unmarshal() {
+						config := decodePINConfig(asn1.Init(choiceInner.Data))
+						pin.Configs = append(pin.Configs, config)
+					}
+				case 1: // pincodesUncompressed - SEQUENCE OF PINConfigurationUncompressed
+					for choiceInner.Unmarshal() {
+						config := decodePINConfig(asn1.Init(choiceInner.Data))
+						pin.Configs = append(pin.Configs, config)
+					}
+				}
 			}
 		}
 	}
@@ -403,24 +425,16 @@ func decodePINConfig(a *asn1.ASN1) PINConfig {
 	for a.Unmarshal() {
 		tagNum := getContextTag(a)
 		switch tagNum {
-		case 0: // keyReference
-			if len(a.Data) > 0 {
-				config.KeyReference = a.Data[0]
-			}
+		case 0: // keyReference - INTEGER encoded, may have leading zero for values >= 0x80
+			config.KeyReference = byte(decodeInteger(a.Data))
 		case 1: // pinValue
 			config.PINValue = copyBytes(a.Data)
-		case 2: // unblockingPINReference
-			if len(a.Data) > 0 {
-				config.UnblockingPINReference = a.Data[0]
-			}
-		case 3: // pinAttributes
-			if len(a.Data) > 0 {
-				config.PINAttributes = a.Data[0]
-			}
-		case 4: // maxNumOfAttemps-retryNumLeft
-			if len(a.Data) > 0 {
-				config.MaxNumOfAttempsRetryNumLeft = a.Data[0]
-			}
+		case 2: // unblockingPINReference - INTEGER encoded
+			config.UnblockingPINReference = byte(decodeInteger(a.Data))
+		case 3: // pinAttributes - INTEGER encoded
+			config.PINAttributes = byte(decodeInteger(a.Data))
+		case 4: // maxNumOfAttemps-retryNumLeft - INTEGER encoded
+			config.MaxNumOfAttempsRetryNumLeft = byte(decodeInteger(a.Data))
 		}
 	}
 
@@ -445,22 +459,22 @@ func decodeTelecom(a *asn1.ASN1) (*TelecomDF, error) {
 			t.Header = decodeElementHeader(inner)
 		case 1: // templateID
 			t.TemplateID = decodeOID(a.Data)
-		case 2: // df-telecom
-			t.DFTelecom = decodeFileDescriptor(inner)
+		case 2: // df-telecom - File (SEQUENCE OF CHOICE)
+			t.DFTelecom = decodeFileFromFile(inner)
 		case 3: // ef-arr
 			t.EF_ARR = decodeElementaryFile(inner)
 		case 4: // ef-sume
 			t.EF_SUME = decodeElementaryFile(inner)
 		case 5: // ef-psismsc
 			t.EF_PSISMSC = decodeElementaryFile(inner)
-		case 6: // df-graphics
-			t.DFGraphics = decodeFileDescriptor(inner)
+		case 6: // df-graphics - File (SEQUENCE OF CHOICE)
+			t.DFGraphics = decodeFileFromFile(inner)
 		case 7: // ef-img
 			t.EF_IMG = decodeElementaryFile(inner)
 		case 8: // ef-launch-scws
 			t.EF_LaunchSCWS = decodeElementaryFile(inner)
-		case 9: // df-phonebook
-			t.DFPhonebook = decodeFileDescriptor(inner)
+		case 9: // df-phonebook - File (SEQUENCE OF CHOICE)
+			t.DFPhonebook = decodeFileFromFile(inner)
 		case 10: // ef-pbr
 			t.EF_PBR = decodeElementaryFile(inner)
 		case 11: // ef-psc
@@ -469,8 +483,8 @@ func decodeTelecom(a *asn1.ASN1) (*TelecomDF, error) {
 			t.EF_CC = decodeElementaryFile(inner)
 		case 13: // ef-puid
 			t.EF_PUID = decodeElementaryFile(inner)
-		case 14: // df-mmss
-			t.DFMMSS = decodeFileDescriptor(inner)
+		case 14: // df-mmss - File (SEQUENCE OF CHOICE)
+			t.DFMMSS = decodeFileFromFile(inner)
 		case 15: // ef-mlpl
 			t.EF_MLPL = decodeElementaryFile(inner)
 		case 16: // ef-mspl
@@ -502,8 +516,8 @@ func decodeUSIM(a *asn1.ASN1) (*USIMApplication, error) {
 			u.Header = decodeElementHeader(inner)
 		case 1: // templateID
 			u.TemplateID = decodeOID(a.Data)
-		case 2: // adf-usim
-			u.ADFUSIM = decodeFileDescriptor(inner)
+		case 2: // adf-usim - File (SEQUENCE OF CHOICE)
+			u.ADFUSIM = decodeFileFromFile(inner)
 		case 3: // ef-imsi
 			u.EF_IMSI = decodeElementaryFile(inner)
 		case 4: // ef-arr
@@ -632,8 +646,8 @@ func decodeISIM(a *asn1.ASN1) (*ISIMApplication, error) {
 			i.Header = decodeElementHeader(inner)
 		case 1: // templateID
 			i.TemplateID = decodeOID(a.Data)
-		case 2: // adf-isim
-			i.ADFISIM = decodeFileDescriptor(inner)
+		case 2: // adf-isim - File (SEQUENCE OF CHOICE)
+			i.ADFISIM = decodeFileFromFile(inner)
 		case 3: // ef-impi
 			i.EF_IMPI = decodeElementaryFile(inner)
 		case 4: // ef-impu
@@ -702,8 +716,8 @@ func decodeCSIM(a *asn1.ASN1) (*CSIMApplication, error) {
 			c.Header = decodeElementHeader(inner)
 		case 1: // templateID
 			c.TemplateID = decodeOID(a.Data)
-		case 2: // adf-csim
-			c.ADFCSIM = decodeFileDescriptor(inner)
+		case 2: // adf-csim - File (SEQUENCE OF CHOICE)
+			c.ADFCSIM = decodeFileFromFile(inner)
 		case 3: // ef-arr
 			c.EF_ARR = decodeElementaryFile(inner)
 		default:
@@ -756,8 +770,8 @@ func decodeGSMAccess(a *asn1.ASN1) (*GSMAccessDF, error) {
 			g.Header = decodeElementHeader(inner)
 		case 1: // templateID
 			g.TemplateID = decodeOID(a.Data)
-		case 2: // df-gsm-access
-			g.DFGSMAccess = decodeFileDescriptor(inner)
+		case 2: // df-gsm-access - File (SEQUENCE OF CHOICE)
+			g.DFGSMAccess = decodeFileFromFile(inner)
 		case 3: // ef-kc
 			g.EF_Kc = decodeElementaryFile(inner)
 		case 4: // ef-kcgprs
@@ -793,8 +807,8 @@ func decodeDF5GS(a *asn1.ASN1) (*DF5GS, error) {
 			d.Header = decodeElementHeader(inner)
 		case 1: // templateID
 			d.TemplateID = decodeOID(a.Data)
-		case 2: // df-df-5gs
-			d.DFDF5GS = decodeFileDescriptor(inner)
+		case 2: // df-df-5gs - File (SEQUENCE OF CHOICE)
+			d.DFDF5GS = decodeFileFromFile(inner)
 		case 3: // ef-5gs3gpploci
 			d.EF_5GS3GPPLOCI = decodeElementaryFile(inner)
 		case 4: // ef-5gsn3gpploci
@@ -840,8 +854,8 @@ func decodeDFSAIP(a *asn1.ASN1) (*DFSAIP, error) {
 			d.Header = decodeElementHeader(inner)
 		case 1: // templateID
 			d.TemplateID = decodeOID(a.Data)
-		case 2: // df-df-saip
-			d.DFDFSAIP = decodeFileDescriptor(inner)
+		case 2: // df-df-saip - File (SEQUENCE OF CHOICE)
+			d.DFDFSAIP = decodeFileFromFile(inner)
 		case 3: // ef-suci-calc-info-usim
 			d.EF_SUCI_CALC_INFO_USIM = decodeElementaryFile(inner)
 		default:
@@ -996,9 +1010,15 @@ func decodeGenericFileManagement(a *asn1.ASN1) (*GenericFileManagement, error) {
 		switch tagNum {
 		case 0: // gfm-header
 			gfm.Header = decodeElementHeader(inner)
-		case 1: // fileManagementCMD
-			cmd := decodeFileManagementCMD(inner)
-			gfm.FileManagementCMDs = append(gfm.FileManagementCMDs, cmd)
+		case 1: // fileManagementCMD - SEQUENCE OF FileManagementCMD
+			// [1] contains SEQUENCE OF FileManagementCMD
+			// Each FileManagementCMD is itself SEQUENCE OF CHOICE
+			for inner.Unmarshal() {
+				// Each unmarshal gives us one FileManagementCMD (SEQUENCE)
+				cmdInner := asn1.Init(inner.Data)
+				cmd := decodeFileManagementCMD(cmdInner)
+				gfm.FileManagementCMDs = append(gfm.FileManagementCMDs, cmd)
+			}
 		}
 	}
 
@@ -1006,29 +1026,33 @@ func decodeGenericFileManagement(a *asn1.ASN1) (*GenericFileManagement, error) {
 }
 
 func decodeFileManagementCMD(a *asn1.ASN1) FileManagementCMD {
-	cmd := FileManagementCMD{
-		FillFileContent: make([]FillContent, 0),
-	}
-
-	var currentOffset int
+	cmd := make(FileManagementCMD, 0)
 
 	for a.Unmarshal() {
-		tagNum := getContextTag(a)
-		inner := asn1.Init(a.Data)
+		item := FileManagementItem{}
 
-		switch tagNum {
-		case 0: // filePath
-			cmd.FilePath = copyBytes(a.Data)
-		case 1: // createFCP
-			cmd.CreateFCP = decodeFileDescriptor(inner)
-		case 2: // fillFileContent
-			cmd.FillFileContent = append(cmd.FillFileContent, FillContent{
-				Offset:  currentOffset,
-				Content: copyBytes(a.Data),
-			})
-		case 3: // fillFileOffset
-			currentOffset = decodeInteger(a.Data)
+		// Check raw tag - FileManagementCMD uses IMPLICIT tags
+		// 0x80 = [0] filePath (PRIMITIVE)
+		// 0x62 = APPLICATION [2] createFCP (FCP template)
+		// 0x82 = [2] fillFileContent (PRIMITIVE)
+		// 0x83 = [3] fillFileOffset (PRIMITIVE)
+		switch a.Tag {
+		case 0x80: // filePath [0]
+			item.ItemType = 0
+			item.FilePath = copyBytes(a.Data)
+		case 0x62: // createFCP - FCP template (APPLICATION [2])
+			item.ItemType = 1
+			item.CreateFCP = decodeFileDescriptor(asn1.Init(a.Data))
+		case 0x82: // fillFileContent [2]
+			item.ItemType = 2
+			item.FillFileContent = copyBytes(a.Data)
+		case 0x83: // fillFileOffset [3]
+			item.ItemType = 3
+			item.FillFileOffset = decodeInteger(a.Data)
+		default:
+			continue
 		}
+		cmd = append(cmd, item)
 	}
 
 	return cmd
@@ -1074,12 +1098,9 @@ func decodeSDInstance(a *asn1.ASN1) *SDInstance {
 	appTagCount := 0
 
 	for a.Unmarshal() {
-		switch {
-		case a.Class == asn1.ClassApplication && getTagNumber(a) == 15:
-			// [APPLICATION 15] fields in order:
-			// 0: applicationLoadPackageAID
-			// 1: classAID
-			// 2: instanceAID
+		// Check raw tag for better matching
+		switch a.Tag {
+		case 0x4F: // APPLICATION [15] - used for AIDs
 			switch appTagCount {
 			case 0:
 				inst.ApplicationLoadPackageAID = copyBytes(a.Data)
@@ -1090,22 +1111,20 @@ func decodeSDInstance(a *asn1.ASN1) *SDInstance {
 			}
 			appTagCount++
 
-		case a.Class == asn1.ClassContextSpecific:
-			tagNum := getContextTag(a)
-			inner := asn1.Init(a.Data)
+		case 0x82: // [2] applicationPrivileges
+			inst.ApplicationPrivileges = copyBytes(a.Data)
 
-			switch tagNum {
-			case 2: // applicationPrivileges
-				inst.ApplicationPrivileges = copyBytes(a.Data)
-			case 3: // lifeCycleState
-				if len(a.Data) > 0 {
-					inst.LifeCycleState = a.Data[0]
-				}
-			case 5: // applicationSpecificParametersC9
-				inst.ApplicationSpecificParamsC9 = copyBytes(a.Data)
-			case 6: // applicationParameters
-				inst.ApplicationParameters = decodeApplicationParameters(inner)
+		case 0x83: // [3] lifeCycleState
+			if len(a.Data) > 0 {
+				inst.LifeCycleState = a.Data[0]
 			}
+
+		case 0xC9: // PRIVATE [9] applicationSpecificParametersC9
+			inst.ApplicationSpecificParamsC9 = copyBytes(a.Data)
+
+		case 0xEA: // PRIVATE [10] CONSTRUCTED applicationParameters
+			inner := asn1.Init(a.Data)
+			inst.ApplicationParameters = decodeApplicationParameters(inner)
 		}
 	}
 
@@ -1132,27 +1151,31 @@ func decodeSDKey(a *asn1.ASN1) SDKey {
 	}
 
 	for a.Unmarshal() {
-		tagNum := getContextTag(a)
-		inner := asn1.Init(a.Data)
-
-		switch tagNum {
-		case 0: // keyUsageQualifier
+		// SDKey uses GlobalPlatform specific tags:
+		// 0x95 = [21] IMPLICIT keyUsageQualifier
+		// 0x81 = [1] keyAccess (optional)
+		// 0x82 = [2] keyIdentifier
+		// 0x83 = [3] keyVersionNumber
+		// 0x30 = SEQUENCE for keyComponents
+		switch a.Tag {
+		case 0x95: // keyUsageQualifier [21]
 			if len(a.Data) > 0 {
 				key.KeyUsageQualifier = a.Data[0]
 			}
-		case 1: // keyAccess
+		case 0x81: // keyAccess [1]
 			if len(a.Data) > 0 {
 				key.KeyAccess = a.Data[0]
 			}
-		case 2: // keyIdentifier
+		case 0x82: // keyIdentifier [2]
 			if len(a.Data) > 0 {
 				key.KeyIdentifier = a.Data[0]
 			}
-		case 3: // keyVersionNumber
+		case 0x83: // keyVersionNumber [3]
 			if len(a.Data) > 0 {
 				key.KeyVersionNumber = a.Data[0]
 			}
-		case 4: // keyComponents
+		case 0x30: // SEQUENCE = keyComponents
+			inner := asn1.Init(a.Data)
 			for inner.Unmarshal() {
 				comp := decodeKeyComponent(asn1.Init(inner.Data))
 				key.KeyComponents = append(key.KeyComponents, comp)
@@ -1169,13 +1192,13 @@ func decodeKeyComponent(a *asn1.ASN1) KeyComponent {
 	for a.Unmarshal() {
 		tagNum := getContextTag(a)
 		switch tagNum {
-		case 0: // keyType
+		case 0: // keyType [0]
 			if len(a.Data) > 0 {
 				kc.KeyType = a.Data[0]
 			}
-		case 1: // keyData
+		case 6: // keyData [6] - GlobalPlatform uses [6] for key data
 			kc.KeyData = copyBytes(a.Data)
-		case 2: // macLength
+		case 7: // macLength [7] - if present after keyData
 			kc.MACLength = decodeInteger(a.Data)
 		}
 	}

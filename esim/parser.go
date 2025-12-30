@@ -2030,12 +2030,35 @@ func (p *Parser) parseFileManagementCMDs() ([]FileManagementCMD, error) {
 	}
 
 	var cmds []FileManagementCMD
-	var currentCmd *FileManagementCMD
 
-	// Outer brace for the sequence
+	// Parse each FileManagementCMD block { ... }
+	for p.peek().Type != TokenRBrace {
+		if p.peek().Type == TokenLBrace {
+			cmd, err := p.parseFileManagementCMD()
+			if err != nil {
+				return nil, err
+			}
+			cmds = append(cmds, cmd)
+		} else {
+			// Skip unexpected tokens
+			p.advance()
+		}
+		p.skipComma()
+	}
+
+	if _, err := p.expect(TokenRBrace); err != nil {
+		return nil, err
+	}
+
+	return cmds, nil
+}
+
+func (p *Parser) parseFileManagementCMD() (FileManagementCMD, error) {
 	if _, err := p.expect(TokenLBrace); err != nil {
 		return nil, err
 	}
+
+	var items FileManagementCMD
 
 	for p.peek().Type != TokenRBrace {
 		fieldName, err := p.expect(TokenIdent)
@@ -2048,63 +2071,41 @@ func (p *Parser) parseFileManagementCMDs() ([]FileManagementCMD, error) {
 			p.advance()
 		}
 
+		item := FileManagementItem{}
+
 		switch fieldName.Value {
 		case "filePath":
-			// Save previous command if exists
-			if currentCmd != nil {
-				cmds = append(cmds, *currentCmd)
-			}
-			currentCmd = &FileManagementCMD{}
-			currentCmd.FilePath, err = p.parseHexValue()
+			item.ItemType = 0
+			item.FilePath, err = p.parseHexValue()
 		case "createFCP":
-			if currentCmd == nil {
-				currentCmd = &FileManagementCMD{}
-			}
-			currentCmd.CreateFCP, err = p.parseFileDescriptor()
+			item.ItemType = 1
+			item.CreateFCP, err = p.parseFileDescriptor()
 		case "fillFileContent":
-			if currentCmd == nil {
-				currentCmd = &FileManagementCMD{}
-			}
-			content, hexErr := p.parseHexValue()
-			if hexErr != nil {
-				return nil, hexErr
-			}
-			currentCmd.FillFileContent = append(currentCmd.FillFileContent, FillContent{Content: content})
+			item.ItemType = 2
+			item.FillFileContent, err = p.parseHexValue()
 		case "fillFileOffset":
-			offset, intErr := p.parseIntValue()
-			if intErr != nil {
-				return nil, intErr
-			}
-			if len(currentCmd.FillFileContent) > 0 {
-				currentCmd.FillFileContent[len(currentCmd.FillFileContent)-1].Offset = offset
-			}
+			item.ItemType = 3
+			item.FillFileOffset, err = p.parseIntValue()
 		default:
 			if err := p.skipValue(); err != nil {
 				return nil, err
 			}
+			continue
 		}
 
 		if err != nil {
 			return nil, fmt.Errorf("field %s: %w", fieldName.Value, err)
 		}
 
+		items = append(items, item)
 		p.skipComma()
 	}
 
-	// Save last command
-	if currentCmd != nil {
-		cmds = append(cmds, *currentCmd)
-	}
-
 	if _, err := p.expect(TokenRBrace); err != nil {
 		return nil, err
 	}
 
-	if _, err := p.expect(TokenRBrace); err != nil {
-		return nil, err
-	}
-
-	return cmds, nil
+	return items, nil
 }
 
 // ============================================================================
