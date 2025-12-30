@@ -111,16 +111,18 @@ func encodeProfileHeader(h *ProfileHeader) ([]byte, error) {
 		data = append(data, asn1.Marshal(0x83, nil, h.ICCID...)...)
 	}
 
-	// [4] eUICC-Mandatory-services
+	// [4] pol - OPTIONAL, not encoded here
+
+	// [5] eUICC-Mandatory-services (ServicesList is a SEQUENCE)
 	if h.MandatoryServices != nil {
 		msData := encodeMandatoryServices(h.MandatoryServices)
-		data = append(data, asn1.Marshal(0xA4, nil, msData...)...)
+		data = append(data, asn1.Marshal(0xA5, nil, msData...)...)
 	}
 
-	// [5] eUICC-Mandatory-GFSTEList
+	// [6] eUICC-Mandatory-GFSTEList (SEQUENCE OF OBJECT IDENTIFIER)
 	if len(h.MandatoryGFSTEList) > 0 {
 		listData := encodeOIDList(h.MandatoryGFSTEList)
-		data = append(data, asn1.Marshal(0xA5, nil, listData...)...)
+		data = append(data, asn1.Marshal(0xA6, nil, listData...)...)
 	}
 
 	return data, nil

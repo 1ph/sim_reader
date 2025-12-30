@@ -73,6 +73,22 @@ func decodeBCD(data []byte) string {
 	return result
 }
 
+// encodeBCD encodes string to BCD (normal order)
+func encodeBCD(s string) []byte {
+	var result []byte
+	for i := 0; i < len(s); i += 2 {
+		var hi, lo byte
+		hi = s[i] - '0'
+		if i+1 < len(s) {
+			lo = s[i+1] - '0'
+		} else {
+			lo = 0x0F
+		}
+		result = append(result, (hi<<4)|lo)
+	}
+	return result
+}
+
 // decodeSwappedBCD decodes BCD with swapped nibbles (IMSI format in EF.IMSI)
 // In swapped BCD, low nibble comes first, then high nibble
 func decodeSwappedBCD(data []byte) string {

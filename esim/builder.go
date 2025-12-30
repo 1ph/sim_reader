@@ -76,6 +76,9 @@ func BuildProfile(template *Profile, config *BuildConfig) (*Profile, error) {
 		return nil, fmt.Errorf("clone template: %w", err)
 	}
 
+	// Sanitize cloned template - clear all template keys/IMSI/PINs
+	profile.Sanitize()
+
 	// Set ICCID
 	if config.ICCID != "" {
 		if err := profile.SetICCID(config.ICCID); err != nil {
@@ -90,25 +93,73 @@ func BuildProfile(template *Profile, config *BuildConfig) (*Profile, error) {
 		}
 	}
 
-	// Set Ki
-	if config.Ki != "" {
-		ki, err := hex.DecodeString(config.Ki)
-		if err != nil {
-			return nil, fmt.Errorf("parse Ki: %w", err)
+	// Handle applet authentication delegation
+	// When UseAppletAuth is true, use keys from applet_config.milenage_usim instead of root ki/opc
+	if config.UseAppletAuth && config.AppletConfig != nil && config.AppletConfig.MilenageUSIM != nil {
+		appletCfg := config.AppletConfig.MilenageUSIM
+		
+		// Use applet's Ki for AKA parameters
+		if appletCfg.Ki != "" {
+			ki, err := hex.DecodeString(appletCfg.Ki)
+			if err != nil {
+				return nil, fmt.Errorf("parse applet Ki: %w", err)
+			}
+			if err := profile.SetKi(ki); err != nil {
+				return nil, fmt.Errorf("set applet Ki: %w", err)
+			}
 		}
-		if err := profile.SetKi(ki); err != nil {
-			return nil, fmt.Errorf("set Ki: %w", err)
+		
+		// Use applet's OPc for AKA parameters
+		if appletCfg.OPc != "" {
+			opc, err := hex.DecodeString(appletCfg.OPc)
+			if err != nil {
+				return nil, fmt.Errorf("parse applet OPc: %w", err)
+			}
+			if err := profile.SetOPC(opc); err != nil {
+				return nil, fmt.Errorf("set applet OPc: %w", err)
+			}
 		}
-	}
+		
+		// Set algorithm to delegate to applet
+		for _, aka := range profile.AKAParams {
+			if aka.AlgoConfig != nil {
+				aka.AlgoConfig.AlgorithmID = AlgoUSIMTestAlgorithm
+			}
+		}
+		profile.invalidate(TagAKAParameter)
+	} else {
+		// Standard mode: use root ki/opc for AKA parameters
+		
+		// Set Ki
+		if config.Ki != "" {
+			ki, err := hex.DecodeString(config.Ki)
+			if err != nil {
+				return nil, fmt.Errorf("parse Ki: %w", err)
+			}
+			if err := profile.SetKi(ki); err != nil {
+				return nil, fmt.Errorf("set Ki: %w", err)
+			}
+		}
 
-	// Set OPc
-	if config.OPc != "" {
-		opc, err := hex.DecodeString(config.OPc)
-		if err != nil {
-			return nil, fmt.Errorf("parse OPc: %w", err)
+		// Set OPc
+		if config.OPc != "" {
+			opc, err := hex.DecodeString(config.OPc)
+			if err != nil {
+				return nil, fmt.Errorf("parse OPc: %w", err)
+			}
+			if err := profile.SetOPC(opc); err != nil {
+				return nil, fmt.Errorf("set OPc: %w", err)
+			}
 		}
-		if err := profile.SetOPC(opc); err != nil {
-			return nil, fmt.Errorf("set OPc: %w", err)
+		
+		// Set algorithm ID if specified
+		if config.AlgorithmID > 0 {
+			for _, aka := range profile.AKAParams {
+				if aka.AlgoConfig != nil {
+					aka.AlgoConfig.AlgorithmID = AlgorithmID(config.AlgorithmID)
+				}
+			}
+			profile.invalidate(TagAKAParameter)
 		}
 	}
 
@@ -127,20 +178,7 @@ func BuildProfile(template *Profile, config *BuildConfig) (*Profile, error) {
 	// Set profile type
 	if config.ProfileType != "" && profile.Header != nil {
 		profile.Header.ProfileType = config.ProfileType
-	}
-
-	// Set algorithm ID
-	if config.AlgorithmID > 0 {
-		if len(profile.AKAParams) > 0 && profile.AKAParams[0].AlgoConfig != nil {
-			profile.AKAParams[0].AlgoConfig.AlgorithmID = AlgorithmID(config.AlgorithmID)
-		}
-	}
-
-	// Handle applet authentication delegation
-	if config.UseAppletAuth {
-		if len(profile.AKAParams) > 0 && profile.AKAParams[0].AlgoConfig != nil {
-			profile.AKAParams[0].AlgoConfig.AlgorithmID = AlgoUSIMTestAlgorithm
-		}
+		profile.invalidate(TagProfileHeader)
 	}
 
 	// Add applet if CAP file specified
@@ -168,6 +206,7 @@ func setISIMParams(profile *Profile, config *BuildConfig) error {
 				Content: impiBytes,
 			})
 		}
+		profile.ISIM.EF_IMPI.Raw = nil
 	}
 
 	// Set IMPU
@@ -180,6 +219,7 @@ func setISIMParams(profile *Profile, config *BuildConfig) error {
 				Content: impuBytes,
 			})
 		}
+		profile.ISIM.EF_IMPU.Raw = nil
 	}
 
 	// Set Domain
@@ -192,17 +232,22 @@ func setISIMParams(profile *Profile, config *BuildConfig) error {
 				Content: domainBytes,
 			})
 		}
+		profile.ISIM.EF_DOMAIN.Raw = nil
 	}
 
+	profile.invalidate(TagISIM)
 	return nil
 }
 
 func setSecurityCodes(profile *Profile, config *BuildConfig) error {
+	modified := false
+
 	// Set PIN1
 	if config.PIN1 != "" {
 		if err := setPIN(profile, 0x01, config.PIN1); err != nil {
 			return fmt.Errorf("set PIN1: %w", err)
 		}
+		modified = true
 	}
 
 	// Set PIN2
@@ -210,6 +255,7 @@ func setSecurityCodes(profile *Profile, config *BuildConfig) error {
 		if err := setPIN(profile, 0x81, config.PIN2); err != nil {
 			return fmt.Errorf("set PIN2: %w", err)
 		}
+		modified = true
 	}
 
 	// Set PUK1
@@ -217,6 +263,7 @@ func setSecurityCodes(profile *Profile, config *BuildConfig) error {
 		if err := setPUK(profile, 0x01, config.PUK1); err != nil {
 			return fmt.Errorf("set PUK1: %w", err)
 		}
+		profile.invalidate(TagPukCodes)
 	}
 
 	// Set PUK2
@@ -224,6 +271,7 @@ func setSecurityCodes(profile *Profile, config *BuildConfig) error {
 		if err := setPUK(profile, 0x81, config.PUK2); err != nil {
 			return fmt.Errorf("set PUK2: %w", err)
 		}
+		profile.invalidate(TagPukCodes)
 	}
 
 	// Set ADM1
@@ -231,6 +279,11 @@ func setSecurityCodes(profile *Profile, config *BuildConfig) error {
 		if err := setPIN(profile, 0x0A, config.ADM1); err != nil {
 			return fmt.Errorf("set ADM1: %w", err)
 		}
+		modified = true
+	}
+
+	if modified {
+		profile.invalidate(TagPinCodes)
 	}
 
 	return nil

@@ -2,81 +2,81 @@
 
 ## Overview
 
-Пакет `esim` предоставляет инструменты для работы с eSIM профилями в формате GSMA SGP.22 / SAIP (Subscriber Identity Application Programming). Поддерживается декодирование, валидация и сборка профилей, включая работу с Java Card апплетами.
+The `esim` package provides tools for working with eSIM profiles in GSMA SGP.22 / SAIP (Subscriber Identity Application Programming) format. It supports decoding, validation, and building profiles, including support for Java Card applets.
 
-### Поддерживаемые Profile Elements
+### Supported Profile Elements
 
-| Tag | Имя элемента | Описание |
+| Tag | Element Name | Description |
 |-----|--------------|----------|
-| 0 | ProfileHeader | Заголовок профиля (версия, ICCID, сервисы) |
-| 1 | MF | Master File (корневая файловая система) |
-| 2 | PukCodes | Коды PUK |
-| 3 | PinCodes | Коды PIN |
-| 4 | Telecom | Телеком директория |
-| 8 | **Application** | **Java Card апплеты (PE-Application)** |
-| 9 | USIM | USIM приложение |
-| 10 | OptUSIM | Опциональные файлы USIM |
-| 12 | ISIM | ISIM приложение |
-| 13 | OptISIM | Опциональные файлы ISIM |
-| 14 | CSIM | CSIM приложение |
-| 15 | OptCSIM | Опциональные файлы CSIM |
-| 20 | GSMAccess | GSM Access файлы |
-| 22 | AKAParameter | Параметры аутентификации (Ki, OPc, алгоритм) |
-| 23 | CDMAParameter | Параметры CDMA |
-| 24 | DF5GS | 5G файлы |
-| 25 | DFSAIP | SAIP файлы |
-| 26 | GenericFileManagement | Управление файлами |
+| 0 | ProfileHeader | Profile header (version, ICCID, services) |
+| 1 | MF | Master File (root file system) |
+| 2 | PukCodes | PUK codes |
+| 3 | PinCodes | PIN codes |
+| 4 | Telecom | Telecom directory |
+| 8 | **Application** | **Java Card applets (PE-Application)** |
+| 9 | USIM | USIM application |
+| 10 | OptUSIM | Optional USIM files |
+| 12 | ISIM | ISIM application |
+| 13 | OptISIM | Optional ISIM files |
+| 14 | CSIM | CSIM application |
+| 15 | OptCSIM | Optional CSIM files |
+| 20 | GSMAccess | GSM Access files |
+| 22 | AKAParameter | Authentication parameters (Ki, OPc, algorithm) |
+| 23 | CDMAParameter | CDMA parameters |
+| 24 | DF5GS | 5G files |
+| 25 | DFSAIP | SAIP files |
+| 26 | GenericFileManagement | File management |
 | 55 | SecurityDomain | GlobalPlatform Security Domain |
 | 56 | RFM | Remote File Management |
-| 63 | End | Маркер конца профиля |
+| 63 | End | Profile end marker |
 
 ---
 
-## Команды CLI
+## CLI Commands
 
-### Общий синтаксис
+### General Syntax
 
 ```bash
 sim_reader esim <subcommand> [flags]
 ```
 
-### Доступные подкоманды
+### Available Subcommands
 
-| Команда | Описание |
+| Command | Description |
 |---------|----------|
-| `decode` | Декодировать и отобразить содержимое профиля |
-| `validate` | Проверить профиль на корректность |
-| `build` | Собрать профиль из конфигурации и шаблона |
+| `decode` | Decode and display profile content |
+| `validate` | Validate profile correctness |
+| `build` | Build a profile from configuration and template |
 
 ---
 
-## Декодирование профилей (decode)
+## Profile Decoding (decode)
 
 ```bash
 sim_reader esim decode <profile.der> [--verbose] [--json]
 ```
 
-### Флаги
+### Flags
 
-| Флаг | Описание |
+| Flag | Description |
 |------|----------|
-| `-v, --verbose` | Показать детальную информацию (АКА параметры, апплеты, PIN/PUK) |
-| `--json` | Вывод в формате JSON |
+| `-v, --verbose` | Show detailed information (AKA parameters, applets, PIN/PUK) |
+| `--json` | Output in JSON format |
 
-### Примеры
+### Examples
 
 ```bash
-# Базовая информация о профиле
+# Basic profile information
 sim_reader esim decode profile.der
 
-# Детальная информация включая апплеты и ключи
+# Detailed information including applets and keys
 sim_reader esim decode profile.der --verbose
 
-# Экспорт в JSON
+# Export to JSON
 sim_reader esim decode profile.der --json > profile_info.json
 ```
 
-### Пример вывода
+### Sample Output
 
 ```
 === eSIM Profile Summary ===
@@ -113,64 +113,64 @@ ADM1: 88888888
 
 ---
 
-## Валидация профилей (validate)
+## Profile Validation (validate)
 
 ```bash
 sim_reader esim validate <profile.der> [--template <base.der>]
 ```
 
-### Флаги
+### Flags
 
-| Флаг | Описание |
+| Flag | Description |
 |------|----------|
-| `-t, --template` | Шаблон профиля для сравнения структуры |
-| `--json` | Вывод результатов в формате JSON |
+| `-t, --template` | Profile template to compare structure against |
+| `--json` | Output results in JSON format |
 
-### Выполняемые проверки
+### Performed Checks
 
-1. **Обязательные элементы**
-   - ProfileHeader (обязателен)
-   - MasterFile (обязателен)
-   - End (обязателен)
+1. **Mandatory Elements**
+   - ProfileHeader (required)
+   - MasterFile (required)
+   - End (required)
 
 2. **ICCID**
-   - Длина: 18-20 цифр
-   - Формат: только цифры
-   - Контрольная сумма Luhn
+   - Length: 18-20 digits
+   - Format: numeric only
+   - Luhn checksum verification
 
 3. **IMSI**
-   - Длина: 15 цифр
-   - Формат: только цифры
-   - Требуется при наличии USIM
+   - Length: 15 digits
+   - Format: numeric only
+   - Required if USIM is present
 
-4. **AKA параметры**
-   - Наличие AlgoConfiguration
-   - Ki: 16 или 32 байта
-   - OPc: 16 или 32 байта (рекомендуется для Milenage/TUAK)
+4. **AKA Parameters**
+   - Presence of AlgoConfiguration
+   - Ki: 16 or 32 bytes
+   - OPc: 16 or 32 bytes (recommended for Milenage/TUAK)
 
 5. **PIN/PUK**
-   - PIN: 4-8 цифр
-   - PUK: 8 цифр
+   - PIN: 4-8 digits
+   - PUK: 8 digits
 
-6. **Апплеты (PE-Application)**
-   - Валидность AID (5-16 байт)
-   - Наличие LoadBlock или InstanceList
-   - Формат APDU команд персонализации
+6. **Applets (PE-Application)**
+   - AID validity (5-16 bytes)
+   - Presence of LoadBlock or InstanceList
+   - Personalization APDU command format
 
-### Примеры
+### Examples
 
 ```bash
-# Базовая валидация
+# Basic validation
 sim_reader esim validate profile.der
 
-# Сравнение с шаблоном
+# Comparison with template
 sim_reader esim validate profile.der --template TS48v4_SAIP2.3.der
 
-# JSON вывод для автоматизации
+# JSON output for automation
 sim_reader esim validate profile.der --json
 ```
 
-### Пример вывода
+### Sample Output
 
 ```
 Profile validation: PASSED
@@ -188,23 +188,23 @@ Profile validation: PASSED
 
 ---
 
-## Сборка профилей (build)
+## Profile Building (build)
 
 ```bash
 sim_reader esim build --config <config.json> --template <base.der> -o <output.der> [flags]
 ```
 
-### Флаги
+### Flags
 
-| Флаг | Описание |
+| Flag | Description |
 |------|----------|
-| `-c, --config` | JSON файл конфигурации (обязателен) |
-| `-t, --template` | Шаблон профиля DER (обязателен) |
-| `-o, --output` | Выходной файл профиля (по умолчанию: profile.der) |
-| `--applet` | CAP файл апплета для включения в профиль |
-| `--use-applet-auth` | Делегировать аутентификацию апплету (algorithmID=3) |
+| `-c, --config` | JSON configuration file (required) |
+| `-t, --template` | DER profile template (required) |
+| `-o, --output` | Output profile file (default: profile.der) |
+| `--applet` | CAP applet file to include in the profile |
+| `--use-applet-auth` | Delegate authentication to the applet (algorithmID=3) |
 
-### Формат конфигурации (JSON)
+### Configuration Format (JSON)
 
 ```json
 {
@@ -241,16 +241,16 @@ sim_reader esim build --config <config.json> --template <base.der> -o <output.de
 }
 ```
 
-### Пример сборки
+### Build Example
 
 ```bash
-# Базовая сборка
+# Basic build
 sim_reader esim build \
   --config rusim.json \
   --template TS48v4_SAIP2.3_NoBERTLV.der \
   -o my_profile.der
 
-# С апплетом Milenage USIM
+# With Milenage USIM applet
 sim_reader esim build \
   --config rusim.json \
   --template TS48v4_SAIP2.3_NoBERTLV.der \
@@ -261,28 +261,28 @@ sim_reader esim build \
 
 ---
 
-## Поддержка апплетов (PE-Application)
+## Applet Support (PE-Application)
 
-### Структура PE-Application
+### PE-Application Structure
 
-PE-Application (Tag 8) содержит:
+PE-Application (Tag 8) contains:
 
-1. **LoadBlock** - данные CAP файла
-   - `LoadPackageAID` - AID пакета
-   - `SecurityDomainAID` - целевой Security Domain (опционально)
-   - `LoadBlockObject` - содержимое CAP файла
+1. **LoadBlock** - CAP file data
+   - `LoadPackageAID` - Package AID
+   - `SecurityDomainAID` - Target Security Domain (optional)
+   - `LoadBlockObject` - CAP file content
 
-2. **InstanceList** - список экземпляров апплетов
-   - `ApplicationLoadPackageAID` - ссылка на пакет
-   - `ClassAID` - AID класса апплета
-   - `InstanceAID` - AID экземпляра
-   - `ApplicationPrivileges` - привилегии GP
-   - `LifeCycleState` - состояние жизненного цикла (0x07 = SELECTABLE)
-   - `ProcessData` - APDU команды персонализации
+2. **InstanceList** - List of applet instances
+   - `ApplicationLoadPackageAID` - Reference to the package
+   - `ClassAID` - Applet class AID
+   - `InstanceAID` - Instance AID
+   - `ApplicationPrivileges` - GP privileges
+   - `LifeCycleState` - Lifecycle state (0x07 = SELECTABLE)
+   - `ProcessData` - Personalization APDU commands
 
-### ProcessData (команды персонализации)
+### ProcessData (Personalization Commands)
 
-ProcessData содержит APDU команды, которые выполняются после установки апплета. Типичное использование - загрузка ключей в Milenage USIM апплет:
+ProcessData contains APDU commands executed after applet installation. A typical use case is loading keys into a Milenage USIM applet:
 
 ```
 STORE DATA (CLA=80, INS=E2):
@@ -291,7 +291,7 @@ STORE DATA (CLA=80, INS=E2):
   80 E2 00 00 04 04 02 80 00                  # AMF
 ```
 
-### Конфигурация апплета в JSON
+### Applet Configuration in JSON
 
 ```json
 {
@@ -318,22 +318,22 @@ STORE DATA (CLA=80, INS=E2):
 
 ---
 
-## Примеры использования
+## Usage Examples
 
-### 1. Проверка профиля перед загрузкой
+### 1. Validating a Profile Before Upload
 
 ```bash
-# Валидация
+# Validation
 sim_reader esim validate my_profile.der
 
-# Если OK, загрузка на eUICC
-# (через внешние инструменты или SM-DP+)
+# If OK, upload to eUICC
+# (using external tools or SM-DP+)
 ```
 
-### 2. Создание профиля для тестирования
+### 2. Creating a Profile for Testing
 
 ```bash
-# 1. Подготовить конфигурацию
+# 1. Prepare configuration
 cat > test_config.json << 'EOF'
 {
   "iccid": "89701501078000006814",
@@ -345,22 +345,22 @@ cat > test_config.json << 'EOF'
 }
 EOF
 
-# 2. Собрать профиль
+# 2. Build profile
 sim_reader esim build \
   -c test_config.json \
   -t base_template.der \
   -o test_profile.der
 
-# 3. Проверить результат
+# 3. Verify result
 sim_reader esim decode test_profile.der --verbose
 ```
 
-### 3. Анализ апплетов в профиле
+### 3. Analyzing Applets in a Profile
 
 ```bash
 sim_reader esim decode profile_with_applet.der --verbose
 
-# Вывод покажет:
+# Output will show:
 # --- Java Card Applications (PE-Application) ---
 # Application[0]:
 #   LoadBlock:
@@ -379,39 +379,38 @@ sim_reader esim decode profile_with_applet.der --verbose
 
 ## Troubleshooting
 
-### Профиль не декодируется
+### Profile Decoding Fails
 
-1. Проверьте формат файла (должен быть DER, не PEM)
-2. Проверьте целостность файла (размер > 0)
-3. Запустите с `--verbose` для детальной диагностики
+1. Check file format (must be DER, not PEM)
+2. Check file integrity (size > 0)
+3. Run with `--verbose` for detailed diagnostics
 
-### Валидация показывает ошибки
+### Validation Shows Errors
 
-| Ошибка | Причина | Решение |
+| Error | Cause | Resolution |
 |--------|---------|---------|
-| ICCID Luhn failed | Неверная контрольная сумма | Пересчитать ICCID |
-| Ki missing | Нет ключа в AKA параметрах | Добавить Ki в конфигурацию |
-| Invalid AID | AID < 5 или > 16 байт | Проверить формат AID |
+| ICCID Luhn failed | Incorrect checksum | Recalculate ICCID |
+| Ki missing | Key not found in AKA parameters | Add Ki to configuration |
+| Invalid AID | AID < 5 or > 16 bytes | Verify AID format |
 
-### Апплет не работает после загрузки
+### Applet Not Working After Upload
 
-1. Проверьте совместимость CAP файла с платформой eUICC
-2. Убедитесь, что ProcessData содержит все необходимые команды
-3. Проверьте правильность порядка команд персонализации
+1. Check CAP file compatibility with the eUICC platform
+2. Ensure ProcessData contains all necessary commands
+3. Verify the correct order of personalization commands
 
 ---
 
-## Глоссарий
+## Glossary
 
-| Термин | Описание |
+| Term | Description |
 |--------|----------|
-| ICCID | Integrated Circuit Card Identifier - 18-20 значный идентификатор карты |
-| IMSI | International Mobile Subscriber Identity - 15 значный идентификатор абонента |
-| Ki | Subscriber Key - 128-битный ключ аутентификации |
-| OPc | Derived Operator Key - производный ключ оператора |
-| AID | Application Identifier - идентификатор приложения (5-16 байт) |
-| CAP | Converted Applet - файл Java Card апплета |
-| PE | Profile Element - элемент профиля |
-| SAIP | Subscriber Identity Application Programming - формат профилей SGP.22 |
-| ProcessData | APDU команды персонализации апплета |
-
+| ICCID | Integrated Circuit Card Identifier - 18-20 digit card identifier |
+| IMSI | International Mobile Subscriber Identity - 15 digit subscriber identifier |
+| Ki | Subscriber Key - 128-bit authentication key |
+| OPc | Derived Operator Key - operator-derived key |
+| AID | Application Identifier - identifier for applications (5-16 bytes) |
+| CAP | Converted Applet - Java Card applet file |
+| PE | Profile Element - part of a profile |
+| SAIP | Subscriber Identity Application Programming - SGP.22 profile format |
+| ProcessData | APDU commands for applet personalization |

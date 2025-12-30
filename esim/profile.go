@@ -322,31 +322,39 @@ func (p *Profile) SetIMSI(imsi string) error {
 	} else {
 		p.USIM.EF_IMSI.FillContents[0].Content = encoded
 	}
+	p.USIM.EF_IMSI.Raw = nil
 
+	p.invalidate(TagUSIM)
 	return nil
 }
 
-// SetKi sets new Ki in first AKA parameter
+// SetKi sets new Ki in all AKA parameters
 func (p *Profile) SetKi(ki []byte) error {
 	if len(p.AKAParams) == 0 {
 		return fmt.Errorf("AKA parameters not found")
 	}
-	if p.AKAParams[0].AlgoConfig == nil {
-		p.AKAParams[0].AlgoConfig = &AlgoConfiguration{}
+	for _, aka := range p.AKAParams {
+		if aka.AlgoConfig == nil {
+			aka.AlgoConfig = &AlgoConfiguration{}
+		}
+		aka.AlgoConfig.Key = copyBytes(ki)
 	}
-	p.AKAParams[0].AlgoConfig.Key = copyBytes(ki)
+	p.invalidate(TagAKAParameter)
 	return nil
 }
 
-// SetOPC sets new OPc in first AKA parameter
+// SetOPC sets new OPc in all AKA parameters
 func (p *Profile) SetOPC(opc []byte) error {
 	if len(p.AKAParams) == 0 {
 		return fmt.Errorf("AKA parameters not found")
 	}
-	if p.AKAParams[0].AlgoConfig == nil {
-		p.AKAParams[0].AlgoConfig = &AlgoConfiguration{}
+	for _, aka := range p.AKAParams {
+		if aka.AlgoConfig == nil {
+			aka.AlgoConfig = &AlgoConfiguration{}
+		}
+		aka.AlgoConfig.OPC = copyBytes(opc)
 	}
-	p.AKAParams[0].AlgoConfig.OPC = copyBytes(opc)
+	p.invalidate(TagAKAParameter)
 	return nil
 }
 
@@ -363,17 +371,75 @@ func (p *Profile) SetICCID(iccid string) error {
 			digits.WriteRune(r)
 		}
 	}
+	s := digits.String()
 
-	p.Header.ICCID = encodeSwappedBCD(digits.String())
+	// Header uses normal BCD
+	p.Header.ICCID = encodeBCD(s)
+	p.invalidate(TagProfileHeader)
 
-	// Also update EF.ICCID if present
+	// EF.ICCID uses swapped BCD
 	if p.MF != nil && p.MF.EF_ICCID != nil {
+		swapped := encodeSwappedBCD(s)
 		if len(p.MF.EF_ICCID.FillContents) > 0 {
-			p.MF.EF_ICCID.FillContents[0].Content = p.Header.ICCID
+			p.MF.EF_ICCID.FillContents[0].Content = swapped
+		} else {
+			p.MF.EF_ICCID.FillContents = append(p.MF.EF_ICCID.FillContents, FillContent{
+				Content: swapped,
+			})
 		}
+		p.MF.EF_ICCID.Raw = nil
+		p.invalidate(TagMF)
 	}
 
 	return nil
+}
+
+// invalidate clears RawBytes for all elements with given tag to force re-encoding
+func (p *Profile) invalidate(tag int) {
+	for i := range p.Elements {
+		if p.Elements[i].Tag == tag {
+			p.Elements[i].RawBytes = nil
+		}
+	}
+}
+
+// Sanitize clears all sensitive data from profile (keys, IMSI, PINs)
+// to ensure no template data leaks into the final build.
+func (p *Profile) Sanitize() {
+	// 1. Clear all AKA keys and reset to Milenage (safe default)
+	for _, aka := range p.AKAParams {
+		if aka.AlgoConfig != nil {
+			aka.AlgoConfig.Key = make([]byte, 16) // Zero keys
+			aka.AlgoConfig.OPC = make([]byte, 16)
+			aka.AlgoConfig.AlgorithmID = AlgoMilenage
+		}
+	}
+	p.invalidate(TagAKAParameter)
+
+	// 2. Clear PINs/PUKs (set to 0xFF filler)
+	for _, pc := range p.PinCodes {
+		for i := range pc.Configs {
+			pc.Configs[i].PINValue = []byte{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}
+		}
+	}
+	p.invalidate(TagPinCodes)
+
+	if p.PukCodes != nil {
+		for i := range p.PukCodes.Codes {
+			p.PukCodes.Codes[i].PUKValue = []byte{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}
+		}
+		p.invalidate(TagPukCodes)
+	}
+
+	// 3. Clear identity files
+	if p.USIM != nil && p.USIM.EF_IMSI != nil {
+		p.USIM.EF_IMSI.FillContents = nil
+		p.USIM.EF_IMSI.Raw = nil
+	}
+	if p.MF != nil && p.MF.EF_ICCID != nil {
+		p.MF.EF_ICCID.FillContents = nil
+		p.MF.EF_ICCID.Raw = nil
+	}
 }
 
 // Clone creates a deep copy of profile
