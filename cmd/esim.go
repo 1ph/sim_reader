@@ -26,6 +26,12 @@ var (
 	esimOutput     string
 	esimAppletCAP  string
 	esimAppletAuth bool
+
+	// esim compile flags
+	esimCompileOutput string
+
+	// esim export flags
+	esimExportOutput string
 )
 
 var esimCmd = &cobra.Command{
@@ -90,6 +96,36 @@ Examples:
 	Run: runEsimBuild,
 }
 
+var esimCompileCmd = &cobra.Command{
+	Use:   "compile <profile.txt>",
+	Short: "Compile ASN.1 Value Notation text to DER",
+	Long: `Compile eSIM profile from ASN.1 Value Notation text format to binary DER.
+
+This command parses text files in ASN.1 Value Notation format (like TS48 GTP
+profiles) and compiles them into binary DER format suitable for eSIM provisioning.
+
+Examples:
+  sim_reader esim compile profile.txt -o profile.der
+  sim_reader esim compile "TS48 V7.0 eSIM_GTP_SAIP2.3_BERTLV_SUCI.txt" -o gtp.der`,
+	Args: cobra.ExactArgs(1),
+	Run:  runEsimCompile,
+}
+
+var esimExportCmd = &cobra.Command{
+	Use:   "export <profile.der>",
+	Short: "Export DER profile to ASN.1 Value Notation text",
+	Long: `Export eSIM profile from binary DER format to ASN.1 Value Notation text.
+
+This command reads a DER profile and generates a human-readable text file
+in ASN.1 Value Notation format, which can be edited and recompiled.
+
+Examples:
+  sim_reader esim export profile.der -o profile.txt
+  sim_reader esim export profile.der  # prints to stdout`,
+	Args: cobra.ExactArgs(1),
+	Run:  runEsimExport,
+}
+
 func init() {
 	// esim decode flags
 	esimDecodeCmd.Flags().BoolVarP(&esimVerbose, "verbose", "v", false,
@@ -114,10 +150,21 @@ func init() {
 	_ = esimBuildCmd.MarkFlagRequired("config")
 	_ = esimBuildCmd.MarkFlagRequired("template")
 
+	// esim compile flags
+	esimCompileCmd.Flags().StringVarP(&esimCompileOutput, "output", "o", "",
+		"Output DER file (required)")
+	_ = esimCompileCmd.MarkFlagRequired("output")
+
+	// esim export flags
+	esimExportCmd.Flags().StringVarP(&esimExportOutput, "output", "o", "",
+		"Output TXT file (prints to stdout if not specified)")
+
 	// Register subcommands
 	esimCmd.AddCommand(esimDecodeCmd)
 	esimCmd.AddCommand(esimValidateCmd)
 	esimCmd.AddCommand(esimBuildCmd)
+	esimCmd.AddCommand(esimCompileCmd)
+	esimCmd.AddCommand(esimExportCmd)
 
 	// Register esim command to root
 	rootCmd.AddCommand(esimCmd)
@@ -207,6 +254,65 @@ func runEsimBuild(cmd *cobra.Command, args []string) {
 	output.PrintSuccess(fmt.Sprintf("Profile saved to: %s", esimOutput))
 	output.PrintSuccess(fmt.Sprintf("ICCID: %s", result.GetICCID()))
 	output.PrintSuccess(fmt.Sprintf("IMSI: %s", result.GetIMSI()))
+}
+
+func runEsimCompile(cmd *cobra.Command, args []string) {
+	txtPath := args[0]
+
+	// Parse ASN.1 Value Notation text file
+	profile, err := esim.ParseValueNotationFile(txtPath)
+	if err != nil {
+		output.PrintError(fmt.Sprintf("Failed to parse text file: %v", err))
+		os.Exit(1)
+	}
+
+	// Validate parsed profile
+	result := esim.ValidateProfile(profile, nil)
+	if !result.Valid {
+		output.PrintWarning("Profile has validation issues:")
+		for _, e := range result.Errors {
+			fmt.Printf("  - %s: %s\n", e.Field, e.Message)
+		}
+	}
+
+	// Save to DER
+	if err := esim.SaveProfile(profile, esimCompileOutput); err != nil {
+		output.PrintError(fmt.Sprintf("Failed to save DER profile: %v", err))
+		os.Exit(1)
+	}
+
+	output.PrintSuccess(fmt.Sprintf("Compiled profile saved to: %s", esimCompileOutput))
+	output.PrintSuccess(fmt.Sprintf("ICCID: %s", profile.GetICCID()))
+	output.PrintSuccess(fmt.Sprintf("IMSI: %s", profile.GetIMSI()))
+	output.PrintSuccess(fmt.Sprintf("Elements: %d", len(profile.Elements)))
+}
+
+func runEsimExport(cmd *cobra.Command, args []string) {
+	derPath := args[0]
+
+	// Load DER profile
+	profile, err := esim.LoadProfile(derPath)
+	if err != nil {
+		output.PrintError(fmt.Sprintf("Failed to load profile: %v", err))
+		os.Exit(1)
+	}
+
+	// Generate ASN.1 Value Notation text
+	text := esim.GenerateValueNotation(profile)
+
+	if esimExportOutput == "" {
+		// Print to stdout
+		fmt.Print(text)
+	} else {
+		// Save to file
+		if err := os.WriteFile(esimExportOutput, []byte(text), 0644); err != nil {
+			output.PrintError(fmt.Sprintf("Failed to save text file: %v", err))
+			os.Exit(1)
+		}
+		output.PrintSuccess(fmt.Sprintf("Exported to: %s", esimExportOutput))
+		output.PrintSuccess(fmt.Sprintf("ICCID: %s", profile.GetICCID()))
+		output.PrintSuccess(fmt.Sprintf("Elements: %d", len(profile.Elements)))
+	}
 }
 
 func printProfileSummary(p *esim.Profile, verbose bool) {
