@@ -23,6 +23,7 @@ var (
 	checkADMStatus    bool
 	debugFCP          bool
 	createSamplePath  string
+	showCardInfo      bool
 )
 
 var readCmd = &cobra.Command{
@@ -77,6 +78,8 @@ func init() {
 		"Show raw FCP data when reading file access conditions")
 	readCmd.Flags().StringVar(&createSamplePath, "create-sample", "",
 		"Create sample config file at specified path")
+	readCmd.Flags().BoolVar(&showCardInfo, "card-info", false,
+		"Show programmable card information (type, capabilities)")
 
 	rootCmd.AddCommand(readCmd)
 }
@@ -107,6 +110,14 @@ func runRead(cmd *cobra.Command, args []string) {
 		return
 	}
 	defer reader.Close()
+
+	// Show programmable card info if requested
+	if showCardInfo {
+		fmt.Println()
+		cardTypeName := sim.ShowProgrammableCardInfo(reader)
+		atrHex := fmt.Sprintf("%X", reader.ATR())
+		output.PrintProgrammableCardInfo(cardTypeName, atrHex)
+	}
 
 	// Analyze card if requested
 	if analyzeCard {

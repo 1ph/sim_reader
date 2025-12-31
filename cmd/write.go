@@ -161,9 +161,9 @@ func init() {
 
 	// Programmable card flags
 	writeCmd.Flags().BoolVar(&progDryRun, "dry-run", false,
-		"Simulate programming without writing (SAFE test mode)")
+		"Simulate programmable card operations without writing (SAFE test mode)")
 	writeCmd.Flags().BoolVar(&progForce, "force", false,
-		"Force programming on unrecognized cards (EXTREMELY DANGEROUS!)")
+		"Force programmable operations on unrecognized cards (EXTREMELY DANGEROUS!)")
 
 	rootCmd.AddCommand(writeCmd)
 }
@@ -240,11 +240,8 @@ func runWrite(cmd *cobra.Command, args []string) {
 			return
 		}
 
-		// Show programmable card info and warnings if present
-		if config.Programmable != nil {
-			cardTypeName := sim.ShowProgrammableCardInfo(reader)
-			atrHex := fmt.Sprintf("%X", reader.ATR())
-			output.PrintProgrammableCardInfo(cardTypeName, atrHex)
+		// Show programmable card warning if programmable fields are present
+		if config.RequiresProgrammableCard() {
 			output.PrintProgrammableWriteWarning(progDryRun)
 		}
 
@@ -252,8 +249,8 @@ func runWrite(cmd *cobra.Command, args []string) {
 			printError(fmt.Sprintf("Config apply failed: %v", err))
 		}
 
-		// Exit after dry run
-		if progDryRun && config.Programmable != nil {
+		// Exit after dry run for programmable operations
+		if progDryRun && config.RequiresProgrammableCard() {
 			return
 		}
 	}
