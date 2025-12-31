@@ -863,10 +863,18 @@ func decodeOptISIM(a *asn1.ASN1) (*OptionalISIM, error) {
 			i.TemplateID = decodeOID(a.Data)
 		case 2: // ef-pcscf
 			i.EF_PCSCF = decodeElementaryFile(inner)
-		case 3: // ef-gbabp
+		case 3, 7: // ef-gbabp (can be 3 or 7 depending on spec version)
 			i.EF_GBABP = decodeElementaryFile(inner)
-		case 4: // ef-gbanl
+		case 4, 8: // ef-gbanl (can be 4 or 8 depending on spec version)
 			i.EF_GBANL = decodeElementaryFile(inner)
+		case 5: // ef-nasconfig
+			i.EF_NASCONFIG = decodeElementaryFile(inner)
+		case 6: // ef-uicciari
+			i.EF_UICCIARI = decodeElementaryFile(inner)
+		case 9: // ef-xcapconfigdata
+			i.EF_XCAPCONFIGDATA = decodeElementaryFile(inner)
+		case 10: // ef-eaka
+			i.EF_EAKA = decodeElementaryFile(inner)
 		default:
 			ef := decodeElementaryFile(inner)
 			i.AdditionalEFs[fmt.Sprintf("tag_%d", tagNum)] = ef
@@ -1562,48 +1570,49 @@ func decodeRFM(a *asn1.ASN1) (*RFMConfig, error) {
 		TARList: make([][]byte, 0),
 	}
 
+	uiccAccessSet := false
+
 	for a.Unmarshal() {
 		switch {
+		case a.Class == asn1.ClassContextSpecific && getTagNumber(a) == 0:
+			inner := asn1.Init(a.Data)
+			if rfm.Header == nil {
+				rfm.Header = decodeElementHeader(inner)
+			} else {
+				// tarList [0]
+				for inner.Unmarshal() {
+					rfm.TARList = append(rfm.TARList, copyBytes(inner.Data))
+				}
+			}
+
 		case a.Class == asn1.ClassApplication && getTagNumber(a) == 15:
-			// [APPLICATION 15] instanceAID
 			rfm.InstanceAID = copyBytes(a.Data)
 
-		case a.Class == asn1.ClassContextSpecific:
-			tagNum := getContextTag(a)
-			inner := asn1.Init(a.Data)
+		case a.Class == asn1.ClassContextSpecific && getTagNumber(a) == 1:
+			if len(a.Data) > 0 {
+				rfm.MinimumSecurityLevel = a.Data[0]
+			}
 
-			switch tagNum {
-			case 0: // rfm-header or tarList (context-specific [0])
-				// Check if this contains header fields (has mandated/identification)
-				// or TAR values (raw octet strings)
-				probe := asn1.Init(a.Data)
-				if probe.Unmarshal() && probe.Class == asn1.ClassContextSpecific {
-					// It's the header
-					rfm.Header = decodeElementHeader(inner)
-				} else {
-					// It's tarList
-					for inner.Unmarshal() {
-						rfm.TARList = append(rfm.TARList, copyBytes(inner.Data))
-					}
-				}
-			case 1: // minimumSecurityLevel
-				if len(a.Data) > 0 {
-					rfm.MinimumSecurityLevel = a.Data[0]
-				}
-			case 2: // uiccAccessDomain
+		case a.Class == asn1.ClassUniversal && getTagNumber(a) == 4:
+			if !uiccAccessSet {
 				if len(a.Data) > 0 {
 					rfm.UICCAccessDomain = a.Data[0]
 				}
-			case 3: // uiccAdminAccessDomain
+				uiccAccessSet = true
+			} else {
 				if len(a.Data) > 0 {
 					rfm.UICCAdminAccessDomain = a.Data[0]
 				}
-			case 4: // adfRFMAccess
-				rfm.ADFRFMAccess = decodeADFRFMAccess(inner)
 			}
 
-		case a.Class == asn1.ClassUniversal:
-			// Handle universal types if any
+		case a.Class == asn1.ClassUniversal && getTagNumber(a) == 16:
+			inner := asn1.Init(a.Data)
+			rfm.ADFRFMAccess = decodeADFRFMAccess(inner)
+
+		case a.Class == asn1.ClassContextSpecific && getTagNumber(a) == 5:
+			// Fallback if adfRFMAccess is [5]
+			inner := asn1.Init(a.Data)
+			rfm.ADFRFMAccess = decodeADFRFMAccess(inner)
 		}
 	}
 

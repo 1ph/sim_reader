@@ -3116,6 +3116,30 @@ value20 ProfileElement ::= opt-isim : {
       }
     },
     fillFileContent : 'FF'H
+  },
+  ef-gbabp {
+    fileDescriptor : {
+      fileDescriptor '4121'H,
+      fileID '6FD5'H,
+      lcsi '05'H,
+      securityAttributesReferenced '6F0602'H,
+      efFileSize '64'H,
+      proprietaryEFInfo {
+        specialFileInformation '00'H
+      }
+    }
+  },
+  ef-gbanl {
+    fileDescriptor : {
+      fileDescriptor '42210064'H,
+      fileID '6FD7'H,
+      lcsi '05'H,
+      securityAttributesReferenced '6F0601'H,
+      efFileSize '01F4'H,
+      proprietaryEFInfo {
+        specialFileInformation '00'H
+      }
+    }
   }
 }
 value21 ProfileElement ::= pinCodes : {
@@ -3553,8 +3577,8 @@ value25 ProfileElement ::= securityDomain : {
     }
   },
   sdPersoData {
-  '0070326630732E06072A864886FC6B01600B06092A864886FC6B020202630906072A864886FC6B03640B06092A864886FC6B048000'H
-}
+    '0070326630732E06072A864886FC6B01600B06092A864886FC6B020202630906072A864886FC6B03640B06092A864886FC6B048000'H
+  }
 }
 value26 ProfileElement ::= rfm : {
   rfm-header {
@@ -3580,7 +3604,12 @@ value27 ProfileElement ::= rfm : {
   },
   minimumSecurityLevel '02'H,
   uiccAccessDomain '00'H,
-  uiccAdminAccessDomain '00'H
+  uiccAdminAccessDomain '00'H,
+  adfRFMAccess {
+    adfAID 'A0000000871002FF49FF0589'H,
+    adfAccessDomain '00'H,
+    adfAdminAccessDomain '00'H
+  }
 }
 value28 ProfileElement ::= rfm : {
   rfm-header {
@@ -3593,7 +3622,12 @@ value28 ProfileElement ::= rfm : {
   },
   minimumSecurityLevel '02'H,
   uiccAccessDomain '00'H,
-  uiccAdminAccessDomain '00'H
+  uiccAdminAccessDomain '00'H,
+  adfRFMAccess {
+    adfAID 'A0000000871004FF49FF0589'H,
+    adfAccessDomain '00'H,
+    adfAdminAccessDomain '00'H
+  }
 }
 value29 ProfileElement ::= rfm : {
   rfm-header {
@@ -3606,7 +3640,12 @@ value29 ProfileElement ::= rfm : {
   },
   minimumSecurityLevel '02'H,
   uiccAccessDomain '00'H,
-  uiccAdminAccessDomain '00'H
+  uiccAdminAccessDomain '00'H,
+  adfRFMAccess {
+    adfAID 'A0000003431002F310FFFF89020000FF'H,
+    adfAccessDomain '00'H,
+    adfAdminAccessDomain '00'H
+  }
 }
 value30 ProfileElement ::= end : {
   end-header {

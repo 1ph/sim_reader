@@ -4,6 +4,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 )
 
@@ -1109,11 +1110,30 @@ func (g *Generator) generateOptISIM(i *OptionalISIM) {
 		{"ef-pcscf", i.EF_PCSCF},
 		{"ef-gbabp", i.EF_GBABP},
 		{"ef-gbanl", i.EF_GBANL},
+		{"ef-nasconfig", i.EF_NASCONFIG},
+		{"ef-uicciari", i.EF_UICCIARI},
+		{"ef-3gpppsdataoff", i.EF_3GPPPSDATAOFF},
+		{"ef-3gpppsdataoffservicelist", i.EF_3GPPPSDATAOFFSERVICELIST},
+		{"ef-xcapconfigdata", i.EF_XCAPCONFIGDATA},
+		{"ef-eaka", i.EF_EAKA},
 	}
 
 	for _, f := range efFields {
 		if f.ef != nil {
 			fields = append(fields, g.sgenerateElementaryFile(f.name, f.ef))
+		}
+	}
+
+	// Add any additional EFs
+	if len(i.AdditionalEFs) > 0 {
+		// Sort keys for deterministic output
+		keys := make([]string, 0, len(i.AdditionalEFs))
+		for k := range i.AdditionalEFs {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		for _, k := range keys {
+			fields = append(fields, g.sgenerateElementaryFile(k, i.AdditionalEFs[k]))
 		}
 	}
 
@@ -1774,7 +1794,19 @@ func (g *Generator) generateSecurityDomain(sd *SecurityDomain) {
 	}
 
 	if len(sd.SDPersoData) > 0 {
-		fields = append(fields, "sdPersoData {\n  "+g.formatHex(sd.SDPersoData)+"\n}")
+		var sb strings.Builder
+		sb.WriteString("sdPersoData {\n")
+		g.indent++
+		for j := 0; j < g.indent; j++ {
+			sb.WriteString("  ")
+		}
+		sb.WriteString(g.formatHex(sd.SDPersoData) + "\n")
+		g.indent--
+		for j := 0; j < g.indent; j++ {
+			sb.WriteString("  ")
+		}
+		sb.WriteString("}")
+		fields = append(fields, sb.String())
 	}
 
 	g.writeFields(fields)

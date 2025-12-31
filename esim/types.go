@@ -384,12 +384,18 @@ type ISIMApplication struct {
 
 // OptionalISIM represents optional ISIM files
 type OptionalISIM struct {
-	Header        *ElementHeader
-	TemplateID    OID
-	EF_PCSCF      *ElementaryFile
-	EF_GBABP      *ElementaryFile
-	EF_GBANL      *ElementaryFile
-	AdditionalEFs map[string]*ElementaryFile
+	Header                      *ElementHeader
+	TemplateID                  OID
+	EF_PCSCF                    *ElementaryFile
+	EF_GBABP                    *ElementaryFile
+	EF_GBANL                    *ElementaryFile
+	EF_NASCONFIG                *ElementaryFile
+	EF_UICCIARI                 *ElementaryFile
+	EF_3GPPPSDATAOFF            *ElementaryFile
+	EF_3GPPPSDATAOFFSERVICELIST *ElementaryFile
+	EF_XCAPCONFIGDATA           *ElementaryFile
+	EF_EAKA                     *ElementaryFile
+	AdditionalEFs               map[string]*ElementaryFile
 	// RawBytes preserves original encoding for lossless round-trip
 	RawBytes []byte
 }
