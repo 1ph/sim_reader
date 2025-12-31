@@ -1,20 +1,30 @@
 {
-  "programmable": {
-    "ki": "F2464E3293019A7E51ABAA7B1262B7D8",
-    "op": "CDC202D5123E20F62B6D676AC72CB318",
-    "iccid": "89860061100000000123",
-    "msisdn": "+1234567890",
-    "acc": "0001",
-    "pin1": "1234",
-    "puk1": "12345678",
-    "pin2": "5678",
-    "puk2": "87654321",
-    "algorithm": "milenage"
-  },
+  "_comment": "Universal SIM config: works for both physical programmable cards and eSIM profiles",
+
+  "iccid": "89860061100000000123",
+  "msisdn": "+79001234567",
   "imsi": "250880000000001",
   "spn": "My Network",
   "mcc": "250",
   "mnc": "88",
+
+  "ki": "F2464E3293019A7E51ABAA7B1262B7D8",
+  "opc": "CDC202D5123E20F62B6D676AC72CB318",
+  
+  "algorithm": "milenage",
+  "algorithm_id": 1,
+
+  "pin1": "1234",
+  "puk1": "12345678",
+  "pin2": "5678",
+  "puk2": "87654321",
+  "adm1": "88888888",
+  "acc_hex": "0001",
+
+  "profile_type": "test",
+  "operation_mode": "cell-test",
+
+  "hplmn_period": 60,
   "hplmn": [
     {"mcc": "250", "mnc": "88", "act": ["eutran", "utran", "gsm"]}
   ],
@@ -22,30 +32,113 @@
     {"mcc": "250", "mnc": "01", "act": ["eutran", "utran", "gsm"]},
     {"mcc": "250", "mnc": "02", "act": ["eutran", "gsm"]}
   ],
-  "fplmn": [
-    {"mcc": "999", "mnc": "99"}
+  "user_plmn": [
+    {"mcc": "001", "mnc": "01", "act": ["eutran", "utran", "gsm"]},
+    {"mcc": "999", "mnc": "99", "act": ["eutran"]}
   ],
+
   "isim": {
     "impi": "250880000000001@ims.mnc088.mcc250.3gppnetwork.org",
-    "impu": ["sip:250880000000001@ims.mnc088.mcc250.3gppnetwork.org"],
+    "impu": [
+      "sip:250880000000001@ims.mnc088.mcc250.3gppnetwork.org",
+      "tel:+79001234567"
+    ],
     "domain": "ims.mnc088.mcc250.3gppnetwork.org",
     "pcscf": ["pcscf.ims.mnc088.mcc250.3gppnetwork.org"]
   },
-  "smsp": {
-    "service_center": "+1234567890",
-    "destination": "",
-    "validity_period": 255
+
+  "services": {
+    "volte": true,
+    "vowifi": true,
+    "sms_over_ip": true,
+    "gsm_access": true,
+    "call_control": false,
+    "gba": true,
+    "5g_nas_config": true,
+    "5g_nssai": true,
+    "suci_calculation": true,
+    "isim_pcscf": true,
+    "isim_sms_over_ip": true,
+    "isim_voice_domain_pref": true,
+    "isim_gba": true
   },
-  "ust": {
-    "lte": true,
-    "location_services": true,
-    "fdn": false
-  },
-  "phonebook": [
-    {
-      "name": "Emergency",
-      "number": "112",
-      "type": "emergency"
+
+  "global_platform": {
+    "sd_aid": "A000000151000000",
+    "security_level": "mac+enc",
+    "scp": "auto",
+    
+    "keysets": [
+      {
+        "name": "default",
+        "kvn": 1,
+        "keys": {
+          "psk": "404142434445464748494A4B4C4D4E4F"
+        }
+      },
+      {
+        "name": "production",
+        "kvn": 2,
+        "scp": "scp03",
+        "keys": {
+          "enc": "000102030405060708090A0B0C0D0E0F",
+          "mac": "101112131415161718191A1B1C1D1E1F",
+          "dek": "202122232425262728292A2B2C2D2E2F"
+        }
+      }
+    ],
+    "default_keyset": "default",
+
+    "applets": {
+      "loads": [
+        {
+          "_comment": "Milenage USIM authentication applet",
+          "cap_path": "/path/to/milenage-usim.cap",
+          "package_aid": "A00000008710020001",
+          "applet_aid": "A000000087100201",
+          "instance_aid": "A00000008710020101",
+          "use_for_esim": true,
+          
+          "personalization": {
+            "milenage_usim": {
+              "ki": "F2464E3293019A7E51ABAA7B1262B7D8",
+              "opc": "CDC202D5123E20F62B6D676AC72CB318",
+              "amf": "8000",
+              "sqn": "000000000000",
+              "imsi": "250880000000001"
+            }
+          }
+        },
+        {
+          "_comment": "Custom applet with raw personalization APDUs",
+          "cap_path": "/path/to/custom-applet.cap",
+          "package_aid": "A00000008720010001",
+          "applet_aid": "A000000087200101",
+          "instance_aid": "A00000008720010101",
+          "use_for_esim": false,
+          
+          "personalization": {
+            "apdus": [
+              "80E20000120110F2464E3293019A7E51ABAA7B1262B7D8",
+              "80E20000120210CDC202D5123E20F62B6D676AC72CB318"
+            ]
+          }
+        }
+      ]
+    },
+
+    "aram": {
+      "aid": "A00000015141434C00",
+      "rules": [
+        {
+          "_comment": "Allow all apps to access Milenage applet",
+          "target_aid": "A00000008710020101",
+          "cert_hash": "FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF",
+          "apdu_rule": "01"
+        }
+      ]
     }
-  ]
+  },
+
+  "clear_fplmn": true
 }

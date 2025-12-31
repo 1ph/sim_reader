@@ -1,0 +1,108 @@
+{
+  "_comment": "eSIM profile configuration with Java Card applet for authentication",
+  
+  "iccid": "89701510780000006814",
+  "imsi": "250880000000001",
+  "spn": "eSIM Operator",
+  "mcc": "250",
+  "mnc": "88",
+
+  "pin1": "1234",
+  "puk1": "12345678",
+  "pin2": "5678",
+  "puk2": "87654321",
+  "adm1": "FFFFFFFF",
+
+  "profile_type": "operational",
+  "operation_mode": "normal",
+
+  "use_applet_auth": true,
+  "algorithm_id": 3,
+
+  "hplmn": [
+    {"mcc": "250", "mnc": "88", "act": ["eutran", "utran", "gsm", "nr"]}
+  ],
+  "oplmn": [
+    {"mcc": "250", "mnc": "01", "act": ["eutran", "nr"]},
+    {"mcc": "250", "mnc": "02", "act": ["eutran"]}
+  ],
+
+  "isim": {
+    "impi": "250880000000001@ims.mnc088.mcc250.3gppnetwork.org",
+    "impu": [
+      "sip:250880000000001@ims.mnc088.mcc250.3gppnetwork.org",
+      "tel:+79001234567"
+    ],
+    "domain": "ims.mnc088.mcc250.3gppnetwork.org",
+    "pcscf": ["pcscf.ims.mnc088.mcc250.3gppnetwork.org"]
+  },
+
+  "services": {
+    "volte": true,
+    "vowifi": true,
+    "sms_over_ip": true,
+    "gba": true,
+    "5g_nas_config": true,
+    "5g_nssai": true,
+    "suci_calculation": true,
+    "isim_pcscf": true,
+    "isim_voice_domain_pref": true
+  },
+
+  "global_platform": {
+    "sd_aid": "A000000151000000",
+    "security_level": "mac",
+    "scp": "scp03",
+    
+    "keysets": [
+      {
+        "name": "default",
+        "kvn": 1,
+        "scp": "scp03",
+        "keys": {
+          "enc": "404142434445464748494A4B4C4D4E4F",
+          "mac": "404142434445464748494A4B4C4D4E4F",
+          "dek": "404142434445464748494A4B4C4D4E4F"
+        }
+      }
+    ],
+    "default_keyset": "default",
+
+    "applets": {
+      "loads": [
+        {
+          "cap_path": "milenage-usim-applet.cap",
+          "package_aid": "A00000008710020001",
+          "applet_aid": "A000000087100201",
+          "instance_aid": "A00000008710020101",
+          "sd_aid": "A000000151000000",
+          "use_for_esim": true,
+          
+          "personalization": {
+            "milenage_usim": {
+              "ki": "00112233445566778899AABBCCDDEEFF",
+              "opc": "FFEEDDCCBBAA99887766554433221100",
+              "amf": "8000",
+              "sqn": "000000000000",
+              "imsi": "250880000000001"
+            }
+          }
+        }
+      ]
+    },
+
+    "aram": {
+      "aid": "A00000015141434C00",
+      "rules": [
+        {
+          "target_aid": "A00000008710020101",
+          "cert_hash": "0000000000000000000000000000000000000000",
+          "apdu_rule": "01"
+        }
+      ]
+    }
+  },
+
+  "clear_fplmn": true
+}
+

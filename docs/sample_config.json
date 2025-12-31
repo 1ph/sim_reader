@@ -1,30 +1,59 @@
 {
+  "iccid": "8970150107800000681",
   "imsi": "250880000000001",
   "spn": "My Operator",
   "mcc": "250",
   "mnc": "88",
+
+  "ki": "00112233445566778899AABBCCDDEEFF",
+  "opc": "FFEEDDCCBBAA99887766554433221100",
+
+  "pin1": "1234",
+  "puk1": "12345678",
+  "pin2": "5678",
+  "puk2": "87654321",
+  "adm1": "FFFFFFFF",
+
+  "algorithm": "milenage",
+  "algorithm_id": 1,
+
+  "profile_type": "operational",
+
+  "operation_mode": "normal",
+
   "hplmn": [
-    {
-      "mcc": "250",
-      "mnc": "88",
-      "act": ["eutran", "utran", "gsm"]
-    }
+    {"mcc": "250", "mnc": "88", "act": ["eutran", "utran", "gsm"]}
   ],
+  "oplmn": [
+    {"mcc": "250", "mnc": "01", "act": ["eutran", "utran"]},
+    {"mcc": "250", "mnc": "02", "act": ["eutran"]}
+  ],
+  "user_plmn": [
+    {"mcc": "001", "mnc": "01", "act": ["eutran", "utran", "gsm"]}
+  ],
+
   "isim": {
     "impi": "250880000000001@ims.mnc088.mcc250.3gppnetwork.org",
     "impu": [
-      "sip:250880000000001@ims.mnc088.mcc250.3gppnetwork.org"
+      "sip:250880000000001@ims.mnc088.mcc250.3gppnetwork.org",
+      "tel:+79001234567"
     ],
     "domain": "ims.mnc088.mcc250.3gppnetwork.org",
-    "pcscf": [
-      "pcscf.ims.mnc088.mcc250.3gppnetwork.org"
-    ]
+    "pcscf": ["pcscf.ims.mnc088.mcc250.3gppnetwork.org"]
   },
+
   "services": {
     "volte": true,
     "vowifi": true,
+    "sms_over_ip": true,
+    "gsm_access": true,
+    "gba": true,
+    "5g_nas_config": true,
+    "suci_calculation": true,
     "isim_pcscf": true,
-    "isim_voice_domain_pref": true
+    "isim_voice_domain_pref": true,
+    "isim_gba": true
   },
+
   "clear_fplmn": true
 }

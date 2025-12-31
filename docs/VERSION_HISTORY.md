@@ -1,5 +1,154 @@
 # Version History
 
+## v4.0.0 - eSIM Profile Tooling: ASN.1 ↔ DER Bidirectional Conversion
+
+### Complete eSIM Profile Management
+
+This release introduces comprehensive tooling for working with eSIM profiles in both binary (DER) and text (ASN.1 Value Notation) formats. The new `esim` command group provides a complete workflow for profile creation, conversion, validation, and inspection.
+
+### New Commands
+
+| Command | Description |
+|---------|-------------|
+| `esim compile` | Convert ASN.1 Value Notation text to binary DER format |
+| `esim export` | Convert binary DER profile to ASN.1 Value Notation text |
+| `esim build` | Build eSIM profile from JSON config and template |
+| `esim decode` | Decode and display DER profile contents |
+| `esim validate` | Validate profile structure with optional template comparison |
+
+### ASN.1 ↔ DER Bidirectional Conversion
+
+**Text to Binary (compile):**
+```bash
+# Convert ASN.1 Value Notation text file to DER binary
+sim_reader esim compile profile.txt -o profile.der
+
+# Compile GSMA Generic Test Profile
+sim_reader esim compile "TS48_V7.0_eSIM_GTP_SAIP2.3.txt" -o gtp.der
+```
+
+**Binary to Text (export):**
+```bash
+# Export DER profile to editable ASN.1 text
+sim_reader esim export profile.der -o profile.txt
+
+# Print to stdout for piping
+sim_reader esim export profile.der | head -100
+```
+
+### Unified Configuration Structure
+
+Profile building now uses the unified `SIMConfig` structure, allowing the same JSON configuration to be used for:
+- Programming physical SIM cards
+- Building eSIM profiles
+- Including applets with personalization data
+
+### New SIMConfig Fields for eSIM
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `profile_type` | string | eSIM profile type (operationalProfile, testProfile, etc.) |
+| `algorithm_id` | int | Authentication algorithm: 1=Milenage, 2=TUAK, 3=USIM Test |
+| `use_applet_auth` | bool | Delegate authentication to applet |
+| `adm1` | string | ADM1 code for eSIM profile |
+
+### Applet Integration in eSIM Profiles
+
+Applets can now be included in eSIM profiles via:
+1. JSON config with `global_platform.applets` section and `use_for_esim: true`
+2. CLI flag `--applet <cap_file>` (requires AID configuration in JSON)
+
+```json
+{
+  "global_platform": {
+    "applets": {
+      "loads": [{
+        "cap_path": "/path/to/applet.cap",
+        "package_aid": "A00000008710020101",
+        "applet_aid": "A0000000871002010101",
+        "instance_aid": "A000000087100201010101",
+        "use_for_esim": true,
+        "personalization": {
+          "milenage_usim": {
+            "ki": "00112233445566778899AABBCCDDEEFF",
+            "opc": "FFEEDDCCBBAA99887766554433221100",
+            "amf": "8000"
+          }
+        }
+      }]
+    }
+  }
+}
+```
+
+### Enhanced Validation
+
+Profile validation now supports template comparison:
+
+```bash
+# Basic validation
+sim_reader esim validate profile.der
+
+# Compare against template
+sim_reader esim validate profile.der --template base.der
+
+# Strict validation with field length checks
+sim_reader esim validate profile.der --template base.der --strict --check-lengths
+```
+
+| Flag | Description |
+|------|-------------|
+| `--template` | Reference profile for structure comparison |
+| `--strict` | Treat mismatches as errors (not warnings) |
+| `--check-lengths` | Verify EF file sizes match template |
+
+### Supported Profile Formats
+
+| Format | Extension | Description |
+|--------|-----------|-------------|
+| DER | `.der` | Binary ASN.1 DER encoding (GSMA SGP.22 / SAIP) |
+| ASN.1 Text | `.txt`, `.asn1` | Human-readable ASN.1 Value Notation |
+
+### Workflow Examples
+
+**Creating a custom eSIM profile:**
+```bash
+# 1. Export base template to text for inspection
+sim_reader esim export base_template.der -o template.txt
+
+# 2. Build profile with custom parameters
+sim_reader esim build -c config.json -t base_template.der -o custom.der
+
+# 3. Validate the result
+sim_reader esim validate custom.der --template base_template.der
+
+# 4. Export for review
+sim_reader esim export custom.der -o custom.txt
+```
+
+**Converting between formats:**
+```bash
+# DER → ASN.1 Text → Edit → DER
+sim_reader esim export profile.der -o profile.txt
+# ... edit profile.txt ...
+sim_reader esim compile profile.txt -o profile_modified.der
+```
+
+### Internal Changes
+
+- Merged `esim.BuildConfig` into `sim.SIMConfig` for unified configuration
+- Added `LoadTemplate()` function for auto-detecting DER vs ASN.1 text format
+- New `ApplyConfigToProfile()` for applying SIMConfig to parsed profiles
+- Enhanced `ValidationOptions` with `TemplateStrict` and `CheckFieldLengths`
+- Added `GPAppletLoadConfig.UseForESIM` flag for selective applet inclusion
+
+### Documentation
+
+- Updated [docs/ESIM.md](ESIM.md) with complete command reference
+- Added example configurations in [docs/](docs/) directory
+
+---
+
 ## v3.3.0 - Unified Configuration Structure
 
 ### Configuration Refactoring

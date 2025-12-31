@@ -11,6 +11,7 @@ import (
 
 	"sim_reader/esim"
 	"sim_reader/output"
+	"sim_reader/sim"
 )
 
 var (
@@ -18,7 +19,9 @@ var (
 	esimVerbose bool
 
 	// esim validate flags
-	esimTemplate string
+	esimTemplate      string
+	esimValidateStrict bool
+	esimCheckLengths  bool
 
 	// esim build flags
 	esimConfig     string
@@ -37,15 +40,10 @@ var (
 var esimCmd = &cobra.Command{
 	Use:   "esim",
 	Short: "eSIM profile operations",
-	Long: `eSIM profile operations: decode, validate, and build profiles.
+	Long: `eSIM profile operations: decode, validate, build, compile and export profiles.
 
 This command group provides tools for working with eSIM profiles in DER format
-(GSMA SGP.22 / SAIP format).
-
-Subcommands:
-  decode    - Decode and display profile contents
-  validate  - Validate profile structure and parameters
-  build     - Build profile from JSON config and template`,
+(GSMA SGP.22 / SAIP format) and ASN.1 Value Notation text format.`,
 }
 
 var esimDecodeCmd = &cobra.Command{
@@ -75,9 +73,15 @@ Checks performed:
   - Applications: AID validity, LoadBlock/InstanceList
   - Personalization: APDU format
 
+Template comparison (with --template):
+  - Element presence and order
+  - EF file sizes (with --check-lengths)
+  - Missing/extra elements
+
 Examples:
   sim_reader esim validate profile.der
-  sim_reader esim validate profile.der --template base.der`,
+  sim_reader esim validate profile.der --template base.der
+  sim_reader esim validate profile.der --template base.der --strict --check-lengths`,
 	Args: cobra.ExactArgs(1),
 	Run:  runEsimValidate,
 }
@@ -87,12 +91,21 @@ var esimBuildCmd = &cobra.Command{
 	Short: "Build eSIM profile from config",
 	Long: `Build eSIM profile from JSON configuration and template.
 
-The configuration file should contain profile parameters like ICCID, IMSI,
-Ki, OPc, ISIM settings, etc. A template profile provides the base structure.
+The configuration file (JSON) contains profile parameters: ICCID, IMSI, Ki, OPc,
+ISIM settings, PIN/PUK codes, and optional applet configuration.
+
+Template can be either:
+  - DER binary file (.der)
+  - ASN.1 Value Notation text file (.txt, .asn1)
+
+Applets can be included via:
+  - JSON config: global_platform.applets section with use_for_esim: true
+  - CLI flag: --applet <cap_file> (requires AID config in JSON)
 
 Examples:
   sim_reader esim build --config config.json --template base.der -o profile.der
-  sim_reader esim build -c config.json -t base.der -o profile.der --applet app.cap`,
+  sim_reader esim build -c config.json -t template.txt -o profile.der
+  sim_reader esim build -c config.json -t base.der --use-applet-auth -o profile.der`,
 	Run: runEsimBuild,
 }
 
@@ -133,17 +146,21 @@ func init() {
 
 	// esim validate flags
 	esimValidateCmd.Flags().StringVarP(&esimTemplate, "template", "t", "",
-		"Template profile to compare against (optional)")
+		"Template profile to compare against (DER or ASN.1 text)")
+	esimValidateCmd.Flags().BoolVar(&esimValidateStrict, "strict", false,
+		"Require exact match with template (errors instead of warnings)")
+	esimValidateCmd.Flags().BoolVar(&esimCheckLengths, "check-lengths", false,
+		"Check EF file sizes match template")
 
 	// esim build flags
 	esimBuildCmd.Flags().StringVarP(&esimConfig, "config", "c", "",
 		"JSON configuration file (required)")
 	esimBuildCmd.Flags().StringVarP(&esimBuildTpl, "template", "t", "",
-		"Template profile DER file (required)")
+		"Template profile file - DER (.der) or ASN.1 text (.txt, .asn1) (required)")
 	esimBuildCmd.Flags().StringVarP(&esimOutput, "output", "o", "profile.der",
 		"Output profile DER file")
 	esimBuildCmd.Flags().StringVar(&esimAppletCAP, "applet", "",
-		"CAP file to include as PE-Application (optional)")
+		"CAP file to include as PE-Application (requires AID config in JSON)")
 	esimBuildCmd.Flags().BoolVar(&esimAppletAuth, "use-applet-auth", false,
 		"Delegate authentication to applet (algorithmID=3)")
 
@@ -190,13 +207,30 @@ func runEsimDecode(cmd *cobra.Command, args []string) {
 func runEsimValidate(cmd *cobra.Command, args []string) {
 	profilePath := args[0]
 
-	profile, err := esim.LoadProfile(profilePath)
+	// Load profile (auto-detect format)
+	profile, err := esim.LoadTemplate(profilePath)
 	if err != nil {
 		output.PrintError(fmt.Sprintf("Failed to load profile: %v", err))
 		os.Exit(1)
 	}
 
-	result := esim.ValidateProfile(profile, nil)
+	// Prepare validation options
+	opts := &esim.ValidationOptions{
+		TemplateStrict:    esimValidateStrict,
+		CheckFieldLengths: esimCheckLengths,
+	}
+
+	// Load template if specified
+	if esimTemplate != "" {
+		template, err := esim.LoadTemplate(esimTemplate)
+		if err != nil {
+			output.PrintError(fmt.Sprintf("Failed to load template: %v", err))
+			os.Exit(1)
+		}
+		opts.Template = template
+	}
+
+	result := esim.ValidateProfile(profile, opts)
 
 	if outputJSON {
 		data, _ := json.MarshalIndent(result, "", "  ")
@@ -212,34 +246,54 @@ func runEsimValidate(cmd *cobra.Command, args []string) {
 }
 
 func runEsimBuild(cmd *cobra.Command, args []string) {
-	// Load template
-	template, err := esim.LoadProfile(esimBuildTpl)
+	// Load template (auto-detect format: DER or ASN.1 text)
+	template, err := esim.LoadTemplate(esimBuildTpl)
 	if err != nil {
 		output.PrintError(fmt.Sprintf("Failed to load template: %v", err))
 		os.Exit(1)
 	}
 
-	// Load config
-	configData, err := os.ReadFile(esimConfig)
+	// Load config using sim.SIMConfig
+	config, err := sim.LoadConfig(esimConfig)
 	if err != nil {
-		output.PrintError(fmt.Sprintf("Failed to read config: %v", err))
+		output.PrintError(fmt.Sprintf("Failed to load config: %v", err))
 		os.Exit(1)
 	}
 
-	var config esim.BuildConfig
-	if err := json.Unmarshal(configData, &config); err != nil {
-		output.PrintError(fmt.Sprintf("Failed to parse config: %v", err))
-		os.Exit(1)
+	// Apply CLI overrides
+	if esimAppletAuth {
+		config.UseAppletAuth = true
 	}
 
-	// Set applet options
+	// Handle legacy --applet flag: add CAP to GlobalPlatform config
 	if esimAppletCAP != "" {
-		config.AppletCAP = esimAppletCAP
-	}
-	config.UseAppletAuth = esimAppletAuth
+		if config.GlobalPlatform == nil {
+			config.GlobalPlatform = &sim.GlobalPlatformConfig{}
+		}
+		if config.GlobalPlatform.Applets == nil {
+			config.GlobalPlatform.Applets = &sim.GPAppletsConfig{}
+		}
 
-	// Build profile
-	result, err := esim.BuildProfile(template, &config)
+		// Check if there's already an applet config we can use
+		foundApplet := false
+		for i := range config.GlobalPlatform.Applets.Loads {
+			if config.GlobalPlatform.Applets.Loads[i].CAPPath == "" {
+				config.GlobalPlatform.Applets.Loads[i].CAPPath = esimAppletCAP
+				config.GlobalPlatform.Applets.Loads[i].UseForESIM = true
+				foundApplet = true
+				break
+			}
+		}
+
+		// If no existing applet config, we need AID info from JSON
+		if !foundApplet && len(config.GlobalPlatform.Applets.Loads) == 0 {
+			output.PrintWarning("--applet specified but no applet AID configuration in JSON config")
+			output.PrintWarning("Add global_platform.applets.loads section with package_aid, applet_aid, instance_aid")
+		}
+	}
+
+	// Build profile using SIMConfig
+	result, err := esim.BuildProfileFromSIMConfig(template, config)
 	if err != nil {
 		output.PrintError(fmt.Sprintf("Failed to build profile: %v", err))
 		os.Exit(1)
@@ -254,6 +308,11 @@ func runEsimBuild(cmd *cobra.Command, args []string) {
 	output.PrintSuccess(fmt.Sprintf("Profile saved to: %s", esimOutput))
 	output.PrintSuccess(fmt.Sprintf("ICCID: %s", result.GetICCID()))
 	output.PrintSuccess(fmt.Sprintf("IMSI: %s", result.GetIMSI()))
+
+	// Show applet info if any
+	if len(result.Applications) > 0 {
+		output.PrintSuccess(fmt.Sprintf("Applets: %d", len(result.Applications)))
+	}
 }
 
 func runEsimCompile(cmd *cobra.Command, args []string) {

@@ -2,12 +2,25 @@
 
 ## Overview
 
-The `esim` package provides tools for working with eSIM profiles in GSMA SGP.22 / SAIP (Subscriber Identity Application Programming) format. It supports decoding, validation, and building profiles, including support for Java Card applets.
+The `esim` package provides comprehensive tools for working with eSIM profiles in GSMA SGP.22 / SAIP (Subscriber Identity Application Programming) format. It supports:
+
+- **Bidirectional conversion** between binary DER and ASN.1 Value Notation text formats
+- **Profile building** from JSON configuration and templates
+- **Validation** with optional template comparison
+- **Decoding** and inspection of profile contents
+- **Java Card applet** integration with personalization
+
+### Supported Formats
+
+| Format | Extensions | Description |
+|--------|------------|-------------|
+| DER Binary | `.der` | Standard eSIM profile format (GSMA SGP.22 / SAIP) |
+| ASN.1 Text | `.txt`, `.asn1` | Human-readable ASN.1 Value Notation format |
 
 ### Supported Profile Elements
 
 | Tag | Element Name | Description |
-|-----|--------------|----------|
+|-----|--------------|-------------|
 | 0 | ProfileHeader | Profile header (version, ICCID, services) |
 | 1 | MF | Master File (root file system) |
 | 2 | PukCodes | PUK codes |
@@ -43,10 +56,95 @@ sim_reader esim <subcommand> [flags]
 ### Available Subcommands
 
 | Command | Description |
-|---------|----------|
+|---------|-------------|
+| `compile` | Convert ASN.1 Value Notation text to binary DER format |
+| `export` | Convert binary DER profile to ASN.1 Value Notation text |
+| `build` | Build a profile from JSON configuration and template |
 | `decode` | Decode and display profile content |
 | `validate` | Validate profile correctness |
-| `build` | Build a profile from configuration and template |
+
+---
+
+## Format Conversion
+
+### ASN.1 Text to DER Binary (compile)
+
+```bash
+sim_reader esim compile <profile.txt> -o <output.der>
+```
+
+Converts an eSIM profile from ASN.1 Value Notation text format to binary DER format suitable for eSIM provisioning.
+
+#### Flags
+
+| Flag | Description |
+|------|-------------|
+| `-o, --output` | Output DER file (required) |
+
+#### Examples
+
+```bash
+# Compile text profile to DER
+sim_reader esim compile profile.txt -o profile.der
+
+# Compile GSMA Generic Test Profile
+sim_reader esim compile "TS48_V7.0_eSIM_GTP_SAIP2.3.txt" -o gtp.der
+```
+
+#### Sample Output
+
+```
+✓ Compiled profile saved to: profile.der
+✓ ICCID: 89701501078000006814
+✓ IMSI: 250880000000010
+✓ Elements: 25
+```
+
+---
+
+### DER Binary to ASN.1 Text (export)
+
+```bash
+sim_reader esim export <profile.der> [-o <output.txt>]
+```
+
+Exports an eSIM profile from binary DER format to human-readable ASN.1 Value Notation text format.
+
+#### Flags
+
+| Flag | Description |
+|------|-------------|
+| `-o, --output` | Output text file (prints to stdout if not specified) |
+
+#### Examples
+
+```bash
+# Export to file
+sim_reader esim export profile.der -o profile.txt
+
+# Print to stdout
+sim_reader esim export profile.der
+
+# Pipe to other tools
+sim_reader esim export profile.der | grep -i imsi
+```
+
+#### Sample Output (ASN.1 Value Notation)
+
+```asn1
+-- eSIM Profile
+-- ICCID: 89701501078000006814
+
+ProfileElement ::= {
+  profileHeader {
+    major-version 2,
+    minor-version 3,
+    profileType "operationalProfile",
+    iccid '89701501078000006814'H,
+    ...
+  }
+}
+```
 
 ---
 
@@ -116,14 +214,16 @@ ADM1: 88888888
 ## Profile Validation (validate)
 
 ```bash
-sim_reader esim validate <profile.der> [--template <base.der>]
+sim_reader esim validate <profile.der> [--template <base.der>] [--strict] [--check-lengths]
 ```
 
 ### Flags
 
 | Flag | Description |
-|------|----------|
-| `-t, --template` | Profile template to compare structure against |
+|------|-------------|
+| `-t, --template` | Profile template to compare structure against (DER or ASN.1 text) |
+| `--strict` | Require exact match with template (errors instead of warnings) |
+| `--check-lengths` | Check EF file sizes match template |
 | `--json` | Output results in JSON format |
 
 ### Performed Checks
@@ -191,18 +291,29 @@ Profile validation: PASSED
 ## Profile Building (build)
 
 ```bash
-sim_reader esim build --config <config.json> --template <base.der> -o <output.der> [flags]
+sim_reader esim build --config <config.json> --template <template> -o <output.der> [flags]
 ```
 
 ### Flags
 
 | Flag | Description |
-|------|----------|
+|------|-------------|
 | `-c, --config` | JSON configuration file (required) |
-| `-t, --template` | DER profile template (required) |
+| `-t, --template` | Template profile - DER (.der) or ASN.1 text (.txt, .asn1) (required) |
 | `-o, --output` | Output profile file (default: profile.der) |
 | `--applet` | CAP applet file to include in the profile |
 | `--use-applet-auth` | Delegate authentication to the applet (algorithmID=3) |
+
+### Template Formats
+
+The build command accepts templates in either format:
+
+| Format | Extension | Description |
+|--------|-----------|-------------|
+| DER Binary | `.der` | Standard binary eSIM profile |
+| ASN.1 Text | `.txt`, `.asn1` | Human-readable text format |
+
+Both formats are automatically detected and parsed. The output is always DER binary.
 
 ### Configuration Format (JSON)
 
@@ -401,10 +512,62 @@ sim_reader esim decode profile_with_applet.der --verbose
 
 ---
 
+## Format Conversion Workflow
+
+### Round-Trip Editing
+
+The compile and export commands enable a complete round-trip workflow for editing eSIM profiles:
+
+```bash
+# 1. Export DER to editable text
+sim_reader esim export original.der -o editable.txt
+
+# 2. Edit the text file with any text editor
+# ... modify parameters, add elements, etc. ...
+
+# 3. Compile back to DER
+sim_reader esim compile editable.txt -o modified.der
+
+# 4. Validate the result
+sim_reader esim validate modified.der --template original.der
+```
+
+### Batch Processing
+
+```bash
+# Convert all text profiles in a directory
+for f in profiles/*.txt; do
+  sim_reader esim compile "$f" -o "${f%.txt}.der"
+done
+
+# Export all DER profiles
+for f in profiles/*.der; do
+  sim_reader esim export "$f" -o "${f%.der}.txt"
+done
+```
+
+### Integration with Profile Building
+
+```bash
+# Use text template for building
+sim_reader esim build \
+  --config config.json \
+  --template base_template.txt \
+  -o custom_profile.der
+
+# Or use binary template
+sim_reader esim build \
+  --config config.json \
+  --template base_template.der \
+  -o custom_profile.der
+```
+
+---
+
 ## Glossary
 
 | Term | Description |
-|--------|----------|
+|------|-------------|
 | ICCID | Integrated Circuit Card Identifier - 18-20 digit card identifier |
 | IMSI | International Mobile Subscriber Identity - 15 digit subscriber identifier |
 | Ki | Subscriber Key - 128-bit authentication key |
@@ -412,5 +575,7 @@ sim_reader esim decode profile_with_applet.der --verbose
 | AID | Application Identifier - identifier for applications (5-16 bytes) |
 | CAP | Converted Applet - Java Card applet file |
 | PE | Profile Element - part of a profile |
+| DER | Distinguished Encoding Rules - binary ASN.1 encoding |
+| ASN.1 | Abstract Syntax Notation One - data structure definition language |
 | SAIP | Subscriber Identity Application Programming - SGP.22 profile format |
 | ProcessData | APDU commands for applet personalization |

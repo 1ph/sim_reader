@@ -3,6 +3,8 @@ package esim
 import (
 	"bytes"
 	"testing"
+
+	"sim_reader/sim"
 )
 
 func TestApplicationRoundTrip(t *testing.T) {
@@ -205,16 +207,16 @@ func TestApplicationValidation(t *testing.T) {
 	}
 }
 
-func TestBuildMilenageUSIMAPDUs(t *testing.T) {
-	cfg := &MilenageUSIMAppletConfig{
+func TestBuildMilenageAPDUs(t *testing.T) {
+	cfg := &sim.MilenageUSIMPersonalization{
 		Ki:  "00112233445566778899AABBCCDDEEFF",
 		OPc: "FFEEDDCCBBAA99887766554433221100",
 		AMF: "8000",
 	}
 
-	apdus, err := buildMilenageUSIMAPDUs(cfg)
+	apdus, err := buildMilenageAPDUs(cfg)
 	if err != nil {
-		t.Fatalf("buildMilenageUSIMAPDUs failed: %v", err)
+		t.Fatalf("buildMilenageAPDUs failed: %v", err)
 	}
 
 	// Should have at least Ki, OPc, and AMF APDUs
@@ -234,15 +236,15 @@ func TestBuildMilenageUSIMAPDUs(t *testing.T) {
 	}
 }
 
-func TestBuildMilenageUSIMAPDUs_WithOP(t *testing.T) {
-	cfg := &MilenageUSIMAppletConfig{
+func TestBuildMilenageAPDUs_WithOP(t *testing.T) {
+	cfg := &sim.MilenageUSIMPersonalization{
 		Ki: "00112233445566778899AABBCCDDEEFF",
 		OP: "11111111111111111111111111111111", // OP instead of OPc
 	}
 
-	apdus, err := buildMilenageUSIMAPDUs(cfg)
+	apdus, err := buildMilenageAPDUs(cfg)
 	if err != nil {
-		t.Fatalf("buildMilenageUSIMAPDUs failed: %v", err)
+		t.Fatalf("buildMilenageAPDUs failed: %v", err)
 	}
 
 	// Should have Ki and OP APDUs (tag 0x03 for OP vs 0x02 for OPc)
@@ -251,15 +253,14 @@ func TestBuildMilenageUSIMAPDUs_WithOP(t *testing.T) {
 	}
 }
 
-func TestBuildMilenageUSIMAPDUs_InvalidKi(t *testing.T) {
-	cfg := &MilenageUSIMAppletConfig{
+func TestBuildMilenageAPDUs_InvalidKi(t *testing.T) {
+	cfg := &sim.MilenageUSIMPersonalization{
 		Ki:  "00112233", // Too short
 		OPc: "FFEEDDCCBBAA99887766554433221100",
 	}
 
-	_, err := buildMilenageUSIMAPDUs(cfg)
+	_, err := buildMilenageAPDUs(cfg)
 	if err == nil {
 		t.Error("Expected error for invalid Ki length")
 	}
 }
-

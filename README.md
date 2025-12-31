@@ -1,8 +1,8 @@
 # SIM Reader
 
-A command-line tool written in Go for reading and writing SIM/USIM/ISIM card parameters using PC/SC smart card readers.
+A command-line tool written in Go for reading and writing SIM/USIM/ISIM card parameters using PC/SC smart card readers, with comprehensive eSIM profile management capabilities.
 
-**Version 3.3.0**
+**Version 4.0.0**
 
 ---
 
@@ -42,6 +42,11 @@ This software is provided "AS IS", without warranty of any kind, express or impl
 - **Reading**: ICCID, IMSI, MSISDN, PLMN lists, Service Tables, ISIM parameters
 - **Writing**: IMSI, SPN, PLMN lists, ISIM parameters, service configuration
 - **JSON Export/Import**: Full round-trip support (`--json` → edit → `write -f`)
+- **eSIM Profile Management**: Complete tooling for GSMA SGP.22 / SAIP profiles
+  - **ASN.1 ↔ DER Conversion**: Bidirectional conversion between text and binary formats
+  - **Profile Building**: Create profiles from JSON config and templates
+  - **Validation**: Structure validation with optional template comparison
+  - **Applet Integration**: Include Java Card applets with personalization data
 - **Advanced ATR Analysis**: Detailed breakdown of voltage, protocols, and transmission parameters (ISO 7816-3)
 - **Programmable SIM Cards**: Modular driver-based support for blank/programmable cards
   - **Supported**: Grcard v1/v2, sysmocom (GR1, GR2, SJS1, SJA2, SJA5), RuSIM/OX24
@@ -57,7 +62,7 @@ This software is provided "AS IS", without warranty of any kind, express or impl
 - **PCOM Scripts**: Execute personalization scripts for programmable cards
 - **GlobalPlatform**: Secure channel (SCP02/SCP03) for applet management
 - **Extended APDU**: Support for large file operations (up to 64KB)
-- **Proprietary Profiles**: Plug-and-play drivers for switching USIM authentication algorithms.
+- **Proprietary Profiles**: Plug-and-play drivers for switching USIM authentication algorithms
 - **Shell Autocomplete**: Built-in completion for bash, zsh, fish, and PowerShell
 
 ## Supported Card Types
@@ -169,6 +174,7 @@ sim_reader [global flags] <command> [command flags]
 Commands:
   read        Read SIM card data (includes --card-info for programmable cards)
   write       Write SIM card parameters
+  esim        eSIM profile operations (compile, export, build, validate, decode)
   gp          GlobalPlatform operations
   auth        Run authentication test
   test        Run SIM card test suite
@@ -311,6 +317,45 @@ Common GP flags:
 | `--verbose` | Verbose output (default: true) |
 | `--stop-on-error` | Stop on first error |
 
+### eSIM Commands
+
+```bash
+./sim_reader esim <subcommand> [flags]
+
+Subcommands:
+  compile   Convert ASN.1 text to DER binary
+  export    Convert DER binary to ASN.1 text
+  build     Build profile from JSON config and template
+  decode    Decode and display DER profile
+  validate  Validate profile structure
+```
+
+| Command | Example |
+|---------|---------|
+| `compile` | `./sim_reader esim compile profile.txt -o profile.der` |
+| `export` | `./sim_reader esim export profile.der -o profile.txt` |
+| `build` | `./sim_reader esim build -c config.json -t template.der -o out.der` |
+| `decode` | `./sim_reader esim decode profile.der --verbose` |
+| `validate` | `./sim_reader esim validate profile.der --template base.der` |
+
+Build flags:
+
+| Flag | Description |
+|------|-------------|
+| `-c, --config` | JSON configuration file (required) |
+| `-t, --template` | Template file - DER or ASN.1 text (required) |
+| `-o, --output` | Output DER file |
+| `--applet` | CAP file to include |
+| `--use-applet-auth` | Delegate auth to applet |
+
+Validate flags:
+
+| Flag | Description |
+|------|-------------|
+| `-t, --template` | Template for comparison |
+| `--strict` | Treat mismatches as errors |
+| `--check-lengths` | Check EF file sizes |
+
 ### Programmable Card Info
 
 ```bash
@@ -369,6 +414,18 @@ Common GP flags:
 
 # Generate bash completion
 ./sim_reader completion bash
+
+# eSIM: Convert ASN.1 text to DER
+./sim_reader esim compile profile.txt -o profile.der
+
+# eSIM: Export DER to editable text
+./sim_reader esim export profile.der -o profile.txt
+
+# eSIM: Build profile from config
+./sim_reader esim build -c config.json -t template.der -o custom.der
+
+# eSIM: Validate with template comparison
+./sim_reader esim validate profile.der --template base.der --strict
 ```
 
 ## JSON Configuration Format
@@ -440,6 +497,7 @@ The `--json` flag exports all readable card parameters. Edit and re-import with 
 |----------|-------------|
 | [docs/USAGE.md](docs/USAGE.md) | Detailed usage guide |
 | [docs/WRITING.md](docs/WRITING.md) | Writing card data (including programmable cards) |
+| [docs/ESIM.md](docs/ESIM.md) | eSIM profile management (compile, export, build, validate) |
 | [docs/AUTHENTICATION.md](docs/AUTHENTICATION.md) | Authentication testing (Milenage/TUAK) |
 | [docs/TESTING.md](docs/TESTING.md) | Comprehensive test suite for USIM/ISIM |
 | [docs/GLOBALPLATFORM.md](docs/GLOBALPLATFORM.md) | GlobalPlatform secure channels |
@@ -457,6 +515,7 @@ sim_reader/
 │   ├── root.go          # Root command and global flags
 │   ├── read.go          # Read command
 │   ├── write.go         # Write command
+│   ├── esim.go          # eSIM profile commands
 │   ├── gp.go            # GlobalPlatform commands
 │   ├── auth.go          # Authentication command
 │   ├── test.go          # Test suite command
@@ -464,6 +523,14 @@ sim_reader/
 │   └── completion.go    # Shell completion
 ├── algorithms/          # Milenage and TUAK authentication algorithms
 ├── card/                # PC/SC reader, APDU commands, authentication
+├── esim/                # eSIM profile encoder/decoder (SGP.22 SAIP)
+│   ├── asn1/            # ASN.1 BER/DER parser
+│   ├── types.go         # Profile element type definitions
+│   ├── decoder.go       # DER → Go struct decoder
+│   ├── encoder.go       # Go struct → DER encoder
+│   ├── builder.go       # Profile building from config
+│   ├── validator.go     # Profile validation
+│   └── value_notation.go # ASN.1 Value Notation parser/generator
 ├── sim/                 # USIM/ISIM readers, decoders, writers
 ├── output/              # Colored table output
 ├── dictionaries/        # Embedded ATR and MCC/MNC dictionaries
@@ -508,6 +575,8 @@ go build .
 - 3GPP TS 35.206 - Milenage algorithm
 - 3GPP TS 35.231 - TUAK algorithm
 - ETSI TS 102 221 - UICC-Terminal Interface
+- GSMA SGP.22 - RSP Technical Specification (eSIM profiles)
+- GSMA TS.48 - eSIM Test Profile / SAIP format
 - ISO/IEC 7816-4 - Smart Card Commands
 
 ## License

@@ -35,10 +35,12 @@ type ValidationWarning struct {
 
 // ValidationOptions configures validation behavior
 type ValidationOptions struct {
-	Template        *Profile // Optional template to compare against
-	SkipLuhn        bool     // Skip ICCID Luhn checksum validation
-	AllowEmptyPIN   bool     // Allow empty PIN values
-	StrictApplet    bool     // Require all applet instances to have valid ProcessData
+	Template          *Profile // Optional template to compare against
+	SkipLuhn          bool     // Skip ICCID Luhn checksum validation
+	AllowEmptyPIN     bool     // Allow empty PIN values
+	StrictApplet      bool     // Require all applet instances to have valid ProcessData
+	TemplateStrict    bool     // Require exact match with template structure
+	CheckFieldLengths bool     // Check EF file sizes match template
 }
 
 // ValidateProfile validates eSIM profile structure and parameters
@@ -80,7 +82,7 @@ func ValidateProfile(p *Profile, opts *ValidationOptions) *ValidationResult {
 
 	// Template comparison (if provided)
 	if opts.Template != nil {
-		validateAgainstTemplate(p, opts.Template, result)
+		validateAgainstTemplateWithOpts(p, opts.Template, result, opts)
 	}
 
 	// Update Valid flag based on errors
@@ -394,19 +396,166 @@ func validateSecurityDomains(p *Profile, r *ValidationResult) {
 }
 
 func validateAgainstTemplate(p *Profile, template *Profile, r *ValidationResult) {
-	// Compare element count
-	if len(p.Elements) != len(template.Elements) {
-		addWarning(r, "Template", fmt.Sprintf("Element count differs: profile has %d, template has %d",
-			len(p.Elements), len(template.Elements)))
+	validateAgainstTemplateWithOpts(p, template, r, nil)
+}
+
+func validateAgainstTemplateWithOpts(p *Profile, template *Profile, r *ValidationResult, opts *ValidationOptions) {
+	if opts == nil {
+		opts = &ValidationOptions{}
 	}
 
-	// Compare element order
-	for i := 0; i < len(p.Elements) && i < len(template.Elements); i++ {
-		if p.Elements[i].Tag != template.Elements[i].Tag {
-			addWarning(r, "Template", fmt.Sprintf("Element[%d] tag differs: profile has %s, template has %s",
-				i, GetProfileElementName(p.Elements[i].Tag), GetProfileElementName(template.Elements[i].Tag)))
+	// Compare element count
+	if len(p.Elements) != len(template.Elements) {
+		if opts.TemplateStrict {
+			addError(r, "Template", fmt.Sprintf("Element count differs: profile has %d, template has %d",
+				len(p.Elements), len(template.Elements)))
+		} else {
+			addWarning(r, "Template", fmt.Sprintf("Element count differs: profile has %d, template has %d",
+				len(p.Elements), len(template.Elements)))
 		}
 	}
+
+	// Compare element order and structure
+	for i := 0; i < len(p.Elements) && i < len(template.Elements); i++ {
+		if p.Elements[i].Tag != template.Elements[i].Tag {
+			if opts.TemplateStrict {
+				addError(r, "Template", fmt.Sprintf("Element[%d] tag differs: profile has %s, template has %s",
+					i, GetProfileElementName(p.Elements[i].Tag), GetProfileElementName(template.Elements[i].Tag)))
+			} else {
+				addWarning(r, "Template", fmt.Sprintf("Element[%d] tag differs: profile has %s, template has %s",
+					i, GetProfileElementName(p.Elements[i].Tag), GetProfileElementName(template.Elements[i].Tag)))
+			}
+		}
+	}
+
+	// Check field lengths if requested
+	if opts.CheckFieldLengths {
+		validateFieldLengths(p, template, r, opts.TemplateStrict)
+	}
+
+	// Check for missing mandatory elements from template
+	templateTags := make(map[int]bool)
+	for _, elem := range template.Elements {
+		templateTags[elem.Tag] = true
+	}
+
+	profileTags := make(map[int]bool)
+	for _, elem := range p.Elements {
+		profileTags[elem.Tag] = true
+	}
+
+	// Check for missing elements
+	for tag := range templateTags {
+		if !profileTags[tag] {
+			elemName := GetProfileElementName(tag)
+			if opts.TemplateStrict {
+				addError(r, "Template", fmt.Sprintf("Missing element from template: %s", elemName))
+			} else {
+				addWarning(r, "Template", fmt.Sprintf("Missing element from template: %s", elemName))
+			}
+		}
+	}
+
+	// Check for extra elements not in template
+	for tag := range profileTags {
+		if !templateTags[tag] {
+			elemName := GetProfileElementName(tag)
+			addWarning(r, "Template", fmt.Sprintf("Extra element not in template: %s", elemName))
+		}
+	}
+
+	addCheck(r, "Template", len(r.Errors) == 0, "Template comparison complete")
+}
+
+// validateFieldLengths compares EF file sizes between profile and template
+func validateFieldLengths(p *Profile, template *Profile, r *ValidationResult, strict bool) {
+	// Compare USIM EF sizes
+	if p.USIM != nil && template.USIM != nil {
+		compareEFSizes("USIM.EF_IMSI", p.USIM.EF_IMSI, template.USIM.EF_IMSI, r, strict)
+		compareEFSizes("USIM.EF_Keys", p.USIM.EF_Keys, template.USIM.EF_Keys, r, strict)
+		compareEFSizes("USIM.EF_UST", p.USIM.EF_UST, template.USIM.EF_UST, r, strict)
+		compareEFSizes("USIM.EF_ACC", p.USIM.EF_ACC, template.USIM.EF_ACC, r, strict)
+		compareEFSizes("USIM.EF_FPLMN", p.USIM.EF_FPLMN, template.USIM.EF_FPLMN, r, strict)
+		compareEFSizes("USIM.EF_AD", p.USIM.EF_AD, template.USIM.EF_AD, r, strict)
+	}
+
+	// Compare ISIM EF sizes
+	if p.ISIM != nil && template.ISIM != nil {
+		compareEFSizes("ISIM.EF_IMPI", p.ISIM.EF_IMPI, template.ISIM.EF_IMPI, r, strict)
+		compareEFSizes("ISIM.EF_IMPU", p.ISIM.EF_IMPU, template.ISIM.EF_IMPU, r, strict)
+		compareEFSizes("ISIM.EF_DOMAIN", p.ISIM.EF_DOMAIN, template.ISIM.EF_DOMAIN, r, strict)
+		compareEFSizes("ISIM.EF_IST", p.ISIM.EF_IST, template.ISIM.EF_IST, r, strict)
+	}
+
+	// Compare MF EF sizes
+	if p.MF != nil && template.MF != nil {
+		compareEFSizes("MF.EF_ICCID", p.MF.EF_ICCID, template.MF.EF_ICCID, r, strict)
+		compareEFSizes("MF.EF_DIR", p.MF.EF_DIR, template.MF.EF_DIR, r, strict)
+	}
+}
+
+// compareEFSizes compares file sizes and content lengths
+func compareEFSizes(name string, pEF, tEF *ElementaryFile, r *ValidationResult, strict bool) {
+	if pEF == nil && tEF == nil {
+		return
+	}
+
+	if pEF == nil && tEF != nil {
+		if strict {
+			addError(r, "FieldLength", fmt.Sprintf("%s: missing in profile but present in template", name))
+		} else {
+			addWarning(r, "FieldLength", fmt.Sprintf("%s: missing in profile but present in template", name))
+		}
+		return
+	}
+
+	if pEF != nil && tEF == nil {
+		addWarning(r, "FieldLength", fmt.Sprintf("%s: present in profile but missing in template", name))
+		return
+	}
+
+	// Compare file descriptor sizes if available
+	if pEF.Descriptor != nil && tEF.Descriptor != nil {
+		if len(pEF.Descriptor.EFFileSize) > 0 && len(tEF.Descriptor.EFFileSize) > 0 {
+			pSize := decodeFileSize(pEF.Descriptor.EFFileSize)
+			tSize := decodeFileSize(tEF.Descriptor.EFFileSize)
+			if pSize != tSize {
+				if strict {
+					addError(r, "FieldLength", fmt.Sprintf("%s: file size differs (profile: %d, template: %d)", name, pSize, tSize))
+				} else {
+					addWarning(r, "FieldLength", fmt.Sprintf("%s: file size differs (profile: %d, template: %d)", name, pSize, tSize))
+				}
+			}
+		}
+	}
+
+	// Compare content lengths
+	pContentLen := 0
+	tContentLen := 0
+
+	for _, fc := range pEF.FillContents {
+		pContentLen += len(fc.Content)
+	}
+	for _, fc := range tEF.FillContents {
+		tContentLen += len(fc.Content)
+	}
+
+	if pContentLen > 0 && tContentLen > 0 && pContentLen != tContentLen {
+		// This is informational - content lengths may legitimately differ
+		addWarning(r, "FieldLength", fmt.Sprintf("%s: content length differs (profile: %d, template: %d)", name, pContentLen, tContentLen))
+	}
+}
+
+// decodeFileSize decodes file size from EFFileSize bytes
+func decodeFileSize(data []byte) int {
+	if len(data) == 0 {
+		return 0
+	}
+	size := 0
+	for _, b := range data {
+		size = size<<8 | int(b)
+	}
+	return size
 }
 
 // luhnCheck validates Luhn checksum for ICCID
