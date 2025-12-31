@@ -2,7 +2,7 @@
 # Uses goreleaser-cross for all platforms: Linux, macOS, Windows
 
 APP_NAME = sim_reader
-VERSION = 2.0.0
+VERSION = 3.3.0
 BUILD_DIR = build
 
 # goreleaser-cross image (latest)

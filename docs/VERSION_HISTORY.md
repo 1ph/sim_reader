@@ -1,5 +1,90 @@
 # Version History
 
+## v3.3.0 - Unified Configuration Structure
+
+### Configuration Refactoring
+
+The configuration structure has been unified to eliminate duplication between standard and programmable card parameters:
+
+- **Flattened Structure**: Fields from `ProgrammableConfig` moved to top-level `SIMConfig`
+- **Automatic Card Detection**: Card type is now automatically detected when writing
+- **Simplified Commands**: Removed redundant `prog` command (use `read --card-info` instead)
+
+### New Configuration Format
+
+Programmable card fields are now at the top level instead of nested under `programmable`:
+
+**Old format (deprecated but still supported):**
+```json
+{
+  "imsi": "250880000000001",
+  "programmable": {
+    "ki": "F2464E3293019A7E51ABAA7B1262B7D8",
+    "opc": "B10B351A0CCD8BE31E0C9F088945A812"
+  }
+}
+```
+
+**New format:**
+```json
+{
+  "imsi": "250880000000001",
+  "ki": "F2464E3293019A7E51ABAA7B1262B7D8",
+  "opc": "B10B351A0CCD8BE31E0C9F088945A812",
+  "algorithm": "milenage",
+  "pin1": "1234",
+  "puk1": "12345678"
+}
+```
+
+### New Fields in SIMConfig
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `ki` | string | Subscriber key (32 hex chars) |
+| `op` | string | Operator key OP (32 hex chars) |
+| `opc` | string | Operator key OPc (32 hex chars) |
+| `algorithm` | string | Auth algorithm: milenage, xor, tuak, s3g-128, s3g-256 |
+| `acc_hex` | string | Access Control Class for writing (4 hex chars) |
+| `pin1`, `puk1` | string | PIN1/PUK1 codes |
+| `pin2`, `puk2` | string | PIN2/PUK2 codes |
+
+### Command Changes
+
+| Old Command | New Command |
+|-------------|-------------|
+| `sim_reader prog info` | `sim_reader read --card-info` |
+
+### Automatic Card Type Detection
+
+When writing configuration with programmable fields (Ki, OPc, etc.), the tool now:
+
+1. Automatically detects if the card is programmable by ATR pattern matching
+2. Shows card type information before writing
+3. Uses appropriate driver for the detected card type
+4. Falls back to generic methods for standard cards where possible
+
+### Backward Compatibility
+
+- Old configs with `"programmable": {...}` section are automatically migrated
+- Deprecation warning is shown when using old format
+- All existing functionality preserved
+
+### Documentation Updates
+
+- Merged `PROGRAMMABLE_CARDS.md` into `WRITING.md`
+- Updated all examples with new configuration format
+- Updated command references
+
+### Internal Changes
+
+- New `migrateFromProgrammable()` method for config migration
+- New `HasProgrammableFields()` and `RequiresProgrammableCard()` helpers
+- Simplified `ApplyConfig()` with unified field handling
+- Removed `applyProgrammableConfig()` in favor of `applyProgrammableFields()`
+
+---
+
 ## v3.2.0 - Cobra CLI Refactoring
 
 ### Complete CLI Refactoring with Cobra
@@ -28,8 +113,6 @@ Commands:
     └── verify  Verify AID
   auth        Run authentication test
   test        Run SIM card test suite
-  prog        Programmable card operations
-    └── info    Show card information
   script      Execute APDU scripts
     ├── run     Simple APDU script
     └── pcom    PCOM personalization script
@@ -48,7 +131,7 @@ Commands:
 | `sim_reader -write config.json` | `sim_reader write -f config.json` |
 | `sim_reader -test` | `sim_reader test` |
 | `sim_reader -pcom script.pcom` | `sim_reader script pcom script.pcom` |
-| `sim_reader -prog-info` | `sim_reader prog info` |
+| `sim_reader -prog-info` | `sim_reader read --card-info` |
 
 ### Global Flags (available for all commands)
 
@@ -92,7 +175,6 @@ sim_reader/
 │   ├── gp.go            # GlobalPlatform commands
 │   ├── auth.go          # Authentication command
 │   ├── test.go          # Test suite command
-│   ├── prog.go          # Programmable card command
 │   ├── script.go        # Script commands
 │   ├── completion.go    # Shell completion
 │   └── common.go        # Common helpers
@@ -112,7 +194,6 @@ All documentation files updated with new command syntax:
 - docs/USAGE.md
 - docs/WRITING.md
 - docs/AUTHENTICATION.md
-- docs/PROGRAMMABLE_CARDS.md
 - docs/TESTING.md
 - docs/GLOBALPLATFORM.md
 - docs/PCOM.md
@@ -490,7 +571,7 @@ data, err := esim.EncodeProfile(newProfile)
 - PIN2/PUK2: `0200`
 
 ### Documentation
-- New [docs/PROGRAMMABLE_CARDS.md](PROGRAMMABLE_CARDS.md) with comprehensive guide (English)
+- Programmable cards guide in [docs/WRITING.md](WRITING.md)
 - Example configuration file: [docs/programmable_custom_example.json](programmable_custom_example.json)
 - Safety warnings and best practices
 - ATR patterns for known programmable cards

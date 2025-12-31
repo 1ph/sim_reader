@@ -2,7 +2,7 @@
 
 A command-line tool written in Go for reading and writing SIM/USIM/ISIM card parameters using PC/SC smart card readers.
 
-**Version 3.2.0**
+**Version 3.3.0**
 
 ---
 
@@ -147,7 +147,7 @@ make build-windows
 
 # Program blank SIM cards (Grcard, open5gs)
 # Show programmable card info
-./sim_reader prog info
+./sim_reader read --card-info
 
 # Safe test (dry run) - no data written
 ./sim_reader write -a YOUR_ADM_KEY -f programmable_config.json --dry-run
@@ -167,12 +167,11 @@ sim_reader uses subcommands for different operations:
 sim_reader [global flags] <command> [command flags]
 
 Commands:
-  read        Read SIM card data
+  read        Read SIM card data (includes --card-info for programmable cards)
   write       Write SIM card parameters
   gp          GlobalPlatform operations
   auth        Run authentication test
   test        Run SIM card test suite
-  prog        Programmable card operations
   script      Execute APDU scripts
   completion  Generate shell completion scripts
 ```
@@ -312,10 +311,10 @@ Common GP flags:
 | `--verbose` | Verbose output (default: true) |
 | `--stop-on-error` | Stop on first error |
 
-### Prog Command
+### Programmable Card Info
 
 ```bash
-./sim_reader prog info    # Show programmable card information
+./sim_reader read --card-info    # Show programmable card information
 ```
 
 ## Usage Examples
@@ -405,7 +404,9 @@ The `--json` flag exports all readable card parameters. Edit and re-import with 
 | `clear_fplmn` | bool | Yes | Clear Forbidden PLMN list on write |
 | `isim` | object | Yes | ISIM parameters (IMPI, IMPU, Domain, PCSCF) |
 | `services` | object | Yes | Service flags (VoLTE, VoWiFi, GBA, etc.) |
-| `programmable` | object | Yes | Programmable card parameters (Ki, OPc, ICCID, etc.) - see [PROGRAMMABLE_CARDS.md](docs/PROGRAMMABLE_CARDS.md) |
+| `ki`, `opc`, `op` | string | Yes | Cryptographic keys for programmable cards (see [WRITING.md](docs/WRITING.md)) |
+| `algorithm` | string | Yes | Auth algorithm: milenage, xor, tuak (programmable cards) |
+| `pin1`, `puk1`, `pin2`, `puk2` | string | Yes | Security codes (programmable cards) |
 
 ### Example JSON
 
@@ -438,9 +439,8 @@ The `--json` flag exports all readable card parameters. Edit and re-import with 
 | Document | Description |
 |----------|-------------|
 | [docs/USAGE.md](docs/USAGE.md) | Detailed usage guide |
-| [docs/WRITING.md](docs/WRITING.md) | Writing card data |
+| [docs/WRITING.md](docs/WRITING.md) | Writing card data (including programmable cards) |
 | [docs/AUTHENTICATION.md](docs/AUTHENTICATION.md) | Authentication testing (Milenage/TUAK) |
-| [docs/PROGRAMMABLE_CARDS.md](docs/PROGRAMMABLE_CARDS.md) | Programmable SIM cards (Grcard, open5gs) |
 | [docs/TESTING.md](docs/TESTING.md) | Comprehensive test suite for USIM/ISIM |
 | [docs/GLOBALPLATFORM.md](docs/GLOBALPLATFORM.md) | GlobalPlatform secure channels |
 | [docs/PCOM.md](docs/PCOM.md) | PCOM script execution |
@@ -460,7 +460,6 @@ sim_reader/
 │   ├── gp.go            # GlobalPlatform commands
 │   ├── auth.go          # Authentication command
 │   ├── test.go          # Test suite command
-│   ├── prog.go          # Programmable card command
 │   ├── script.go        # Script execution commands
 │   └── completion.go    # Shell completion
 ├── algorithms/          # Milenage and TUAK authentication algorithms
