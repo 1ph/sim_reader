@@ -223,6 +223,8 @@ type TelecomDF struct {
 	EF_MSPL       *ElementaryFile
 	EF_MMSSCONF   *ElementaryFile
 	EF_MMSSID     *ElementaryFile
+	// UseNewMMSSTags: if true, use tags 36-40 (SAIP 2.3+), otherwise use tags 25-29
+	UseNewMMSSTags bool
 	// Additional fields as needed
 	AdditionalEFs map[string]*ElementaryFile
 	// RawBytes preserves original encoding for lossless round-trip
@@ -396,7 +398,9 @@ type OptionalISIM struct {
 	EF_3GPPPSDATAOFFSERVICELIST *ElementaryFile
 	EF_XCAPCONFIGDATA           *ElementaryFile
 	EF_EAKA                     *ElementaryFile
-	AdditionalEFs               map[string]*ElementaryFile
+	// UseNewGBATags: if true, use tags 7-8 (SAIP 2.3+), otherwise use tags 3-4
+	UseNewGBATags bool
+	AdditionalEFs map[string]*ElementaryFile
 	// RawBytes preserves original encoding for lossless round-trip
 	RawBytes []byte
 }

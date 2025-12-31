@@ -526,16 +526,31 @@ func decodeTelecom(a *asn1.ASN1) (*TelecomDF, error) {
 			t.EF_IAP = decodeElementaryFile(inner)
 		case 24: // ef-adn
 			t.EF_ADN = decodeElementaryFile(inner)
-		case 25, 36: // df-mmss
+		case 25: // df-mmss (old tags)
 			t.DFMMSS = decodeFileFromFile(inner)
-		case 26, 37: // ef-mlpl
+		case 36: // df-mmss (new tags SAIP 2.3+)
+			t.DFMMSS = decodeFileFromFile(inner)
+			t.UseNewMMSSTags = true
+		case 26: // ef-mlpl (old tags)
 			t.EF_MLPL = decodeElementaryFile(inner)
-		case 27, 38: // ef-mspl
+		case 37: // ef-mlpl (new tags SAIP 2.3+)
+			t.EF_MLPL = decodeElementaryFile(inner)
+			t.UseNewMMSSTags = true
+		case 27: // ef-mspl (old tags)
 			t.EF_MSPL = decodeElementaryFile(inner)
-		case 28, 39: // ef-mmssconf
+		case 38: // ef-mspl (new tags SAIP 2.3+)
+			t.EF_MSPL = decodeElementaryFile(inner)
+			t.UseNewMMSSTags = true
+		case 28: // ef-mmssconf (old tags)
 			t.EF_MMSSCONF = decodeElementaryFile(inner)
-		case 29, 40: // ef-mmssid
+		case 39: // ef-mmssconf (new tags SAIP 2.3+)
+			t.EF_MMSSCONF = decodeElementaryFile(inner)
+			t.UseNewMMSSTags = true
+		case 29: // ef-mmssid (old tags)
 			t.EF_MMSSID = decodeElementaryFile(inner)
+		case 40: // ef-mmssid (new tags SAIP 2.3+)
+			t.EF_MMSSID = decodeElementaryFile(inner)
+			t.UseNewMMSSTags = true
 		default:
 			ef := decodeElementaryFile(inner)
 			t.AdditionalEFs[fmt.Sprintf("tag_%d", tagNum)] = ef
@@ -872,10 +887,16 @@ func decodeOptISIM(a *asn1.ASN1) (*OptionalISIM, error) {
 			i.TemplateID = decodeOID(a.Data)
 		case 2: // ef-pcscf
 			i.EF_PCSCF = decodeElementaryFile(inner)
-		case 3, 7: // ef-gbabp (can be 3 or 7 depending on spec version)
+		case 3: // ef-gbabp (old tags)
 			i.EF_GBABP = decodeElementaryFile(inner)
-		case 4, 8: // ef-gbanl (can be 4 or 8 depending on spec version)
+		case 7: // ef-gbabp (new tags SAIP 2.3+)
+			i.EF_GBABP = decodeElementaryFile(inner)
+			i.UseNewGBATags = true
+		case 4: // ef-gbanl (old tags)
 			i.EF_GBANL = decodeElementaryFile(inner)
+		case 8: // ef-gbanl (new tags SAIP 2.3+)
+			i.EF_GBANL = decodeElementaryFile(inner)
+			i.UseNewGBATags = true
 		case 5: // ef-nasconfig
 			i.EF_NASCONFIG = decodeElementaryFile(inner)
 		case 6: // ef-uicciari
@@ -997,7 +1018,6 @@ func decodeOptCSIM(a *asn1.ASN1) (*OptionalCSIM, error) {
 
 	for a.Unmarshal() {
 		tagNum := getContextTag(a)
-		fmt.Printf("DEBUG: OptCSIM tag %d\n", tagNum)
 		inner := asn1.Init(a.Data)
 
 		switch tagNum {
@@ -1439,7 +1459,6 @@ func decodeSecurityDomain(a *asn1.ASN1) (*SecurityDomain, error) {
 	for a.Unmarshal() {
 		tagNum := getContextTag(a)
 		inner := asn1.Init(a.Data)
-		fmt.Printf("DEBUG: SecurityDomain tag %d\n", tagNum)
 
 		switch tagNum {
 		case 0: // sd-Header
@@ -1562,7 +1581,6 @@ func decodeKeyComponent(a *asn1.ASN1) KeyComponent {
 	}
 
 	for a.Unmarshal() {
-		fmt.Printf("DEBUG: KeyComponent tag 0x%02X class %d\n", a.Tag, a.Class)
 		tagNum := getContextTag(a)
 		switch tagNum {
 		case 0: // keyType [0]

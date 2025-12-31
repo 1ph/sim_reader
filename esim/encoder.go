@@ -2,6 +2,7 @@ package esim
 
 import (
 	"bytes"
+	"encoding/hex"
 	"sim_reader/esim/asn1"
 	"sort"
 	"strconv"
@@ -265,6 +266,10 @@ func encodeElementHeader(eh *ElementHeader) []byte {
 func encodeFileDescriptor(fd *FileDescriptor) []byte {
 	var data []byte
 
+	// Fields must be encoded in the order defined in ASN.1 Fcp (SGP.22 / SAIP):
+	// fileDescriptor, fileID, dfName, lcsi, securityAttributesReferenced,
+	// efFileSize, shortEFID, proprietaryEFInfo, pinStatusTemplateDO, linkPath
+
 	// [2] fileDescriptor
 	if fd.FileDescriptor != nil {
 		data = append(data, asn1.Marshal(0x82, nil, fd.FileDescriptor...)...)
@@ -280,7 +285,8 @@ func encodeFileDescriptor(fd *FileDescriptor) []byte {
 		data = append(data, asn1.Marshal(0x84, nil, fd.DFName...)...)
 	}
 
-	// [10] lcsi
+	// [10] lcsi - DEFAULT '05'H (activated)
+	// Per DER rules: do not encode if value equals DEFAULT
 	if fd.LCSI != nil && !bytes.Equal(fd.LCSI, []byte{0x05}) {
 		data = append(data, asn1.Marshal(0x8A, nil, fd.LCSI...)...)
 	}
@@ -426,16 +432,19 @@ func encodePUKCodes(puk *PUKCodes) ([]byte, error) {
 func encodePUKCode(code PUKCode) []byte {
 	var data []byte
 
-	// [0] keyReference
-	data = append(data, asn1.Marshal(0x80, nil, code.KeyReference)...)
+	// [0] keyReference - INTEGER, must use proper integer encoding for values >= 0x80
+	data = append(data, asn1.Marshal(0x80, nil, encodeInteger(int(code.KeyReference))...)...)
 
 	// [1] pukValue
 	if len(code.PUKValue) > 0 {
 		data = append(data, asn1.Marshal(0x81, nil, code.PUKValue...)...)
 	}
 
-	// [2] maxNumOfAttemps-retryNumLeft
-	data = append(data, asn1.Marshal(0x82, nil, code.MaxNumOfAttempsRetryNumLeft)...)
+	// [2] maxNumOfAttemps-retryNumLeft DEFAULT 170 (0xAA)
+	// Per DER rules: do not encode if value equals DEFAULT
+	if code.MaxNumOfAttempsRetryNumLeft != 170 {
+		data = append(data, asn1.Marshal(0x82, nil, encodeInteger(int(code.MaxNumOfAttempsRetryNumLeft))...)...)
+	}
 
 	return data
 }
@@ -467,24 +476,30 @@ func encodePINCodes(pin *PINCodes) ([]byte, error) {
 func encodePINConfig(config PINConfig) []byte {
 	var data []byte
 
-	// [0] keyReference
-	data = append(data, asn1.Marshal(0x80, nil, config.KeyReference)...)
+	// [0] keyReference - INTEGER, must use proper integer encoding for values >= 0x80
+	data = append(data, asn1.Marshal(0x80, nil, encodeInteger(int(config.KeyReference))...)...)
 
 	// [1] pinValue
 	if len(config.PINValue) > 0 {
 		data = append(data, asn1.Marshal(0x81, nil, config.PINValue...)...)
 	}
 
-	// [2] unblockingPINReference
+	// [2] unblockingPINReference - INTEGER, must use proper integer encoding for values >= 0x80
 	if config.UnblockingPINReference != 0 {
-		data = append(data, asn1.Marshal(0x82, nil, config.UnblockingPINReference)...)
+		data = append(data, asn1.Marshal(0x82, nil, encodeInteger(int(config.UnblockingPINReference))...)...)
 	}
 
-	// [3] pinAttributes
-	data = append(data, asn1.Marshal(0x83, nil, config.PINAttributes)...)
+	// [3] pinAttributes DEFAULT 7
+	// Per DER rules: do not encode if value equals DEFAULT
+	if config.PINAttributes != 7 {
+		data = append(data, asn1.Marshal(0x83, nil, encodeInteger(int(config.PINAttributes))...)...)
+	}
 
-	// [4] maxNumOfAttemps-retryNumLeft
-	data = append(data, asn1.Marshal(0x84, nil, config.MaxNumOfAttempsRetryNumLeft)...)
+	// [4] maxNumOfAttemps-retryNumLeft DEFAULT 51 (0x33)
+	// Per DER rules: do not encode if value equals DEFAULT
+	if config.MaxNumOfAttempsRetryNumLeft != 51 {
+		data = append(data, asn1.Marshal(0x84, nil, encodeInteger(int(config.MaxNumOfAttempsRetryNumLeft))...)...)
+	}
 
 	return data
 }
@@ -587,30 +602,35 @@ func encodeTelecom(t *TelecomDF) ([]byte, error) {
 		}
 	}
 
-	// df-mmss can be tag 25 or 36 - for encoding we use the one from decoder or default
+	// df-mmss and related fields: use tags 36-40 for SAIP 2.3+, tags 25-29 for older versions
+	mmssBaseTag := 25
+	if t.UseNewMMSSTags {
+		mmssBaseTag = 36
+	}
+
 	if t.DFMMSS != nil {
 		fileData := encodeFile(t.DFMMSS)
-		data = append(data, asn1.MarshalWithFullTag(asn1.ClassContextSpecific, asn1.FormConstructed, 25, fileData)...)
+		data = append(data, asn1.MarshalWithFullTag(asn1.ClassContextSpecific, asn1.FormConstructed, mmssBaseTag, fileData)...)
 	}
 
 	if t.EF_MLPL != nil {
 		efData := encodeElementaryFile(t.EF_MLPL)
-		data = append(data, asn1.MarshalWithFullTag(asn1.ClassContextSpecific, asn1.FormConstructed, 26, efData)...)
+		data = append(data, asn1.MarshalWithFullTag(asn1.ClassContextSpecific, asn1.FormConstructed, mmssBaseTag+1, efData)...)
 	}
 
 	if t.EF_MSPL != nil {
 		efData := encodeElementaryFile(t.EF_MSPL)
-		data = append(data, asn1.MarshalWithFullTag(asn1.ClassContextSpecific, asn1.FormConstructed, 27, efData)...)
+		data = append(data, asn1.MarshalWithFullTag(asn1.ClassContextSpecific, asn1.FormConstructed, mmssBaseTag+2, efData)...)
 	}
 
 	if t.EF_MMSSCONF != nil {
 		efData := encodeElementaryFile(t.EF_MMSSCONF)
-		data = append(data, asn1.MarshalWithFullTag(asn1.ClassContextSpecific, asn1.FormConstructed, 28, efData)...)
+		data = append(data, asn1.MarshalWithFullTag(asn1.ClassContextSpecific, asn1.FormConstructed, mmssBaseTag+3, efData)...)
 	}
 
 	if t.EF_MMSSID != nil {
 		efData := encodeElementaryFile(t.EF_MMSSID)
-		data = append(data, asn1.MarshalWithFullTag(asn1.ClassContextSpecific, asn1.FormConstructed, 29, efData)...)
+		data = append(data, asn1.MarshalWithFullTag(asn1.ClassContextSpecific, asn1.FormConstructed, mmssBaseTag+4, efData)...)
 	}
 
 	return data, nil
@@ -889,25 +909,83 @@ func encodeOptISIM(i *OptionalISIM) ([]byte, error) {
 		data = append(data, asn1.Marshal(0x81, nil, oidData...)...)
 	}
 
-	efFields := []struct {
-		tag int
-		ef  *ElementaryFile
-	}{
-		{2, i.EF_PCSCF},
-		{3, i.EF_GBABP},
-		{4, i.EF_GBANL},
-		{5, i.EF_NASCONFIG},
-		{6, i.EF_UICCIARI},
-		{7, i.EF_3GPPPSDATAOFF},
-		{8, i.EF_3GPPPSDATAOFFSERVICELIST},
-		{9, i.EF_XCAPCONFIGDATA},
-		{10, i.EF_EAKA},
+	// Determine tags for GBA fields based on spec version
+	gbabpTag, gbanlTag := 3, 4
+	if i.UseNewGBATags {
+		gbabpTag, gbanlTag = 7, 8
 	}
 
-	for _, f := range efFields {
-		if f.ef != nil {
-			efData := encodeElementaryFile(f.ef)
-			data = append(data, asn1.MarshalWithFullTag(asn1.ClassContextSpecific, asn1.FormConstructed, f.tag, efData)...)
+	// Encode EF_PCSCF first (tag 2)
+	if i.EF_PCSCF != nil {
+		efData := encodeElementaryFile(i.EF_PCSCF)
+		data = append(data, asn1.MarshalWithFullTag(asn1.ClassContextSpecific, asn1.FormConstructed, 2, efData)...)
+	}
+
+	// Fields that come before or after GBA fields depend on UseNewGBATags
+	if !i.UseNewGBATags {
+		// Old tags: 3=gbabp, 4=gbanl, then 5,6,7,8,9,10
+		if i.EF_GBABP != nil {
+			efData := encodeElementaryFile(i.EF_GBABP)
+			data = append(data, asn1.MarshalWithFullTag(asn1.ClassContextSpecific, asn1.FormConstructed, gbabpTag, efData)...)
+		}
+		if i.EF_GBANL != nil {
+			efData := encodeElementaryFile(i.EF_GBANL)
+			data = append(data, asn1.MarshalWithFullTag(asn1.ClassContextSpecific, asn1.FormConstructed, gbanlTag, efData)...)
+		}
+		efFields := []struct {
+			tag int
+			ef  *ElementaryFile
+		}{
+			{5, i.EF_NASCONFIG},
+			{6, i.EF_UICCIARI},
+			{7, i.EF_3GPPPSDATAOFF},
+			{8, i.EF_3GPPPSDATAOFFSERVICELIST},
+			{9, i.EF_XCAPCONFIGDATA},
+			{10, i.EF_EAKA},
+		}
+		for _, f := range efFields {
+			if f.ef != nil {
+				efData := encodeElementaryFile(f.ef)
+				data = append(data, asn1.MarshalWithFullTag(asn1.ClassContextSpecific, asn1.FormConstructed, f.tag, efData)...)
+			}
+		}
+	} else {
+		// New tags: 3,4,5,6 first, then 7=gbabp, 8=gbanl, 9,10
+		efFields1 := []struct {
+			tag int
+			ef  *ElementaryFile
+		}{
+			{3, i.EF_NASCONFIG},
+			{4, i.EF_UICCIARI},
+			{5, i.EF_3GPPPSDATAOFF},
+			{6, i.EF_3GPPPSDATAOFFSERVICELIST},
+		}
+		for _, f := range efFields1 {
+			if f.ef != nil {
+				efData := encodeElementaryFile(f.ef)
+				data = append(data, asn1.MarshalWithFullTag(asn1.ClassContextSpecific, asn1.FormConstructed, f.tag, efData)...)
+			}
+		}
+		if i.EF_GBABP != nil {
+			efData := encodeElementaryFile(i.EF_GBABP)
+			data = append(data, asn1.MarshalWithFullTag(asn1.ClassContextSpecific, asn1.FormConstructed, gbabpTag, efData)...)
+		}
+		if i.EF_GBANL != nil {
+			efData := encodeElementaryFile(i.EF_GBANL)
+			data = append(data, asn1.MarshalWithFullTag(asn1.ClassContextSpecific, asn1.FormConstructed, gbanlTag, efData)...)
+		}
+		efFields2 := []struct {
+			tag int
+			ef  *ElementaryFile
+		}{
+			{9, i.EF_XCAPCONFIGDATA},
+			{10, i.EF_EAKA},
+		}
+		for _, f := range efFields2 {
+			if f.ef != nil {
+				efData := encodeElementaryFile(f.ef)
+				data = append(data, asn1.MarshalWithFullTag(asn1.ClassContextSpecific, asn1.FormConstructed, f.tag, efData)...)
+			}
 		}
 	}
 
@@ -1201,26 +1279,50 @@ func encodeAKAParameter(aka *AKAParameter) ([]byte, error) {
 		data = append(data, asn1.Marshal(0xA1, nil, acData...)...)
 	}
 
-	// [2] sqnOptions
-	data = append(data, asn1.Marshal(0x82, nil, aka.SQNOptions)...)
+	// Per DER rules: omit fields with DEFAULT values
+	isTestAlgo := aka.AlgoConfig != nil && aka.AlgoConfig.AlgorithmID == AlgoUSIMTestAlgorithm
 
-	// [3] sqnDelta
-	if len(aka.SQNDelta) > 0 {
+	// [2] sqnOptions - DEFAULT 0x02
+	// Per DER rules: do not encode if value equals DEFAULT
+	if aka.SQNOptions != 0x02 {
+		data = append(data, asn1.Marshal(0x82, nil, aka.SQNOptions)...)
+	}
+
+	// [3] sqnDelta - DEFAULT "000010000000" for USIM Test Algorithm
+	defaultSQNDelta, _ := hex.DecodeString("000010000000")
+	if len(aka.SQNDelta) > 0 && !(isTestAlgo && bytes.Equal(aka.SQNDelta, defaultSQNDelta)) {
 		data = append(data, asn1.Marshal(0x83, nil, aka.SQNDelta...)...)
 	}
 
-	// [4] sqnAgeLimit
-	if len(aka.SQNAgeLimit) > 0 {
+	// [4] sqnAgeLimit - DEFAULT "000010000000" for USIM Test Algorithm
+	if len(aka.SQNAgeLimit) > 0 && !(isTestAlgo && bytes.Equal(aka.SQNAgeLimit, defaultSQNDelta)) {
 		data = append(data, asn1.Marshal(0x84, nil, aka.SQNAgeLimit...)...)
 	}
 
-	// [5] sqnInit
+	// [5] sqnInit - DEFAULT 32 zero elements for USIM Test Algorithm
+	// Per DER rules: do not encode if all elements are zeros (DEFAULT for test algorithm)
 	if len(aka.SQNInit) > 0 {
-		var sqnData []byte
-		for _, sqn := range aka.SQNInit {
-			sqnData = append(sqnData, asn1.Marshal(0x04, nil, sqn...)...) // OCTET STRING
+		allZeros := isTestAlgo && len(aka.SQNInit) == 32
+		if allZeros {
+			for _, sqn := range aka.SQNInit {
+				for _, b := range sqn {
+					if b != 0 {
+						allZeros = false
+						break
+					}
+				}
+				if !allZeros {
+					break
+				}
+			}
 		}
-		data = append(data, asn1.Marshal(0xA5, nil, sqnData...)...)
+		if !allZeros {
+			var sqnData []byte
+			for _, sqn := range aka.SQNInit {
+				sqnData = append(sqnData, asn1.Marshal(0x04, nil, sqn...)...) // OCTET STRING
+			}
+			data = append(data, asn1.Marshal(0xA5, nil, sqnData...)...)
+		}
 	}
 
 	return data, nil
@@ -1228,6 +1330,9 @@ func encodeAKAParameter(aka *AKAParameter) ([]byte, error) {
 
 func encodeAlgoConfiguration(ac *AlgoConfiguration) []byte {
 	var data []byte
+
+	// Check if using Milenage or USIM Test Algorithm (for DEFAULT handling)
+	isMilenageType := ac.AlgorithmID == AlgoMilenage || ac.AlgorithmID == AlgoUSIMTestAlgorithm
 
 	// [0] algorithmID
 	data = append(data, asn1.Marshal(0x80, nil, encodeInteger(int(ac.AlgorithmID))...)...)
@@ -1245,27 +1350,29 @@ func encodeAlgoConfiguration(ac *AlgoConfiguration) []byte {
 		data = append(data, asn1.Marshal(0x83, nil, ac.OPC...)...)
 	}
 
-	// [4] rotationConstants
-	if len(ac.RotationConstants) > 0 {
+	// [4] rotationConstants - DEFAULT "4000204060" for Milenage/USIMTestAlgorithm
+	defaultRotation, _ := hex.DecodeString("4000204060")
+	if len(ac.RotationConstants) > 0 && !(isMilenageType && bytes.Equal(ac.RotationConstants, defaultRotation)) {
 		data = append(data, asn1.Marshal(0x84, nil, ac.RotationConstants...)...)
 	}
 
-	// [5] xoringConstants
-	if len(ac.XoringConstants) > 0 {
+	// [5] xoringConstants - DEFAULT for Milenage/USIMTestAlgorithm
+	defaultXoring, _ := hex.DecodeString("0000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000020000000000000000000000000000000400000000000000000000000000000008")
+	if len(ac.XoringConstants) > 0 && !(isMilenageType && bytes.Equal(ac.XoringConstants, defaultXoring)) {
 		data = append(data, asn1.Marshal(0x85, nil, ac.XoringConstants...)...)
 	}
 
-	// [6] numberOfKeccak
-	if ac.NumberOfKeccak > 0 {
+	// [6] numberOfKeccak - DEFAULT 1
+	// Per DER rules: do not encode if value equals DEFAULT
+	if ac.NumberOfKeccak > 0 && ac.NumberOfKeccak != 1 {
 		data = append(data, asn1.Marshal(0x86, nil, encodeInteger(ac.NumberOfKeccak)...)...)
 	}
 
 	// Wrap in CHOICE based on algorithm type
-	// For simplicity, we assume Milenage/USIMTestAlgorithm uses [0]
-	// and Tuak uses [1]
+	// Per SGP.22: [0] milenage (Milenage only), [1] tuak (TUAK + USIM Test Algorithm)
 	choiceTag := byte(0xA0) // [0] milenage
-	if ac.AlgorithmID == AlgoTUAK {
-		choiceTag = 0xA1 // [1] tuak
+	if ac.AlgorithmID == AlgoTUAK || ac.AlgorithmID == AlgoUSIMTestAlgorithm {
+		choiceTag = 0xA1 // [1] tuak / usim-test-algorithm
 	}
 
 	return asn1.Marshal(choiceTag, nil, data...)
@@ -1442,8 +1549,11 @@ func encodeSDKey(key SDKey) []byte {
 	// [21] keyUsageQualifier (0x95 = context-specific primitive 21)
 	data = append(data, asn1.Marshal(0x95, nil, key.KeyUsageQualifier)...)
 
-	// [22] keyAccess (0x96 = context-specific primitive 22)
-	data = append(data, asn1.Marshal(0x96, nil, key.KeyAccess)...)
+	// [22] keyAccess (0x96 = context-specific primitive 22) - DEFAULT 0x00
+	// Per DER rules: do not encode if value equals DEFAULT
+	if key.KeyAccess != 0x00 {
+		data = append(data, asn1.Marshal(0x96, nil, key.KeyAccess)...)
+	}
 
 	// [2] keyIdentifier (0x82)
 	data = append(data, asn1.Marshal(0x82, nil, key.KeyIdentifier)...)
@@ -1475,8 +1585,9 @@ func encodeKeyComponent(kc KeyComponent) []byte {
 		data = append(data, asn1.Marshal(0x86, nil, kc.KeyData...)...)
 	}
 
-	// [7] macLength
-	if kc.MACLength > 0 {
+	// [7] macLength - DEFAULT 8
+	// Per DER rules: do not encode if value equals DEFAULT
+	if kc.MACLength > 0 && kc.MACLength != 8 {
 		data = append(data, asn1.Marshal(0x87, nil, encodeInteger(kc.MACLength)...)...)
 	}
 

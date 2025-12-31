@@ -33,6 +33,9 @@ func ParseValueNotation(input string) (*Profile, error) {
 		return nil, err
 	}
 
+	// Post-processing: set UseNewMMSSTags for Telecom elements based on profile version
+	parser.postProcess()
+
 	return parser.profile, nil
 }
 
@@ -99,6 +102,40 @@ func (p *Parser) parse() error {
 		}
 	}
 	return nil
+}
+
+// postProcess applies version-dependent settings after parsing
+func (p *Parser) postProcess() {
+	// Find profile header to get version
+	var majorVersion, minorVersion int
+	for _, elem := range p.profile.Elements {
+		if elem.Tag == TagProfileHeader {
+			if h, ok := elem.Value.(*ProfileHeader); ok {
+				majorVersion = h.MajorVersion
+				minorVersion = h.MinorVersion
+				break
+			}
+		}
+	}
+
+	// For SAIP 2.3+ use new tags
+	useNewTags := majorVersion > 2 || (majorVersion == 2 && minorVersion >= 3)
+
+	// Apply to all relevant elements
+	for i := range p.profile.Elements {
+		switch p.profile.Elements[i].Tag {
+		case TagTelecom:
+			// Use new MMSS tags (36-40) instead of old (25-29)
+			if t, ok := p.profile.Elements[i].Value.(*TelecomDF); ok {
+				t.UseNewMMSSTags = useNewTags
+			}
+		case TagOptISIM:
+			// Use new GBA tags (7-8) instead of old (3-4)
+			if oi, ok := p.profile.Elements[i].Value.(*OptionalISIM); ok {
+				oi.UseNewGBATags = useNewTags
+			}
+		}
+	}
 }
 
 // parseValueDefinition parses: valueN ProfileElement ::= choice : { ... }
