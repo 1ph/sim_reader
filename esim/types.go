@@ -260,7 +260,8 @@ type USIMApplication struct {
 	EF_NETPAR    *ElementaryFile
 	EF_EPSLOCI   *ElementaryFile
 	EF_EPSNSC    *ElementaryFile
-	// Additional EFs as needed
+	EF_WLAN      *ElementaryFile
+	EF_DEB_PK    *ElementaryFile
 	AdditionalEFs map[string]*ElementaryFile
 	// RawBytes preserves original encoding for lossless round-trip
 	RawBytes []byte
@@ -286,41 +287,76 @@ type OptionalUSIM struct {
 	EF_PLMNWACT   *ElementaryFile
 	EF_OPLMNWACT  *ElementaryFile
 	EF_HPLMNWACT  *ElementaryFile
-	EF_DCK        *ElementaryFile
-	EF_CNL        *ElementaryFile
-	EF_SMSR       *ElementaryFile
-	EF_BDN        *ElementaryFile
-	EF_EXT5       *ElementaryFile
-	EF_CCP2       *ElementaryFile
-	EF_ACL        *ElementaryFile
-	EF_CMI        *ElementaryFile
-	EF_ICI        *ElementaryFile
-	EF_OCI        *ElementaryFile
-	EF_ICT        *ElementaryFile
-	EF_OCT        *ElementaryFile
-	EF_VGCS       *ElementaryFile
-	EF_VGCSS      *ElementaryFile
-	EF_VBS        *ElementaryFile
-	EF_VBSS       *ElementaryFile
-	EF_EMLPP      *ElementaryFile
-	EF_AAEM       *ElementaryFile
-	EF_HIDDENKEY  *ElementaryFile
-	EF_PNN        *ElementaryFile
-	EF_OPL        *ElementaryFile
-	EF_MMSN       *ElementaryFile
-	EF_EXT8       *ElementaryFile
-	EF_MMSICP     *ElementaryFile
-	EF_MMSUP      *ElementaryFile
-	EF_MMSUCP     *ElementaryFile
-	EF_NIA        *ElementaryFile
-	EF_VGCSCA     *ElementaryFile
-	EF_VBSCA      *ElementaryFile
-	EF_EHPLMN     *ElementaryFile
-	EF_EHPLMNPI   *ElementaryFile
-	EF_LRPLMNSI   *ElementaryFile
-	EF_NASCONFIG  *ElementaryFile
-	EF_FDNURI     *ElementaryFile
-	EF_SDNURI     *ElementaryFile
+	EF_DCK         *ElementaryFile
+	EF_CNL         *ElementaryFile
+	EF_SMSR        *ElementaryFile
+	EF_BDN         *ElementaryFile
+	EF_EXT5        *ElementaryFile
+	EF_CCP2        *ElementaryFile
+	EF_EXT4        *ElementaryFile
+	EF_ACL         *ElementaryFile
+	EF_CMI         *ElementaryFile
+	EF_ICI         *ElementaryFile
+	EF_OCI         *ElementaryFile
+	EF_ICT         *ElementaryFile
+	EF_OCT         *ElementaryFile
+	EF_VGCS        *ElementaryFile
+	EF_VGCSS       *ElementaryFile
+	EF_VBS         *ElementaryFile
+	EF_VBSS        *ElementaryFile
+	EF_EMLPP       *ElementaryFile
+	EF_AAEM        *ElementaryFile
+	EF_HIDDENKEY   *ElementaryFile
+	EF_PNN         *ElementaryFile
+	EF_OPL         *ElementaryFile
+	EF_MBDN        *ElementaryFile
+	EF_EXT6        *ElementaryFile
+	EF_MBI         *ElementaryFile
+	EF_MWIS        *ElementaryFile
+	EF_CFIS        *ElementaryFile
+	EF_EXT7        *ElementaryFile
+	EF_SPDI        *ElementaryFile
+	EF_MMSN        *ElementaryFile
+	EF_EXT8        *ElementaryFile
+	EF_MMSICP      *ElementaryFile
+	EF_MMSUP       *ElementaryFile
+	EF_MMSUCP      *ElementaryFile
+	EF_NIA         *ElementaryFile
+	EF_VGCSCA      *ElementaryFile
+	EF_VBSCA       *ElementaryFile
+	EF_GBABP       *ElementaryFile
+	EF_MSK         *ElementaryFile
+	EF_MUK         *ElementaryFile
+	EF_EHPLMN      *ElementaryFile
+	EF_GBANL       *ElementaryFile
+	EF_EHPLMNPI    *ElementaryFile
+	EF_LRPLMNSI    *ElementaryFile
+	EF_NAFKCA      *ElementaryFile
+	EF_SPNI        *ElementaryFile
+	EF_PNNI        *ElementaryFile
+	EF_NCP_IP      *ElementaryFile
+	EF_UFC         *ElementaryFile
+	EF_NASCONFIG   *ElementaryFile
+	EF_UICCIARI    *ElementaryFile
+	EF_PWS         *ElementaryFile
+	EF_FDNURI      *ElementaryFile
+	EF_BDNURI      *ElementaryFile
+	EF_SDNURI      *ElementaryFile
+	EF_IAL         *ElementaryFile
+	EF_IPS         *ElementaryFile
+	EF_IPD         *ElementaryFile
+	EF_EPDGID      *ElementaryFile
+	EF_EPDGSELECTION   *ElementaryFile
+	EF_EPDGIDEM        *ElementaryFile
+	EF_EPDGSELECTIONEM *ElementaryFile
+	EF_FROMPREFERRED   *ElementaryFile
+	EF_IMSCONFIGDATA   *ElementaryFile
+	EF_3GPPPSDATAOFF   *ElementaryFile
+	EF_3GPPPSDATAOFFSERVICELIST *ElementaryFile
+	EF_XCAPCONFIGDATA  *ElementaryFile
+	EF_EARFCNLIST      *ElementaryFile
+	EF_MUDMIDCONFIGDATA *ElementaryFile
+	EF_EAKA            *ElementaryFile
 	AdditionalEFs map[string]*ElementaryFile
 	// RawBytes preserves original encoding for lossless round-trip
 	RawBytes []byte

@@ -391,7 +391,9 @@ func (g *Generator) generateFileDescriptorInner(name string, fd *FileDescriptor)
 	if len(fd.FileID) > 0 {
 		fields = append(fields, fmt.Sprintf("fileID %s", g.formatHex(fd.FileID)))
 	}
-	// Always print lcsi if we have it
+	if len(fd.DFName) > 0 {
+		fields = append(fields, fmt.Sprintf("dfName %s", g.formatHex(fd.DFName)))
+	}
 	if len(fd.LCSI) > 0 {
 		fields = append(fields, fmt.Sprintf("lcsi %s", g.formatHex(fd.LCSI)))
 	}
@@ -403,9 +405,6 @@ func (g *Generator) generateFileDescriptorInner(name string, fd *FileDescriptor)
 	}
 	if fd.ShortEFID != nil {
 		fields = append(fields, fmt.Sprintf("shortEFID %s", g.formatHex(fd.ShortEFID)))
-	}
-	if len(fd.DFName) > 0 {
-		fields = append(fields, fmt.Sprintf("dfName %s", g.formatHex(fd.DFName)))
 	}
 	if len(fd.PinStatusTemplateDO) > 0 {
 		fields = append(fields, fmt.Sprintf("pinStatusTemplateDO %s", g.formatHex(fd.PinStatusTemplateDO)))
@@ -519,6 +518,9 @@ func (g *Generator) sgenerateFileDescriptorInner(name string, fd *FileDescriptor
 	if len(fd.FileID) > 0 {
 		fields = append(fields, fmt.Sprintf("fileID %s", g.formatHex(fd.FileID)))
 	}
+	if len(fd.DFName) > 0 {
+		fields = append(fields, fmt.Sprintf("dfName %s", g.formatHex(fd.DFName)))
+	}
 	if len(fd.LCSI) > 0 {
 		fields = append(fields, fmt.Sprintf("lcsi %s", g.formatHex(fd.LCSI)))
 	}
@@ -530,9 +532,6 @@ func (g *Generator) sgenerateFileDescriptorInner(name string, fd *FileDescriptor
 	}
 	if fd.ShortEFID != nil {
 		fields = append(fields, fmt.Sprintf("shortEFID %s", g.formatHex(fd.ShortEFID)))
-	}
-	if len(fd.DFName) > 0 {
-		fields = append(fields, fmt.Sprintf("dfName %s", g.formatHex(fd.DFName)))
 	}
 	if len(fd.PinStatusTemplateDO) > 0 {
 		fields = append(fields, fmt.Sprintf("pinStatusTemplateDO %s", g.formatHex(fd.PinStatusTemplateDO)))
@@ -633,46 +632,63 @@ func (g *Generator) generatePINCodes(pin *PINCodes) {
 	g.write("{\n")
 	g.indent++
 
+	fields := make([]string, 0)
 	if pin.Header != nil {
-		g.generateElementHeader("pin-Header", pin.Header)
+		fields = append(fields, g.sgenerateElementHeader("pin-Header", pin.Header))
 	}
 
 	if len(pin.Configs) > 0 {
-		g.writeLine("pinCodes pinconfig : {")
+		var sb strings.Builder
+		sb.WriteString("pinCodes pinconfig : {\n")
 		g.indent++
 
 		for i, config := range pin.Configs {
-			g.writeLine("{")
+			for j := 0; j < g.indent; j++ {
+				sb.WriteString("  ")
+			}
+			sb.WriteString("{\n")
 			g.indent++
 
-			fields := make([]string, 0)
-			fields = append(fields, fmt.Sprintf("keyReference %s", g.getKeyRefName(config.KeyReference, false)))
-			fields = append(fields, fmt.Sprintf("pinValue %s", g.formatHex(config.PINValue)))
+			cfields := make([]string, 0)
+			cfields = append(cfields, fmt.Sprintf("keyReference %s", g.getKeyRefName(config.KeyReference, false)))
+			cfields = append(cfields, fmt.Sprintf("pinValue %s", g.formatHex(config.PINValue)))
 			if config.UnblockingPINReference != 0 {
-				fields = append(fields, fmt.Sprintf("unblockingPINReference %s", g.getKeyRefName(config.UnblockingPINReference, true)))
+				cfields = append(cfields, fmt.Sprintf("unblockingPINReference %s", g.getKeyRefName(config.UnblockingPINReference, true)))
 			}
-			fields = append(fields, fmt.Sprintf("pinAttributes %d", config.PINAttributes))
-			fields = append(fields, fmt.Sprintf("maxNumOfAttemps-retryNumLeft %d", config.MaxNumOfAttempsRetryNumLeft))
+			cfields = append(cfields, fmt.Sprintf("pinAttributes %d", config.PINAttributes))
+			cfields = append(cfields, fmt.Sprintf("maxNumOfAttemps-retryNumLeft %d", config.MaxNumOfAttempsRetryNumLeft))
 
-			for j, f := range fields {
-				suffix := ""
-				if j < len(fields)-1 {
-					suffix = ","
+			for j, f := range cfields {
+				for k := 0; k < g.indent; k++ {
+					sb.WriteString("  ")
 				}
-				g.writeLine(f + suffix)
+				sb.WriteString(f)
+				if j < len(cfields)-1 {
+					sb.WriteString(",")
+				}
+				sb.WriteString("\n")
 			}
 
 			g.indent--
-			suffix := ","
-			if i == len(pin.Configs)-1 {
-				suffix = ""
+			for j := 0; j < g.indent; j++ {
+				sb.WriteString("  ")
 			}
-			g.writeLine("}" + suffix)
+			sb.WriteString("}")
+			if i < len(pin.Configs)-1 {
+				sb.WriteString(",")
+			}
+			sb.WriteString("\n")
 		}
 
 		g.indent--
-		g.writeLine("}")
+		for j := 0; j < g.indent; j++ {
+			sb.WriteString("  ")
+		}
+		sb.WriteString("}")
+		fields = append(fields, sb.String())
 	}
+
+	g.writeFields(fields)
 
 	g.indent--
 	g.writeLine("}")
@@ -709,11 +725,11 @@ func (g *Generator) generateTelecom(t *TelecomDF) {
 	g.write("{\n")
 	g.indent++
 
+	fields := make([]string, 0)
 	if t.Header != nil {
-		g.generateElementHeader("telecom-header", t.Header)
+		fields = append(fields, g.sgenerateElementHeader("telecom-header", t.Header))
 	}
 
-	fields := make([]string, 0)
 	if len(t.TemplateID) > 0 {
 		fields = append(fields, fmt.Sprintf("templateID %s", g.generateOID(t.TemplateID)))
 	}
@@ -785,11 +801,11 @@ func (g *Generator) generateUSIM(u *USIMApplication) {
 	g.write("{\n")
 	g.indent++
 
+	fields := make([]string, 0)
 	if u.Header != nil {
-		g.generateElementHeader("usim-header", u.Header)
+		fields = append(fields, g.sgenerateElementHeader("usim-header", u.Header))
 	}
 
-	fields := make([]string, 0)
 	if len(u.TemplateID) > 0 {
 		fields = append(fields, fmt.Sprintf("templateID %s", g.generateOID(u.TemplateID)))
 	}
@@ -917,11 +933,10 @@ func (g *Generator) generateOptUSIM(u *OptionalUSIM) {
 	g.write("{\n")
 	g.indent++
 
-	if u.Header != nil {
-		g.generateElementHeader("optusim-header", u.Header)
-	}
-
 	fields := make([]string, 0)
+	if u.Header != nil {
+		fields = append(fields, g.sgenerateElementHeader("optusim-header", u.Header))
+	}
 	if len(u.TemplateID) > 0 {
 		fields = append(fields, fmt.Sprintf("templateID %s", g.generateOID(u.TemplateID)))
 	}
@@ -953,6 +968,7 @@ func (g *Generator) generateOptUSIM(u *OptionalUSIM) {
 		{"ef-bdn", u.EF_BDN},
 		{"ef-ext5", u.EF_EXT5},
 		{"ef-ccp2", u.EF_CCP2},
+		{"ef-ext4", u.EF_EXT4},
 		{"ef-acl", u.EF_ACL},
 		{"ef-cmi", u.EF_CMI},
 		{"ef-ici", u.EF_ICI},
@@ -968,6 +984,13 @@ func (g *Generator) generateOptUSIM(u *OptionalUSIM) {
 		{"ef-hiddenkey", u.EF_HIDDENKEY},
 		{"ef-pnn", u.EF_PNN},
 		{"ef-opl", u.EF_OPL},
+		{"ef-mbdn", u.EF_MBDN},
+		{"ef-ext6", u.EF_EXT6},
+		{"ef-mbi", u.EF_MBI},
+		{"ef-mwis", u.EF_MWIS},
+		{"ef-cfis", u.EF_CFIS},
+		{"ef-ext7", u.EF_EXT7},
+		{"ef-spdi", u.EF_SPDI},
 		{"ef-mmsn", u.EF_MMSN},
 		{"ef-ext8", u.EF_EXT8},
 		{"ef-mmsicp", u.EF_MMSICP},
@@ -976,12 +999,39 @@ func (g *Generator) generateOptUSIM(u *OptionalUSIM) {
 		{"ef-nia", u.EF_NIA},
 		{"ef-vgcsca", u.EF_VGCSCA},
 		{"ef-vbsca", u.EF_VBSCA},
+		{"ef-gbabp", u.EF_GBABP},
+		{"ef-msk", u.EF_MSK},
+		{"ef-muk", u.EF_MUK},
 		{"ef-ehplmn", u.EF_EHPLMN},
+		{"ef-gbanl", u.EF_GBANL},
 		{"ef-ehplmnpi", u.EF_EHPLMNPI},
 		{"ef-lrplmnsi", u.EF_LRPLMNSI},
+		{"ef-nafkca", u.EF_NAFKCA},
+		{"ef-spni", u.EF_SPNI},
+		{"ef-pnni", u.EF_PNNI},
+		{"ef-ncp-ip", u.EF_NCP_IP},
+		{"ef-ufc", u.EF_UFC},
 		{"ef-nasconfig", u.EF_NASCONFIG},
+		{"ef-uicciari", u.EF_UICCIARI},
+		{"ef-pws", u.EF_PWS},
 		{"ef-fdnuri", u.EF_FDNURI},
+		{"ef-bdnuri", u.EF_BDNURI},
 		{"ef-sdnuri", u.EF_SDNURI},
+		{"ef-ial", u.EF_IAL},
+		{"ef-ips", u.EF_IPS},
+		{"ef-ipd", u.EF_IPD},
+		{"ef-epdgid", u.EF_EPDGID},
+		{"ef-epdgselection", u.EF_EPDGSELECTION},
+		{"ef-epdgidem", u.EF_EPDGIDEM},
+		{"ef-epdgselectionem", u.EF_EPDGSELECTIONEM},
+		{"ef-frompreferred", u.EF_FROMPREFERRED},
+		{"ef-imsconfigdata", u.EF_IMSCONFIGDATA},
+		{"ef-3gpppsdataoff", u.EF_3GPPPSDATAOFF},
+		{"ef-3gpppsdataoffservicelist", u.EF_3GPPPSDATAOFFSERVICELIST},
+		{"ef-xcapconfigdata", u.EF_XCAPCONFIGDATA},
+		{"ef-earfcnlist", u.EF_EARFCNLIST},
+		{"ef-mudmidconfigdata", u.EF_MUDMIDCONFIGDATA},
+		{"ef-eaka", u.EF_EAKA},
 	}
 
 	for _, f := range efFields {
@@ -1004,11 +1054,10 @@ func (g *Generator) generateISIM(i *ISIMApplication) {
 	g.write("{\n")
 	g.indent++
 
-	if i.Header != nil {
-		g.generateElementHeader("isim-header", i.Header)
-	}
-
 	fields := make([]string, 0)
+	if i.Header != nil {
+		fields = append(fields, g.sgenerateElementHeader("isim-header", i.Header))
+	}
 	if len(i.TemplateID) > 0 {
 		fields = append(fields, fmt.Sprintf("templateID %s", g.generateOID(i.TemplateID)))
 	}
@@ -1045,11 +1094,10 @@ func (g *Generator) generateOptISIM(i *OptionalISIM) {
 	g.write("{\n")
 	g.indent++
 
-	if i.Header != nil {
-		g.generateElementHeader("optisim-header", i.Header)
-	}
-
 	fields := make([]string, 0)
+	if i.Header != nil {
+		fields = append(fields, g.sgenerateElementHeader("optisim-header", i.Header))
+	}
 	if len(i.TemplateID) > 0 {
 		fields = append(fields, fmt.Sprintf("templateID %s", g.generateOID(i.TemplateID)))
 	}
@@ -1083,11 +1131,10 @@ func (g *Generator) generateCSIM(c *CSIMApplication) {
 	g.write("{\n")
 	g.indent++
 
-	if c.Header != nil {
-		g.generateElementHeader("csim-header", c.Header)
-	}
-
 	fields := make([]string, 0)
+	if c.Header != nil {
+		fields = append(fields, g.sgenerateElementHeader("csim-header", c.Header))
+	}
 	if len(c.TemplateID) > 0 {
 		fields = append(fields, fmt.Sprintf("templateID %s", g.generateOID(c.TemplateID)))
 	}
@@ -1152,11 +1199,10 @@ func (g *Generator) generateOptCSIM(c *OptionalCSIM) {
 	g.write("{\n")
 	g.indent++
 
-	if c.Header != nil {
-		g.generateElementHeader("optcsim-header", c.Header)
-	}
-
 	fields := make([]string, 0)
+	if c.Header != nil {
+		fields = append(fields, g.sgenerateElementHeader("optcsim-header", c.Header))
+	}
 	if len(c.TemplateID) > 0 {
 		fields = append(fields, fmt.Sprintf("templateID %s", g.generateOID(c.TemplateID)))
 	}
@@ -1230,11 +1276,10 @@ func (g *Generator) generateGSMAccess(gsm *GSMAccessDF) {
 	g.write("{\n")
 	g.indent++
 
-	if gsm.Header != nil {
-		g.generateElementHeader("gsm-access-header", gsm.Header)
-	}
-
 	fields := make([]string, 0)
+	if gsm.Header != nil {
+		fields = append(fields, g.sgenerateElementHeader("gsm-access-header", gsm.Header))
+	}
 	if len(gsm.TemplateID) > 0 {
 		fields = append(fields, fmt.Sprintf("templateID %s", g.generateOID(gsm.TemplateID)))
 	}
@@ -1273,11 +1318,10 @@ func (g *Generator) generateDF5GS(d *DF5GS) {
 	g.write("{\n")
 	g.indent++
 
-	if d.Header != nil {
-		g.generateElementHeader("df-5gs-header", d.Header)
-	}
-
 	fields := make([]string, 0)
+	if d.Header != nil {
+		fields = append(fields, g.sgenerateElementHeader("df-5gs-header", d.Header))
+	}
 	if len(d.TemplateID) > 0 {
 		fields = append(fields, fmt.Sprintf("templateID %s", g.generateOID(d.TemplateID)))
 	}
@@ -1321,11 +1365,10 @@ func (g *Generator) generateDFSAIP(d *DFSAIP) {
 	g.write("{\n")
 	g.indent++
 
-	if d.Header != nil {
-		g.generateElementHeader("df-saip-header", d.Header)
-	}
-
 	fields := make([]string, 0)
+	if d.Header != nil {
+		fields = append(fields, g.sgenerateElementHeader("df-saip-header", d.Header))
+	}
 	if len(d.TemplateID) > 0 {
 		fields = append(fields, fmt.Sprintf("templateID %s", g.generateOID(d.TemplateID)))
 	}
@@ -1352,11 +1395,10 @@ func (g *Generator) generateAKAParameter(aka *AKAParameter) {
 	g.write("{\n")
 	g.indent++
 
-	if aka.Header != nil {
-		g.generateElementHeader("aka-header", aka.Header)
-	}
-
 	fields := make([]string, 0)
+	if aka.Header != nil {
+		fields = append(fields, g.sgenerateElementHeader("aka-header", aka.Header))
+	}
 	if aka.AlgoConfig != nil {
 		fields = append(fields, g.sgenerateAlgoConfiguration(aka.AlgoConfig))
 	}
@@ -1467,11 +1509,10 @@ func (g *Generator) generateCDMAParameter(cdma *CDMAParameter) {
 	g.write("{\n")
 	g.indent++
 
-	if cdma.Header != nil {
-		g.generateElementHeader("cdma-header", cdma.Header)
-	}
-
 	fields := make([]string, 0)
+	if cdma.Header != nil {
+		fields = append(fields, g.sgenerateElementHeader("cdma-header", cdma.Header))
+	}
 	if len(cdma.AuthenticationKey) > 0 {
 		fields = append(fields, fmt.Sprintf("authenticationKey %s", g.formatHex(cdma.AuthenticationKey)))
 	}
@@ -1495,60 +1536,77 @@ func (g *Generator) generateCDMAParameter(cdma *CDMAParameter) {
 }
 
 // ============================================================================
-// Generic File Management generator
+// Security Domain generator
 // ============================================================================
 
 func (g *Generator) generateGenericFileManagement(gfm *GenericFileManagement) {
 	g.write("{\n")
 	g.indent++
 
+	fields := make([]string, 0)
 	if gfm.Header != nil {
-		g.generateElementHeader("gfm-header", gfm.Header)
+		fields = append(fields, g.sgenerateElementHeader("gfm-header", gfm.Header))
 	}
 
 	if len(gfm.FileManagementCMDs) > 0 {
-		g.writeLine("fileManagementCMD {")
+		var sb strings.Builder
+		sb.WriteString("fileManagementCMD {\n")
 		g.indent++
 
 		for i, cmd := range gfm.FileManagementCMDs {
-			g.writeLine("{")
+			for j := 0; j < g.indent; j++ {
+				sb.WriteString("  ")
+			}
+			sb.WriteString("{\n")
 			g.indent++
 
-			fields := make([]string, 0)
+			cfields := make([]string, 0)
 			for _, item := range cmd {
 				switch item.ItemType {
 				case 0: // filePath
-					fields = append(fields, fmt.Sprintf("filePath : %s", g.formatHex(item.FilePath)))
+					cfields = append(cfields, fmt.Sprintf("filePath : %s", g.formatHex(item.FilePath)))
 				case 1: // createFCP
 					if item.CreateFCP != nil {
-						fields = append(fields, g.sgenerateFileDescriptorContent(item.CreateFCP))
+						cfields = append(cfields, g.sgenerateFileDescriptorContent(item.CreateFCP))
 					}
 				case 2: // fillFileContent
-					fields = append(fields, fmt.Sprintf("fillFileContent : %s", g.formatHex(item.FillFileContent)))
+					cfields = append(cfields, fmt.Sprintf("fillFileContent : %s", g.formatHex(item.FillFileContent)))
 				case 3: // fillFileOffset
-					fields = append(fields, fmt.Sprintf("fillFileOffset : %d", item.FillFileOffset))
+					cfields = append(cfields, fmt.Sprintf("fillFileOffset : %d", item.FillFileOffset))
 				}
 			}
 
-			for j, f := range fields {
-				suffix := ""
-				if j < len(fields)-1 {
-					suffix = ","
+			for j, f := range cfields {
+				for k := 0; k < g.indent; k++ {
+					sb.WriteString("  ")
 				}
-				g.writeLine(f + suffix)
+				sb.WriteString(f)
+				if j < len(cfields)-1 {
+					sb.WriteString(",")
+				}
+				sb.WriteString("\n")
 			}
 
 			g.indent--
-			suffix := ","
-			if i == len(gfm.FileManagementCMDs)-1 {
-				suffix = ""
+			for j := 0; j < g.indent; j++ {
+				sb.WriteString("  ")
 			}
-			g.writeLine("}" + suffix)
+			sb.WriteString("}")
+			if i < len(gfm.FileManagementCMDs)-1 {
+				sb.WriteString(",")
+			}
+			sb.WriteString("\n")
 		}
 
 		g.indent--
-		g.writeLine("}")
+		for j := 0; j < g.indent; j++ {
+			sb.WriteString("  ")
+		}
+		sb.WriteString("}")
+		fields = append(fields, sb.String())
 	}
+
+	g.writeFields(fields)
 
 	g.indent--
 	g.writeLine("}")
@@ -1566,6 +1624,9 @@ func (g *Generator) sgenerateFileDescriptorContent(fd *FileDescriptor) string {
 	if len(fd.FileID) > 0 {
 		fields = append(fields, fmt.Sprintf("fileID %s", g.formatHex(fd.FileID)))
 	}
+	if len(fd.DFName) > 0 {
+		fields = append(fields, fmt.Sprintf("dfName %s", g.formatHex(fd.DFName)))
+	}
 	if len(fd.LCSI) > 0 {
 		fields = append(fields, fmt.Sprintf("lcsi %s", g.formatHex(fd.LCSI)))
 	}
@@ -1577,9 +1638,6 @@ func (g *Generator) sgenerateFileDescriptorContent(fd *FileDescriptor) string {
 	}
 	if fd.ShortEFID != nil {
 		fields = append(fields, fmt.Sprintf("shortEFID %s", g.formatHex(fd.ShortEFID)))
-	}
-	if len(fd.DFName) > 0 {
-		fields = append(fields, fmt.Sprintf("dfName %s", g.formatHex(fd.DFName)))
 	}
 	if len(fd.PinStatusTemplateDO) > 0 {
 		fields = append(fields, fmt.Sprintf("pinStatusTemplateDO %s", g.formatHex(fd.PinStatusTemplateDO)))
@@ -1610,19 +1668,14 @@ func (g *Generator) sgenerateFileDescriptorContent(fd *FileDescriptor) string {
 	return sb.String()
 }
 
-// ============================================================================
-// Security Domain generator
-// ============================================================================
-
 func (g *Generator) generateSecurityDomain(sd *SecurityDomain) {
 	g.write("{\n")
 	g.indent++
 
-	if sd.Header != nil {
-		g.generateElementHeader("sd-Header", sd.Header)
-	}
-
 	fields := make([]string, 0)
+	if sd.Header != nil {
+		fields = append(fields, g.sgenerateElementHeader("sd-Header", sd.Header))
+	}
 	if sd.Instance != nil {
 		var sb strings.Builder
 		sb.WriteString("instance {\n")
@@ -1799,11 +1852,10 @@ func (g *Generator) generateRFM(rfm *RFMConfig) {
 	g.write("{\n")
 	g.indent++
 
-	if rfm.Header != nil {
-		g.generateElementHeader("rfm-header", rfm.Header)
-	}
-
 	fields := make([]string, 0)
+	if rfm.Header != nil {
+		fields = append(fields, g.sgenerateElementHeader("rfm-header", rfm.Header))
+	}
 	if len(rfm.InstanceAID) > 0 {
 		fields = append(fields, fmt.Sprintf("instanceAID %s", g.formatHex(rfm.InstanceAID)))
 	}
@@ -1885,11 +1937,10 @@ func (g *Generator) generateApplication(app *Application) {
 	g.write("{\n")
 	g.indent++
 
-	if app.Header != nil {
-		g.generateElementHeader("app-Header", app.Header)
-	}
-
 	fields := make([]string, 0)
+	if app.Header != nil {
+		fields = append(fields, g.sgenerateElementHeader("app-Header", app.Header))
+	}
 	if app.LoadBlock != nil {
 		fields = append(fields, g.sgenerateApplicationLoadPackage(app.LoadBlock))
 	}
@@ -2053,9 +2104,12 @@ func (g *Generator) generateEnd(end *EndElement) {
 	g.write("{\n")
 	g.indent++
 
+	fields := make([]string, 0)
 	if end.Header != nil {
-		g.writeLine(g.sgenerateElementHeader("end-header", end.Header))
+		fields = append(fields, g.sgenerateElementHeader("end-header", end.Header))
 	}
+
+	g.writeFields(fields)
 
 	g.indent--
 	g.writeLine("}")

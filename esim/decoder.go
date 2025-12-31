@@ -1,6 +1,7 @@
 package esim
 
 import (
+	"encoding/hex"
 	"fmt"
 	"sim_reader/esim/asn1"
 )
@@ -656,6 +657,146 @@ func decodeOptUSIM(a *asn1.ASN1) (*OptionalUSIM, error) {
 			u.EF_OPLMNWACT = decodeElementaryFile(inner)
 		case 17: // ef-hplmnwact
 			u.EF_HPLMNWACT = decodeElementaryFile(inner)
+		case 18: // ef-dck
+			u.EF_DCK = decodeElementaryFile(inner)
+		case 19: // ef-cnl
+			u.EF_CNL = decodeElementaryFile(inner)
+		case 20: // ef-smsr
+			u.EF_SMSR = decodeElementaryFile(inner)
+		case 21: // ef-bdn
+			u.EF_BDN = decodeElementaryFile(inner)
+		case 22: // ef-ext5
+			u.EF_EXT5 = decodeElementaryFile(inner)
+		case 23: // ef-ccp2
+			u.EF_CCP2 = decodeElementaryFile(inner)
+		case 24: // ef-ext4
+			u.EF_EXT4 = decodeElementaryFile(inner)
+		case 25: // ef-acl
+			u.EF_ACL = decodeElementaryFile(inner)
+		case 26: // ef-cmi
+			u.EF_CMI = decodeElementaryFile(inner)
+		case 27: // ef-ici
+			u.EF_ICI = decodeElementaryFile(inner)
+		case 28: // ef-oci
+			u.EF_OCI = decodeElementaryFile(inner)
+		case 29: // ef-ict
+			u.EF_ICT = decodeElementaryFile(inner)
+		case 30: // ef-oct
+			u.EF_OCT = decodeElementaryFile(inner)
+		case 31: // ef-vgcs
+			u.EF_VGCS = decodeElementaryFile(inner)
+		case 32: // ef-vgcss
+			u.EF_VGCSS = decodeElementaryFile(inner)
+		case 33: // ef-vbs
+			u.EF_VBS = decodeElementaryFile(inner)
+		case 34: // ef-vbss
+			u.EF_VBSS = decodeElementaryFile(inner)
+		case 35: // ef-emlpp
+			u.EF_EMLPP = decodeElementaryFile(inner)
+		case 36: // ef-aaem
+			u.EF_AAEM = decodeElementaryFile(inner)
+		case 37: // ef-hiddenkey
+			u.EF_HIDDENKEY = decodeElementaryFile(inner)
+		case 38: // ef-pnn
+			u.EF_PNN = decodeElementaryFile(inner)
+		case 39: // ef-opl
+			u.EF_OPL = decodeElementaryFile(inner)
+		case 40: // ef-mbdn
+			u.EF_MBDN = decodeElementaryFile(inner)
+		case 41: // ef-ext6
+			u.EF_EXT6 = decodeElementaryFile(inner)
+		case 42: // ef-mbi
+			u.EF_MBI = decodeElementaryFile(inner)
+		case 43: // ef-mwis
+			u.EF_MWIS = decodeElementaryFile(inner)
+		case 44: // ef-cfis
+			u.EF_CFIS = decodeElementaryFile(inner)
+		case 45: // ef-ext7
+			u.EF_EXT7 = decodeElementaryFile(inner)
+		case 46: // ef-spdi
+			u.EF_SPDI = decodeElementaryFile(inner)
+		case 47: // ef-mmsn
+			u.EF_MMSN = decodeElementaryFile(inner)
+		case 48: // ef-ext8
+			u.EF_EXT8 = decodeElementaryFile(inner)
+		case 49: // ef-mmsicp
+			u.EF_MMSICP = decodeElementaryFile(inner)
+		case 50: // ef-mmsup
+			u.EF_MMSUP = decodeElementaryFile(inner)
+		case 51: // ef-mmsucp
+			u.EF_MMSUCP = decodeElementaryFile(inner)
+		case 52: // ef-nia
+			u.EF_NIA = decodeElementaryFile(inner)
+		case 53: // ef-vgcsca
+			u.EF_VGCSCA = decodeElementaryFile(inner)
+		case 54: // ef-vbsca
+			u.EF_VBSCA = decodeElementaryFile(inner)
+		case 55: // ef-gbabp
+			u.EF_GBABP = decodeElementaryFile(inner)
+		case 56: // ef-msk
+			u.EF_MSK = decodeElementaryFile(inner)
+		case 57: // ef-muk
+			u.EF_MUK = decodeElementaryFile(inner)
+		case 58: // ef-ehplmn
+			u.EF_EHPLMN = decodeElementaryFile(inner)
+		case 59: // ef-gbanl
+			u.EF_GBANL = decodeElementaryFile(inner)
+		case 60: // ef-ehplmnpi
+			u.EF_EHPLMNPI = decodeElementaryFile(inner)
+		case 61: // ef-lrplmnsi
+			u.EF_LRPLMNSI = decodeElementaryFile(inner)
+		case 62: // ef-nafkca
+			u.EF_NAFKCA = decodeElementaryFile(inner)
+		case 63: // ef-spni
+			u.EF_SPNI = decodeElementaryFile(inner)
+		case 64: // ef-pnni
+			u.EF_PNNI = decodeElementaryFile(inner)
+		case 65: // ef-ncp-ip
+			u.EF_NCP_IP = decodeElementaryFile(inner)
+		case 66: // ef-ufc
+			u.EF_UFC = decodeElementaryFile(inner)
+		case 67: // ef-nasconfig
+			u.EF_NASCONFIG = decodeElementaryFile(inner)
+		case 68: // ef-uicciari
+			u.EF_UICCIARI = decodeElementaryFile(inner)
+		case 69: // ef-pws
+			u.EF_PWS = decodeElementaryFile(inner)
+		case 70: // ef-fdnuri
+			u.EF_FDNURI = decodeElementaryFile(inner)
+		case 71: // ef-bdnuri
+			u.EF_BDNURI = decodeElementaryFile(inner)
+		case 72: // ef-sdnuri
+			u.EF_SDNURI = decodeElementaryFile(inner)
+		case 73: // ef-ial
+			u.EF_IAL = decodeElementaryFile(inner)
+		case 74: // ef-ips
+			u.EF_IPS = decodeElementaryFile(inner)
+		case 75: // ef-ipd
+			u.EF_IPD = decodeElementaryFile(inner)
+		case 76: // ef-epdgid
+			u.EF_EPDGID = decodeElementaryFile(inner)
+		case 77: // ef-epdgselection
+			u.EF_EPDGSELECTION = decodeElementaryFile(inner)
+		case 78: // ef-epdgidem
+			u.EF_EPDGIDEM = decodeElementaryFile(inner)
+		case 79: // ef-epdgselectionem
+			u.EF_EPDGSELECTIONEM = decodeElementaryFile(inner)
+		case 80: // ef-frompreferred
+			u.EF_FROMPREFERRED = decodeElementaryFile(inner)
+		case 81: // ef-imsconfigdata
+			u.EF_IMSCONFIGDATA = decodeElementaryFile(inner)
+		case 82: // ef-3gpppsdataoff
+			u.EF_3GPPPSDATAOFF = decodeElementaryFile(inner)
+		case 83: // ef-3gpppsdataoffservicelist
+			u.EF_3GPPPSDATAOFFSERVICELIST = decodeElementaryFile(inner)
+		case 84: // ef-xcapconfigdata
+			u.EF_XCAPCONFIGDATA = decodeElementaryFile(inner)
+		case 85: // ef-earfcnlist
+			u.EF_EARFCNLIST = decodeElementaryFile(inner)
+		case 86: // ef-mudmidconfigdata
+			u.EF_MUDMIDCONFIGDATA = decodeElementaryFile(inner)
+		case 87: // ef-eaka
+			u.EF_EAKA = decodeElementaryFile(inner)
 		default:
 			ef := decodeElementaryFile(inner)
 			u.AdditionalEFs[fmt.Sprintf("tag_%d", tagNum)] = ef
@@ -757,6 +898,72 @@ func decodeCSIM(a *asn1.ASN1) (*CSIMApplication, error) {
 			c.ADFCSIM = decodeFileFromFile(inner)
 		case 3: // ef-arr
 			c.EF_ARR = decodeElementaryFile(inner)
+		case 4: // ef-call-count
+			c.EF_CallCount = decodeElementaryFile(inner)
+		case 5: // ef-imsi-m
+			c.EF_IMSI_M = decodeElementaryFile(inner)
+		case 6: // ef-imsi-t
+			c.EF_IMSI_T = decodeElementaryFile(inner)
+		case 7: // ef-tmsi
+			c.EF_TMSI = decodeElementaryFile(inner)
+		case 8: // ef-ah
+			c.EF_AH = decodeElementaryFile(inner)
+		case 9: // ef-aop
+			c.EF_AOP = decodeElementaryFile(inner)
+		case 10: // ef-aloc
+			c.EF_ALOC = decodeElementaryFile(inner)
+		case 11: // ef-cdmahome
+			c.EF_CDMAHOME = decodeElementaryFile(inner)
+		case 12: // ef-znregi
+			c.EF_ZNREGI = decodeElementaryFile(inner)
+		case 13: // ef-snregi
+			c.EF_SNREGI = decodeElementaryFile(inner)
+		case 14: // ef-distregi
+			c.EF_DISTREGI = decodeElementaryFile(inner)
+		case 15: // ef-accolc
+			c.EF_ACCOLC = decodeElementaryFile(inner)
+		case 16: // ef-term
+			c.EF_TERM = decodeElementaryFile(inner)
+		case 17: // ef-acp
+			c.EF_ACP = decodeElementaryFile(inner)
+		case 18: // ef-prl
+			c.EF_PRL = decodeElementaryFile(inner)
+		case 19: // ef-ruimid
+			c.EF_RUIMID = decodeElementaryFile(inner)
+		case 20: // ef-csim-st
+			c.EF_CSIM_ST = decodeElementaryFile(inner)
+		case 21: // ef-spc
+			c.EF_SPC = decodeElementaryFile(inner)
+		case 22: // ef-otapaspc
+			c.EF_OTAPASPC = decodeElementaryFile(inner)
+		case 23: // ef-namlock
+			c.EF_NAMLOCK = decodeElementaryFile(inner)
+		case 24: // ef-ota
+			c.EF_OTA = decodeElementaryFile(inner)
+		case 25: // ef-sp
+			c.EF_SP = decodeElementaryFile(inner)
+		case 26: // ef-esn-meid-me
+			c.EF_ESN_MEID_ME = decodeElementaryFile(inner)
+		case 27: // ef-li
+			c.EF_LI = decodeElementaryFile(inner)
+		case 28: // ef-usgind
+			c.EF_USGIND = decodeElementaryFile(inner)
+		case 29: // ef-ad
+			c.EF_AD = decodeElementaryFile(inner)
+		case 30: // ef-max-prl
+			c.EF_MAX_PRL = decodeElementaryFile(inner)
+		case 31: // ef-spcs
+			c.EF_SPCS = decodeElementaryFile(inner)
+		case 32: // ef-mecrp
+			c.EF_MECRP = decodeElementaryFile(inner)
+		case 33: // ef-home-tag
+			c.EF_HOME_TAG = decodeElementaryFile(inner)
+		case 34: // ef-group-tag
+			c.EF_GROUP_TAG = decodeElementaryFile(inner)
+		case 35: // ef-specific-tag
+			c.EF_SPECIFIC_TAG = decodeElementaryFile(inner)
+		case 36: // ef-call-prompt
+			c.EF_CALL_PROMPT = decodeElementaryFile(inner)
 		default:
 			ef := decodeElementaryFile(inner)
 			c.AdditionalEFs[fmt.Sprintf("tag_%d", tagNum)] = ef
@@ -780,6 +987,92 @@ func decodeOptCSIM(a *asn1.ASN1) (*OptionalCSIM, error) {
 			c.Header = decodeElementHeader(inner)
 		case 1: // templateID
 			c.TemplateID = decodeOID(a.Data)
+		case 2: // ef-ssci
+			c.EF_SSCI = decodeElementaryFile(inner)
+		case 3: // ef-fdn
+			c.EF_FDN = decodeElementaryFile(inner)
+		case 4: // ef-sms
+			c.EF_SMS = decodeElementaryFile(inner)
+		case 5: // ef-smsp
+			c.EF_SMSP = decodeElementaryFile(inner)
+		case 6: // ef-smss
+			c.EF_SMSS = decodeElementaryFile(inner)
+		case 7: // ef-ssfc
+			c.EF_SSFC = decodeElementaryFile(inner)
+		case 8: // ef-spn
+			c.EF_SPN = decodeElementaryFile(inner)
+		case 9: // ef-mdn
+			c.EF_MDN = decodeElementaryFile(inner)
+		case 10: // ef-ecc
+			c.EF_ECC = decodeElementaryFile(inner)
+		case 11: // ef-me3gpdopc
+			c.EF_ME3GPDOPC = decodeElementaryFile(inner)
+		case 12: // ef-3gpdopm
+			c.EF_3GPDOPM = decodeElementaryFile(inner)
+		case 13: // ef-sipcap
+			c.EF_SIPCAP = decodeElementaryFile(inner)
+		case 14: // ef-mipcap
+			c.EF_MIPCAP = decodeElementaryFile(inner)
+		case 15: // ef-sipupp
+			c.EF_SIPUPP = decodeElementaryFile(inner)
+		case 16: // ef-mipupp
+			c.EF_MIPUPP = decodeElementaryFile(inner)
+		case 17: // ef-sipsp
+			c.EF_SIPSP = decodeElementaryFile(inner)
+		case 18: // ef-mipsp
+			c.EF_MIPSP = decodeElementaryFile(inner)
+		case 19: // ef-sippapss
+			c.EF_SIPPAPSS = decodeElementaryFile(inner)
+		case 22: // ef-hrpdcap
+			c.EF_HRPDCAP = decodeElementaryFile(inner)
+		case 23: // ef-hrpdupp
+			c.EF_HRPDUPP = decodeElementaryFile(inner)
+		case 24: // ef-csspr
+			c.EF_CSSPR = decodeElementaryFile(inner)
+		case 25: // ef-atc
+			c.EF_ATC = decodeElementaryFile(inner)
+		case 26: // ef-eprl
+			c.EF_EPRL = decodeElementaryFile(inner)
+		case 30: // ef-bcsmsp
+			c.EF_BCSMSP = decodeElementaryFile(inner)
+		case 33: // ef-mmsn
+			c.EF_MMSN = decodeElementaryFile(inner)
+		case 34: // ef-ext8
+			c.EF_EXT8 = decodeElementaryFile(inner)
+		case 35: // ef-mmsicp
+			c.EF_MMSICP = decodeElementaryFile(inner)
+		case 36: // ef-mmsup
+			c.EF_MMSUP = decodeElementaryFile(inner)
+		case 37: // ef-mmsucp
+			c.EF_MMSUCP = decodeElementaryFile(inner)
+		case 39: // ef-3gcik
+			c.EF_3GCIK = decodeElementaryFile(inner)
+		case 41: // ef-gid1
+			c.EF_GID1 = decodeElementaryFile(inner)
+		case 42: // ef-gid2
+			c.EF_GID2 = decodeElementaryFile(inner)
+		case 44: // ef-sf-euimid
+			c.EF_SF_EUIMID = decodeElementaryFile(inner)
+		case 45: // ef-est
+			c.EF_EST = decodeElementaryFile(inner)
+		case 46: // ef-hidden-key
+			c.EF_HIDDEN_KEY = decodeElementaryFile(inner)
+		case 49: // ef-sdn
+			c.EF_SDN = decodeElementaryFile(inner)
+		case 50: // ef-ext2
+			c.EF_EXT2 = decodeElementaryFile(inner)
+		case 51: // ef-ext3
+			c.EF_EXT3 = decodeElementaryFile(inner)
+		case 52: // ef-ici
+			c.EF_ICI = decodeElementaryFile(inner)
+		case 53: // ef-oci
+			c.EF_OCI = decodeElementaryFile(inner)
+		case 54: // ef-ext5
+			c.EF_EXT5 = decodeElementaryFile(inner)
+		case 55: // ef-ccp2
+			c.EF_CCP2 = decodeElementaryFile(inner)
+		case 57: // ef-model
+			c.EF_MODEL = decodeElementaryFile(inner)
 		default:
 			ef := decodeElementaryFile(inner)
 			c.AdditionalEFs[fmt.Sprintf("tag_%d", tagNum)] = ef
@@ -862,7 +1155,9 @@ func decodeDF5GS(a *asn1.ASN1) (*DF5GS, error) {
 			d.EF_SUCI_CALC_INFO = decodeElementaryFile(inner)
 		case 10: // ef-opl5g
 			d.EF_OPL5G = decodeElementaryFile(inner)
-		case 11: // ef-routing-indicator
+		case 11: // ef-suci-calc-info-ni (added in later specs)
+			// d.EF_SUCI_CALC_INFO_NI = decodeElementaryFile(inner)
+		case 12: // ef-routing-indicator
 			d.EF_ROUTING_INDICATOR = decodeElementaryFile(inner)
 		default:
 			ef := decodeElementaryFile(inner)
@@ -910,7 +1205,8 @@ func decodeDFSAIP(a *asn1.ASN1) (*DFSAIP, error) {
 
 func decodeAKAParameter(a *asn1.ASN1) (*AKAParameter, error) {
 	aka := &AKAParameter{
-		SQNInit: make([][]byte, 0),
+		SQNInit:    make([][]byte, 0),
+		SQNOptions: 0x02, // Default from reference if missing
 	}
 
 	for a.Unmarshal() {
@@ -937,43 +1233,50 @@ func decodeAKAParameter(a *asn1.ASN1) (*AKAParameter, error) {
 		}
 	}
 
+	// Set defaults for missing fields if USIM Test Algorithm
+	if aka.AlgoConfig != nil && aka.AlgoConfig.AlgorithmID == AlgoUSIMTestAlgorithm {
+		if len(aka.SQNDelta) == 0 {
+			aka.SQNDelta, _ = hex.DecodeString("000010000000")
+		}
+		if len(aka.SQNAgeLimit) == 0 {
+			aka.SQNAgeLimit, _ = hex.DecodeString("000010000000")
+		}
+		if len(aka.SQNInit) == 0 {
+			for i := 0; i < 32; i++ {
+				aka.SQNInit = append(aka.SQNInit, make([]byte, 6))
+			}
+		}
+	}
+
 	return aka, nil
 }
 
 func decodeAlgoConfiguration(a *asn1.ASN1) *AlgoConfiguration {
-	ac := &AlgoConfiguration{}
+	ac := &AlgoConfiguration{
+		NumberOfKeccak: 1, // Default from reference
+	}
 
-	// AlgoConfiguration may be:
-	// 1. Direct fields (tag [0] algorithmID, etc.) - simple encoding
-	// 2. CHOICE wrapper with [0] or [1] containing AlgoParameter - SAIP 2.3 style
-	
-	// Try to parse first element
+	// AlgoConfiguration is a CHOICE: [0] milenage, [1] tuak
 	if !a.Unmarshal() {
 		return ac
 	}
-	
-	firstTag := getContextTag(a)
-	
-	// Check if this is a CHOICE wrapper (tag [0] or [1] with inner AlgoParameter)
-	if (firstTag == 0 || firstTag == 1) && len(a.Data) > 5 {
-		// Check if inner data starts with [0] (algorithmID)
-		innerProbe := asn1.Init(a.Data)
-		if innerProbe.Unmarshal() && getContextTag(innerProbe) == 0 {
-			// This is CHOICE wrapper style - parse from inside
-			inner := asn1.Init(a.Data)
-			for inner.Unmarshal() {
-				parseAlgoField(inner, ac)
-			}
-			return ac
-		}
+
+	// choiceTag := getContextTag(a)
+	inner := asn1.Init(a.Data)
+
+	// Fields inside are AlgoParameter (SEQUENCE)
+	for inner.Unmarshal() {
+		parseAlgoField(inner, ac)
 	}
-	
-	// Direct style - first element is already a field
-	parseAlgoField(a, ac)
-	
-	// Parse remaining fields
-	for a.Unmarshal() {
-		parseAlgoField(a, ac)
+
+	// Set defaults for Milenage/USIMTestAlgorithm if missing
+	if ac.AlgorithmID == AlgoMilenage || ac.AlgorithmID == AlgoUSIMTestAlgorithm {
+		if len(ac.RotationConstants) == 0 {
+			ac.RotationConstants, _ = hex.DecodeString("4000204060")
+		}
+		if len(ac.XoringConstants) == 0 {
+			ac.XoringConstants, _ = hex.DecodeString("0000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000020000000000000000000000000000000400000000000000000000000000000008")
+		}
 	}
 
 	return ac
@@ -1068,22 +1371,27 @@ func decodeFileManagementCMD(a *asn1.ASN1) FileManagementCMD {
 	for a.Unmarshal() {
 		item := FileManagementItem{}
 
-		// Check raw tag - FileManagementCMD uses IMPLICIT tags
-		// 0x80 = [0] filePath (PRIMITIVE)
-		// 0x62 = APPLICATION [2] createFCP (FCP template)
-		// 0x82 = [2] fillFileContent (PRIMITIVE)
-		// 0x83 = [3] fillFileOffset (PRIMITIVE)
-		switch a.Tag {
-		case 0x80: // filePath [0]
+		// SGP.22 PE-GenericFileManagement:
+		// FileManagementCMD ::= SEQUENCE OF CHOICE {
+		//   filePath [0] OCTET STRING,
+		//   createFCP FCP-Template, (APPLICATION 2)
+		//   fillFileContent [1] OCTET STRING,
+		//   fillFileOffset [2] UInt16
+		// }
+		
+		tagNum := getContextTag(a)
+		
+		switch {
+		case a.Class == asn1.ClassContextSpecific && tagNum == 0: // filePath [0]
 			item.ItemType = 0
 			item.FilePath = copyBytes(a.Data)
-		case 0x62: // createFCP - FCP template (APPLICATION [2])
+		case a.Tag == 0x62: // createFCP (APPLICATION 2)
 			item.ItemType = 1
 			item.CreateFCP = decodeFileDescriptor(asn1.Init(a.Data))
-		case 0x82: // fillFileContent [2]
+		case a.Class == asn1.ClassContextSpecific && tagNum == 1: // fillFileContent [1]
 			item.ItemType = 2
 			item.FillFileContent = copyBytes(a.Data)
-		case 0x83: // fillFileOffset [3]
+		case a.Class == asn1.ClassContextSpecific && tagNum == 2: // fillFileOffset [2]
 			item.ItemType = 3
 			item.FillFileOffset = decodeInteger(a.Data)
 		default:

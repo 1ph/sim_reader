@@ -1,0 +1,28 @@
+{
+  "iccid": "89701501078000006814",
+  "imsi": "250880000000010",
+  "ki": "00112233445566778899aabbccddeeff",
+  "opc": "ffeeddccbbaa99887766554433221100",
+  
+  "impi": "250880000000010@ims.mnc088.mcc250.3gppnetwork.org",
+  "impu": [
+    "sip:250880000000010@ims.mnc088.mcc250.3gppnetwork.org"
+  ],
+  "domain": "ims.mnc088.mcc250.3gppnetwork.org",
+
+  "pin1": "1234",
+  "puk1": "11111111",
+  "adm1": "12345678",
+
+  "use_applet_auth": true,
+  "applet_config": {
+    "package_aid": "A0000000871002",
+    "class_aid": "A00000008710020101",
+    "instance_aid": "A00000008710020101",
+    "milenage_usim": {
+      "ki": "FFFEFDFCFBFAF9F8F7F6F5F4F3F2F1BB",
+      "opc": "808182838485868788898a8b8c8d8e8f",
+      "amf": "8000"
+    }
+  }
+}
