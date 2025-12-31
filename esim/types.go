@@ -49,6 +49,7 @@ type ProfileHeader struct {
 	MinorVersion       int
 	ProfileType        string
 	ICCID              []byte
+	POL                []byte
 	MandatoryServices  *MandatoryServices
 	MandatoryGFSTEList []OID
 }
@@ -470,6 +471,8 @@ type OptionalCSIM struct {
 	EF_SIPSP      *ElementaryFile
 	EF_MIPSP      *ElementaryFile
 	EF_SIPPAPSS   *ElementaryFile
+	EF_PUZL       *ElementaryFile
+	EF_MAX_PUZL   *ElementaryFile
 	EF_HRPDCAP    *ElementaryFile
 	EF_HRPDUPP    *ElementaryFile
 	EF_CSSPR      *ElementaryFile
@@ -495,6 +498,7 @@ type OptionalCSIM struct {
 	EF_EXT5       *ElementaryFile
 	EF_CCP2       *ElementaryFile
 	EF_MODEL      *ElementaryFile
+	EF_MEIDME     *ElementaryFile
 	AdditionalEFs map[string]*ElementaryFile
 	// RawBytes preserves original encoding for lossless round-trip
 	RawBytes []byte
@@ -639,7 +643,7 @@ type SecurityDomain struct {
 	Header      *ElementHeader
 	Instance    *SDInstance
 	KeyList     []SDKey
-	SDPersoData []byte
+	SDPersoData [][]byte
 	// RawBytes preserves original encoding for lossless round-trip
 	RawBytes []byte
 }
@@ -737,7 +741,7 @@ type ApplicationInstance struct {
 	LifeCycleState               byte   // [3] - GP lifecycle state (default 0x07)
 	ApplicationSpecificParamsC9  []byte // [PRIVATE 9] - C9 install params
 	SystemSpecificParams         []byte // [PRIVATE 15] OPTIONAL - System params
-	ApplicationParameters        []byte // [PRIVATE 10] OPTIONAL - UICC app params
+	ApplicationParameters        *ApplicationParameters // [PRIVATE 10] OPTIONAL - UICC app params
 	ProcessData                  [][]byte // Personalization APDU commands (executed after install)
 	ControlReferenceTemplate     []byte // [16] OPTIONAL - CRT for SCP
 }

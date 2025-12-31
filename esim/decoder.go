@@ -300,6 +300,15 @@ func decodeProprietaryEFInfo(a *asn1.ASN1) *ProprietaryEFInfo {
 // This is used for DF/ADF entries which are File type containing fileDescriptor [1] Fcp
 func decodeFileFromFile(a *asn1.ASN1) *FileDescriptor {
 	for a.Unmarshal() {
+		if a.Tag == 0x30 { // SEQUENCE wrapper
+			inner := asn1.Init(a.Data)
+			for inner.Unmarshal() {
+				tagNum := getContextTag(inner)
+				if tagNum == 1 { // fileDescriptor [1] Fcp
+					return decodeFileDescriptor(asn1.Init(inner.Data))
+				}
+			}
+		}
 		tagNum := getContextTag(a)
 		if tagNum == 1 { // fileDescriptor [1] Fcp
 			return decodeFileDescriptor(asn1.Init(a.Data))
@@ -988,6 +997,7 @@ func decodeOptCSIM(a *asn1.ASN1) (*OptionalCSIM, error) {
 
 	for a.Unmarshal() {
 		tagNum := getContextTag(a)
+		fmt.Printf("DEBUG: OptCSIM tag %d\n", tagNum)
 		inner := asn1.Init(a.Data)
 
 		switch tagNum {
@@ -1031,6 +1041,10 @@ func decodeOptCSIM(a *asn1.ASN1) (*OptionalCSIM, error) {
 			c.EF_MIPSP = decodeElementaryFile(inner)
 		case 19: // ef-sippapss
 			c.EF_SIPPAPSS = decodeElementaryFile(inner)
+		case 20: // ef-puzl
+			c.EF_PUZL = decodeElementaryFile(inner)
+		case 21: // ef-max-puzl
+			c.EF_MAX_PUZL = decodeElementaryFile(inner)
 		case 22: // ef-hrpdcap
 			c.EF_HRPDCAP = decodeElementaryFile(inner)
 		case 23: // ef-hrpdupp
@@ -1081,6 +1095,8 @@ func decodeOptCSIM(a *asn1.ASN1) (*OptionalCSIM, error) {
 			c.EF_CCP2 = decodeElementaryFile(inner)
 		case 57: // ef-model
 			c.EF_MODEL = decodeElementaryFile(inner)
+		case 58: // ef-meidme
+			c.EF_MEIDME = decodeElementaryFile(inner)
 		default:
 			ef := decodeElementaryFile(inner)
 			c.AdditionalEFs[fmt.Sprintf("tag_%d", tagNum)] = ef
@@ -1386,9 +1402,9 @@ func decodeFileManagementCMD(a *asn1.ASN1) FileManagementCMD {
 		//   fillFileContent [1] OCTET STRING,
 		//   fillFileOffset [2] UInt16
 		// }
-		
+
 		tagNum := getContextTag(a)
-		
+
 		switch {
 		case a.Class == asn1.ClassContextSpecific && tagNum == 0: // filePath [0]
 			item.ItemType = 0
@@ -1423,6 +1439,7 @@ func decodeSecurityDomain(a *asn1.ASN1) (*SecurityDomain, error) {
 	for a.Unmarshal() {
 		tagNum := getContextTag(a)
 		inner := asn1.Init(a.Data)
+		fmt.Printf("DEBUG: SecurityDomain tag %d\n", tagNum)
 
 		switch tagNum {
 		case 0: // sd-Header
@@ -1436,7 +1453,7 @@ func decodeSecurityDomain(a *asn1.ASN1) (*SecurityDomain, error) {
 			}
 		case 3: // sdPersoData
 			for inner.Unmarshal() {
-				sd.SDPersoData = append(sd.SDPersoData, inner.Data...)
+				sd.SDPersoData = append(sd.SDPersoData, copyBytes(inner.Data))
 			}
 		}
 	}
@@ -1545,6 +1562,7 @@ func decodeKeyComponent(a *asn1.ASN1) KeyComponent {
 	}
 
 	for a.Unmarshal() {
+		fmt.Printf("DEBUG: KeyComponent tag 0x%02X class %d\n", a.Tag, a.Class)
 		tagNum := getContextTag(a)
 		switch tagNum {
 		case 0: // keyType [0]
@@ -1752,7 +1770,7 @@ func decodeApplicationInstance(a *asn1.ASN1) *ApplicationInstance {
 			case 9: // applicationSpecificParametersC9
 				inst.ApplicationSpecificParamsC9 = copyBytes(a.Data)
 			case 10: // applicationParameters (UICCApplicationParameters)
-				inst.ApplicationParameters = copyBytes(a.Data)
+				inst.ApplicationParameters = decodeApplicationParameters(asn1.Init(a.Data))
 			case 15: // systemSpecificParameters
 				inst.SystemSpecificParams = copyBytes(a.Data)
 			}

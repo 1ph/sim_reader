@@ -1,7 +1,11 @@
 package esim
 
 import (
+	"bytes"
 	"sim_reader/esim/asn1"
+	"sort"
+	"strconv"
+	"strings"
 )
 
 // EncodeProfile encodes Profile to DER
@@ -111,7 +115,10 @@ func encodeProfileHeader(h *ProfileHeader) ([]byte, error) {
 		data = append(data, asn1.Marshal(0x83, nil, h.ICCID...)...)
 	}
 
-	// [4] pol - OPTIONAL, not encoded here
+	// [4] pol
+	if len(h.POL) > 0 {
+		data = append(data, asn1.Marshal(0x84, nil, h.POL...)...)
+	}
 
 	// [5] eUICC-Mandatory-services (ServicesList is a SEQUENCE)
 	if h.MandatoryServices != nil {
@@ -132,28 +139,28 @@ func encodeMandatoryServices(ms *MandatoryServices) []byte {
 	var data []byte
 
 	if ms.USIM {
-		data = append(data, asn1.Marshal(0x80, nil)...) // NULL
+		data = append(data, asn1.MarshalWithFullTag(asn1.ClassContextSpecific, asn1.FormPrimitive, 1, nil)...)
 	}
 	if ms.ISIM {
-		data = append(data, asn1.Marshal(0x81, nil)...)
+		data = append(data, asn1.MarshalWithFullTag(asn1.ClassContextSpecific, asn1.FormPrimitive, 2, nil)...)
 	}
 	if ms.CSIM {
-		data = append(data, asn1.Marshal(0x82, nil)...)
+		data = append(data, asn1.MarshalWithFullTag(asn1.ClassContextSpecific, asn1.FormPrimitive, 3, nil)...)
 	}
 	if ms.USIMTestAlgorithm {
-		data = append(data, asn1.Marshal(0x83, nil)...)
+		data = append(data, asn1.MarshalWithFullTag(asn1.ClassContextSpecific, asn1.FormPrimitive, 17, nil)...)
 	}
 	if ms.BERTLV {
-		data = append(data, asn1.Marshal(0x85, nil)...)
+		data = append(data, asn1.MarshalWithFullTag(asn1.ClassContextSpecific, asn1.FormPrimitive, 18, nil)...)
 	}
 	if ms.GetIdentity {
-		data = append(data, asn1.Marshal(0x86, nil)...)
+		data = append(data, asn1.MarshalWithFullTag(asn1.ClassContextSpecific, asn1.FormPrimitive, 21, nil)...)
 	}
 	if ms.ProfileAX25519 {
-		data = append(data, asn1.Marshal(0x87, nil)...)
+		data = append(data, asn1.MarshalWithFullTag(asn1.ClassContextSpecific, asn1.FormPrimitive, 22, nil)...)
 	}
 	if ms.ProfileBP256 {
-		data = append(data, asn1.Marshal(0x88, nil)...)
+		data = append(data, asn1.MarshalWithFullTag(asn1.ClassContextSpecific, asn1.FormPrimitive, 23, nil)...)
 	}
 
 	return data
@@ -162,6 +169,15 @@ func encodeMandatoryServices(ms *MandatoryServices) []byte {
 // ============================================================================
 // MasterFile [1]
 // ============================================================================
+
+func encodeFile(fd *FileDescriptor) []byte {
+	if fd == nil {
+		return nil
+	}
+	fdData := encodeFileDescriptor(fd)
+	// Choice [1] fileDescriptor
+	return asn1.Marshal(0xA1, nil, fdData...)
+}
 
 func encodeMasterFile(mf *MasterFile) ([]byte, error) {
 	var data []byte
@@ -180,8 +196,8 @@ func encodeMasterFile(mf *MasterFile) ([]byte, error) {
 
 	// [2] mf
 	if mf.MF != nil {
-		fdData := encodeFileDescriptor(mf.MF)
-		data = append(data, asn1.Marshal(0xA2, nil, fdData...)...)
+		fileData := encodeFile(mf.MF)
+		data = append(data, asn1.Marshal(0xA2, nil, fileData...)...)
 	}
 
 	// [3] ef-pl
@@ -214,6 +230,18 @@ func encodeMasterFile(mf *MasterFile) ([]byte, error) {
 		data = append(data, asn1.Marshal(0xA7, nil, efData...)...)
 	}
 
+	// [8] efList (SEQUENCE OF)
+	if len(mf.EFList) > 0 {
+		var listData []byte
+		for _, ef := range mf.EFList {
+			if ef != nil {
+				efData := encodeElementaryFile(ef)
+				listData = append(listData, efData...)
+			}
+		}
+		data = append(data, asn1.Marshal(0xA8, nil, listData...)...)
+	}
+
 	return data, nil
 }
 
@@ -237,27 +265,39 @@ func encodeElementHeader(eh *ElementHeader) []byte {
 func encodeFileDescriptor(fd *FileDescriptor) []byte {
 	var data []byte
 
-	// Tags must be encoded in ascending order per DER rules
-	// Fcp field order by tag: [0], [2], [3], [4], [5], [8], [10], [11], [PRIVATE 6], [PRIVATE 7]
-
-	// [0] efFileSize
-	if len(fd.EFFileSize) > 0 {
-		data = append(data, asn1.Marshal(0x80, nil, fd.EFFileSize...)...)
-	}
-
 	// [2] fileDescriptor
-	if len(fd.FileDescriptor) > 0 {
+	if fd.FileDescriptor != nil {
 		data = append(data, asn1.Marshal(0x82, nil, fd.FileDescriptor...)...)
 	}
 
 	// [3] fileID
-	if len(fd.FileID) > 0 {
+	if fd.FileID != nil {
 		data = append(data, asn1.Marshal(0x83, nil, fd.FileID...)...)
 	}
 
 	// [4] dfName
-	if len(fd.DFName) > 0 {
+	if fd.DFName != nil {
 		data = append(data, asn1.Marshal(0x84, nil, fd.DFName...)...)
+	}
+
+	// [10] lcsi
+	if fd.LCSI != nil && !bytes.Equal(fd.LCSI, []byte{0x05}) {
+		data = append(data, asn1.Marshal(0x8A, nil, fd.LCSI...)...)
+	}
+
+	// [11] securityAttributesReferenced
+	if fd.SecurityAttributesReferenced != nil {
+		data = append(data, asn1.Marshal(0x8B, nil, fd.SecurityAttributesReferenced...)...)
+	}
+
+	// [0] efFileSize
+	if fd.EFFileSize != nil {
+		data = append(data, asn1.Marshal(0x80, nil, fd.EFFileSize...)...)
+	}
+
+	// [8] shortEFID
+	if fd.ShortEFID != nil {
+		data = append(data, asn1.Marshal(0x88, nil, fd.ShortEFID...)...)
 	}
 
 	// [5] proprietaryEFInfo (constructed)
@@ -266,28 +306,13 @@ func encodeFileDescriptor(fd *FileDescriptor) []byte {
 		data = append(data, asn1.Marshal(0xA5, nil, peiData...)...)
 	}
 
-	// [8] shortEFID
-	if len(fd.ShortEFID) > 0 {
-		data = append(data, asn1.Marshal(0x88, nil, fd.ShortEFID...)...)
-	}
-
-	// [10] lcsi
-	if len(fd.LCSI) > 0 {
-		data = append(data, asn1.Marshal(0x8A, nil, fd.LCSI...)...)
-	}
-
-	// [11] securityAttributesReferenced
-	if len(fd.SecurityAttributesReferenced) > 0 {
-		data = append(data, asn1.Marshal(0x8B, nil, fd.SecurityAttributesReferenced...)...)
-	}
-
 	// [PRIVATE 6] pinStatusTemplateDO (0xC6 = PRIVATE primitive tag 6)
-	if len(fd.PinStatusTemplateDO) > 0 {
+	if fd.PinStatusTemplateDO != nil {
 		data = append(data, asn1.Marshal(0xC6, nil, fd.PinStatusTemplateDO...)...)
 	}
 
 	// [PRIVATE 7] linkPath (0xC7 = PRIVATE primitive tag 7)
-	if len(fd.LinkPath) > 0 {
+	if fd.LinkPath != nil {
 		data = append(data, asn1.Marshal(0xC7, nil, fd.LinkPath...)...)
 	}
 
@@ -297,29 +322,29 @@ func encodeFileDescriptor(fd *FileDescriptor) []byte {
 func encodeProprietaryEFInfo(pei *ProprietaryEFInfo) []byte {
 	var data []byte
 
-	// [0] specialFileInformation
-	if len(pei.SpecialFileInformation) > 0 {
-		data = append(data, asn1.Marshal(0x80, nil, pei.SpecialFileInformation...)...)
+	// [PRIVATE 0] specialFileInformation (0xC0)
+	if pei.SpecialFileInformation != nil && !bytes.Equal(pei.SpecialFileInformation, []byte{0x00}) {
+		data = append(data, asn1.Marshal(0xC0, nil, pei.SpecialFileInformation...)...)
 	}
 
-	// [1] fillPattern
-	if len(pei.FillPattern) > 0 {
-		data = append(data, asn1.Marshal(0x81, nil, pei.FillPattern...)...)
+	// [PRIVATE 1] fillPattern (0xC1)
+	if pei.FillPattern != nil {
+		data = append(data, asn1.Marshal(0xC1, nil, pei.FillPattern...)...)
 	}
 
-	// [2] repeatPattern
-	if len(pei.RepeatPattern) > 0 {
-		data = append(data, asn1.Marshal(0x82, nil, pei.RepeatPattern...)...)
+	// [PRIVATE 2] repeatPattern (0xC2)
+	if pei.RepeatPattern != nil {
+		data = append(data, asn1.Marshal(0xC2, nil, pei.RepeatPattern...)...)
 	}
 
-	// [4] fileDetails
-	if len(pei.FileDetails) > 0 {
-		data = append(data, asn1.Marshal(0x84, nil, pei.FileDetails...)...)
+	// [PRIVATE 3] maximumFileSize (0xC3)
+	if pei.MaximumFileSize != nil {
+		data = append(data, asn1.Marshal(0xC3, nil, pei.MaximumFileSize...)...)
 	}
 
-	// [6] maximumFileSize
-	if len(pei.MaximumFileSize) > 0 {
-		data = append(data, asn1.Marshal(0x86, nil, pei.MaximumFileSize...)...)
+	// [PRIVATE 4] fileDetails (0xC4)
+	if pei.FileDetails != nil {
+		data = append(data, asn1.Marshal(0xC4, nil, pei.FileDetails...)...)
 	}
 
 	return data
@@ -482,25 +507,110 @@ func encodeTelecom(t *TelecomDF) ([]byte, error) {
 	}
 
 	if t.DFTelecom != nil {
-		fdData := encodeFileDescriptor(t.DFTelecom)
-		data = append(data, asn1.Marshal(0xA2, nil, fdData...)...)
+		fileData := encodeFile(t.DFTelecom)
+		data = append(data, asn1.Marshal(0xA2, nil, fileData...)...)
 	}
 
-	// Remaining EF files in tag order
 	efList := []struct {
-		tag byte
+		tag int
 		ef  *ElementaryFile
 	}{
-		{0xA3, t.EF_ARR},
-		{0xA4, t.EF_SUME},
-		{0xA5, t.EF_PSISMSC},
+		{3, t.EF_ARR},
+		{4, t.EF_RMA},
+		{5, t.EF_SUME},
+		{6, t.EF_ICE_DN},
+		{7, t.EF_ICE_FF},
+		{8, t.EF_PSISMSC},
 	}
 
 	for _, item := range efList {
 		if item.ef != nil {
 			efData := encodeElementaryFile(item.ef)
-			data = append(data, asn1.Marshal(item.tag, nil, efData...)...)
+			data = append(data, asn1.MarshalWithFullTag(asn1.ClassContextSpecific, asn1.FormConstructed, item.tag, efData)...)
 		}
+	}
+
+	if t.DFGraphics != nil {
+		fileData := encodeFile(t.DFGraphics)
+		data = append(data, asn1.MarshalWithFullTag(asn1.ClassContextSpecific, asn1.FormConstructed, 9, fileData)...)
+	}
+
+	if t.EF_IMG != nil {
+		efData := encodeElementaryFile(t.EF_IMG)
+		data = append(data, asn1.MarshalWithFullTag(asn1.ClassContextSpecific, asn1.FormConstructed, 10, efData)...)
+	}
+
+	if t.EF_IIDF != nil {
+		efData := encodeElementaryFile(t.EF_IIDF)
+		data = append(data, asn1.MarshalWithFullTag(asn1.ClassContextSpecific, asn1.FormConstructed, 11, efData)...)
+	}
+
+	if t.EF_ICE_Graphics != nil {
+		efData := encodeElementaryFile(t.EF_ICE_Graphics)
+		data = append(data, asn1.MarshalWithFullTag(asn1.ClassContextSpecific, asn1.FormConstructed, 12, efData)...)
+	}
+
+	if t.EF_LaunchSCWS != nil {
+		efData := encodeElementaryFile(t.EF_LaunchSCWS)
+		data = append(data, asn1.MarshalWithFullTag(asn1.ClassContextSpecific, asn1.FormConstructed, 13, efData)...)
+	}
+
+	if t.EF_ICON != nil {
+		efData := encodeElementaryFile(t.EF_ICON)
+		data = append(data, asn1.MarshalWithFullTag(asn1.ClassContextSpecific, asn1.FormConstructed, 14, efData)...)
+	}
+
+	if t.DFPhonebook != nil {
+		fileData := encodeFile(t.DFPhonebook)
+		data = append(data, asn1.MarshalWithFullTag(asn1.ClassContextSpecific, asn1.FormConstructed, 15, fileData)...)
+	}
+
+	efList2 := []struct {
+		tag int
+		ef  *ElementaryFile
+	}{
+		{16, t.EF_PBR},
+		{17, t.EF_EXT1},
+		{18, t.EF_AAS},
+		{19, t.EF_GAS},
+		{20, t.EF_PSC},
+		{21, t.EF_CC},
+		{22, t.EF_PUID},
+		{23, t.EF_IAP},
+		{24, t.EF_ADN},
+	}
+
+	for _, item := range efList2 {
+		if item.ef != nil {
+			efData := encodeElementaryFile(item.ef)
+			data = append(data, asn1.MarshalWithFullTag(asn1.ClassContextSpecific, asn1.FormConstructed, item.tag, efData)...)
+		}
+	}
+
+	// df-mmss can be tag 25 or 36 - for encoding we use the one from decoder or default
+	if t.DFMMSS != nil {
+		fileData := encodeFile(t.DFMMSS)
+		data = append(data, asn1.MarshalWithFullTag(asn1.ClassContextSpecific, asn1.FormConstructed, 25, fileData)...)
+	}
+
+	if t.EF_MLPL != nil {
+		efData := encodeElementaryFile(t.EF_MLPL)
+		data = append(data, asn1.MarshalWithFullTag(asn1.ClassContextSpecific, asn1.FormConstructed, 26, efData)...)
+	}
+
+	if t.EF_MSPL != nil {
+		efData := encodeElementaryFile(t.EF_MSPL)
+		data = append(data, asn1.MarshalWithFullTag(asn1.ClassContextSpecific, asn1.FormConstructed, 27, efData)...)
+	}
+
+	if t.EF_MMSSCONF != nil {
+		efData := encodeElementaryFile(t.EF_MMSSCONF)
+		data = append(data, asn1.MarshalWithFullTag(asn1.ClassContextSpecific, asn1.FormConstructed, 28, efData)...)
+	}
+
+	if t.EF_MMSSID != nil {
+		efData := encodeElementaryFile(t.EF_MMSSID)
+		data = append(data, asn1.MarshalWithFullTag(asn1.ClassContextSpecific, asn1.FormConstructed, 29, efData)...)
 	}
 
 	return data, nil
@@ -509,6 +619,39 @@ func encodeTelecom(t *TelecomDF) ([]byte, error) {
 // ============================================================================
 // USIM [8]
 // ============================================================================
+
+func encodeAdditionalEFs(additional map[string]*ElementaryFile) []byte {
+	var data []byte
+	if len(additional) == 0 {
+		return data
+	}
+
+	keys := make([]string, 0, len(additional))
+	for k := range additional {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	for _, k := range keys {
+		ef := additional[k]
+		if ef == nil {
+			continue
+		}
+
+		tag := 0
+		if strings.HasPrefix(k, "tag_") {
+			tag, _ = strconv.Atoi(k[4:])
+		} else {
+			// Try to find tag from name? For now just skip if no tag
+			continue
+		}
+
+		efData := encodeElementaryFile(ef)
+		data = append(data, asn1.MarshalWithFullTag(asn1.ClassContextSpecific, asn1.FormConstructed, tag, efData)...)
+	}
+
+	return data
+}
 
 func encodeUSIM(u *USIMApplication) ([]byte, error) {
 	var data []byte
@@ -524,31 +667,50 @@ func encodeUSIM(u *USIMApplication) ([]byte, error) {
 	}
 
 	if u.ADFUSIM != nil {
-		fdData := encodeFileDescriptor(u.ADFUSIM)
-		data = append(data, asn1.Marshal(0xA2, nil, fdData...)...)
+		fileData := encodeFile(u.ADFUSIM)
+		data = append(data, asn1.Marshal(0xA2, nil, fileData...)...)
 	}
 
 	// Main EF files
 	efList := []struct {
-		tag byte
+		tag int
 		ef  *ElementaryFile
 	}{
-		{0xA3, u.EF_IMSI},
-		{0xA4, u.EF_ARR},
-		{0xA5, u.EF_Keys},
-		{0xA6, u.EF_KeysPS},
-		{0xA7, u.EF_HPPLMN},
-		{0xA8, u.EF_UST},
-		{0xA9, u.EF_FDN},
-		{0xAA, u.EF_SMS},
+		{3, u.EF_IMSI},
+		{4, u.EF_ARR},
+		{5, u.EF_Keys},
+		{6, u.EF_KeysPS},
+		{7, u.EF_HPPLMN},
+		{8, u.EF_UST},
+		{9, u.EF_FDN},
+		{10, u.EF_SMS},
+		{11, u.EF_SMSP},
+		{12, u.EF_SMSS},
+		{13, u.EF_SPN},
+		{14, u.EF_EST},
+		{15, u.EF_StartHFN},
+		{16, u.EF_Threshold},
+		{17, u.EF_PSLOCI},
+		{18, u.EF_ACC},
+		{19, u.EF_FPLMN},
+		{20, u.EF_LOCI},
+		{21, u.EF_AD},
+		{22, u.EF_ECC},
+		{23, u.EF_NETPAR},
+		{24, u.EF_EPSLOCI},
+		{25, u.EF_EPSNSC},
+		{26, u.EF_WLAN},
+		{27, u.EF_DEB_PK},
 	}
 
 	for _, item := range efList {
 		if item.ef != nil {
 			efData := encodeElementaryFile(item.ef)
-			data = append(data, asn1.Marshal(item.tag, nil, efData...)...)
+			data = append(data, asn1.MarshalWithFullTag(asn1.ClassContextSpecific, asn1.FormConstructed, item.tag, efData)...)
 		}
 	}
+
+	data = append(data, encodeAdditionalEFs(u.AdditionalEFs)...)
 
 	return data, nil
 }
@@ -566,10 +728,103 @@ func encodeOptUSIM(u *OptionalUSIM) ([]byte, error) {
 		data = append(data, asn1.Marshal(0x81, nil, oidData...)...)
 	}
 
-	// Main optional EF
-	if u.EF_LI != nil {
-		efData := encodeElementaryFile(u.EF_LI)
-		data = append(data, asn1.Marshal(0xA2, nil, efData...)...)
+	efFields := []struct {
+		tag int
+		ef  *ElementaryFile
+	}{
+		{2, u.EF_LI},
+		{3, u.EF_ACMAX},
+		{4, u.EF_ACM},
+		{5, u.EF_GID1},
+		{6, u.EF_GID2},
+		{7, u.EF_MSISDN},
+		{8, u.EF_PUCT},
+		{9, u.EF_CBMI},
+		{10, u.EF_CBMID},
+		{11, u.EF_SDN},
+		{12, u.EF_EXT2},
+		{13, u.EF_EXT3},
+		{14, u.EF_CBMIR},
+		{15, u.EF_PLMNWACT},
+		{16, u.EF_OPLMNWACT},
+		{17, u.EF_HPLMNWACT},
+		{18, u.EF_DCK},
+		{19, u.EF_CNL},
+		{20, u.EF_SMSR},
+		{21, u.EF_BDN},
+		{22, u.EF_EXT5},
+		{23, u.EF_CCP2},
+		{24, u.EF_EXT4},
+		{25, u.EF_ACL},
+		{26, u.EF_CMI},
+		{27, u.EF_ICI},
+		{28, u.EF_OCI},
+		{29, u.EF_ICT},
+		{30, u.EF_OCT},
+		{31, u.EF_VGCS},
+		{32, u.EF_VGCSS},
+		{33, u.EF_VBS},
+		{34, u.EF_VBSS},
+		{35, u.EF_EMLPP},
+		{36, u.EF_AAEM},
+		{37, u.EF_HIDDENKEY},
+		{38, u.EF_PNN},
+		{39, u.EF_OPL},
+		{40, u.EF_MBDN},
+		{41, u.EF_EXT6},
+		{42, u.EF_MBI},
+		{43, u.EF_MWIS},
+		{44, u.EF_CFIS},
+		{45, u.EF_EXT7},
+		{46, u.EF_SPDI},
+		{47, u.EF_MMSN},
+		{48, u.EF_EXT8},
+		{49, u.EF_MMSICP},
+		{50, u.EF_MMSUP},
+		{51, u.EF_MMSUCP},
+		{52, u.EF_NIA},
+		{53, u.EF_VGCSCA},
+		{54, u.EF_VBSCA},
+		{55, u.EF_GBABP},
+		{56, u.EF_MSK},
+		{57, u.EF_MUK},
+		{58, u.EF_EHPLMN},
+		{59, u.EF_GBANL},
+		{60, u.EF_EHPLMNPI},
+		{61, u.EF_LRPLMNSI},
+		{62, u.EF_NAFKCA},
+		{63, u.EF_SPNI},
+		{64, u.EF_PNNI},
+		{65, u.EF_NCP_IP},
+		{66, u.EF_UFC},
+		{67, u.EF_NASCONFIG},
+		{68, u.EF_UICCIARI},
+		{69, u.EF_PWS},
+		{70, u.EF_FDNURI},
+		{71, u.EF_BDNURI},
+		{72, u.EF_SDNURI},
+		{73, u.EF_IAL},
+		{74, u.EF_IPS},
+		{75, u.EF_IPD},
+		{76, u.EF_EPDGID},
+		{77, u.EF_EPDGSELECTION},
+		{78, u.EF_EPDGIDEM},
+		{79, u.EF_EPDGSELECTIONEM},
+		{80, u.EF_FROMPREFERRED},
+		{81, u.EF_IMSCONFIGDATA},
+		{82, u.EF_3GPPPSDATAOFF},
+		{83, u.EF_3GPPPSDATAOFFSERVICELIST},
+		{84, u.EF_XCAPCONFIGDATA},
+		{85, u.EF_EARFCNLIST},
+		{86, u.EF_MUDMIDCONFIGDATA},
+		{87, u.EF_EAKA},
+	}
+
+	for _, f := range efFields {
+		if f.ef != nil {
+			efData := encodeElementaryFile(f.ef)
+			data = append(data, asn1.MarshalWithFullTag(asn1.ClassContextSpecific, asn1.FormConstructed, f.tag, efData)...)
+		}
 	}
 
 	return data, nil
@@ -593,28 +848,30 @@ func encodeISIM(i *ISIMApplication) ([]byte, error) {
 	}
 
 	if i.ADFISIM != nil {
-		fdData := encodeFileDescriptor(i.ADFISIM)
-		data = append(data, asn1.Marshal(0xA2, nil, fdData...)...)
+		fileData := encodeFile(i.ADFISIM)
+		data = append(data, asn1.Marshal(0xA2, nil, fileData...)...)
 	}
 
 	efList := []struct {
-		tag byte
+		tag int
 		ef  *ElementaryFile
 	}{
-		{0xA3, i.EF_IMPI},
-		{0xA4, i.EF_IMPU},
-		{0xA5, i.EF_DOMAIN},
-		{0xA6, i.EF_IST},
-		{0xA7, i.EF_AD},
-		{0xA8, i.EF_ARR},
+		{3, i.EF_IMPI},
+		{4, i.EF_IMPU},
+		{5, i.EF_DOMAIN},
+		{6, i.EF_IST},
+		{7, i.EF_AD},
+		{8, i.EF_ARR},
 	}
 
 	for _, item := range efList {
 		if item.ef != nil {
 			efData := encodeElementaryFile(item.ef)
-			data = append(data, asn1.Marshal(item.tag, nil, efData...)...)
+			data = append(data, asn1.MarshalWithFullTag(asn1.ClassContextSpecific, asn1.FormConstructed, item.tag, efData)...)
 		}
 	}
+
+	data = append(data, encodeAdditionalEFs(i.AdditionalEFs)...)
 
 	return data, nil
 }
@@ -630,6 +887,28 @@ func encodeOptISIM(i *OptionalISIM) ([]byte, error) {
 	if len(i.TemplateID) > 0 {
 		oidData := encodeOID(i.TemplateID)
 		data = append(data, asn1.Marshal(0x81, nil, oidData...)...)
+	}
+
+	efFields := []struct {
+		tag int
+		ef  *ElementaryFile
+	}{
+		{2, i.EF_PCSCF},
+		{3, i.EF_GBABP},
+		{4, i.EF_GBANL},
+		{5, i.EF_NASCONFIG},
+		{6, i.EF_UICCIARI},
+		{7, i.EF_3GPPPSDATAOFF},
+		{8, i.EF_3GPPPSDATAOFFSERVICELIST},
+		{9, i.EF_XCAPCONFIGDATA},
+		{10, i.EF_EAKA},
+	}
+
+	for _, f := range efFields {
+		if f.ef != nil {
+			efData := encodeElementaryFile(f.ef)
+			data = append(data, asn1.MarshalWithFullTag(asn1.ClassContextSpecific, asn1.FormConstructed, f.tag, efData)...)
+		}
 	}
 
 	return data, nil
@@ -653,14 +932,58 @@ func encodeCSIM(c *CSIMApplication) ([]byte, error) {
 	}
 
 	if c.ADFCSIM != nil {
-		fdData := encodeFileDescriptor(c.ADFCSIM)
-		data = append(data, asn1.Marshal(0xA2, nil, fdData...)...)
+		fileData := encodeFile(c.ADFCSIM)
+		data = append(data, asn1.Marshal(0xA2, nil, fileData...)...)
 	}
 
-	if c.EF_ARR != nil {
-		efData := encodeElementaryFile(c.EF_ARR)
-		data = append(data, asn1.Marshal(0xA3, nil, efData...)...)
+	efFields := []struct {
+		tag int
+		ef  *ElementaryFile
+	}{
+		{3, c.EF_ARR},
+		{4, c.EF_CallCount},
+		{5, c.EF_IMSI_M},
+		{6, c.EF_IMSI_T},
+		{7, c.EF_TMSI},
+		{8, c.EF_AH},
+		{9, c.EF_AOP},
+		{10, c.EF_ALOC},
+		{11, c.EF_CDMAHOME},
+		{12, c.EF_ZNREGI},
+		{13, c.EF_SNREGI},
+		{14, c.EF_DISTREGI},
+		{15, c.EF_ACCOLC},
+		{16, c.EF_TERM},
+		{17, c.EF_ACP},
+		{18, c.EF_PRL},
+		{19, c.EF_RUIMID},
+		{20, c.EF_CSIM_ST},
+		{21, c.EF_SPC},
+		{22, c.EF_OTAPASPC},
+		{23, c.EF_NAMLOCK},
+		{24, c.EF_OTA},
+		{25, c.EF_SP},
+		{26, c.EF_ESN_MEID_ME},
+		{27, c.EF_LI},
+		{28, c.EF_USGIND},
+		{29, c.EF_AD},
+		{30, c.EF_MAX_PRL},
+		{31, c.EF_SPCS},
+		{32, c.EF_MECRP},
+		{33, c.EF_HOME_TAG},
+		{34, c.EF_GROUP_TAG},
+		{35, c.EF_SPECIFIC_TAG},
+		{36, c.EF_CALL_PROMPT},
 	}
+
+	for _, f := range efFields {
+		if f.ef != nil {
+			efData := encodeElementaryFile(f.ef)
+			data = append(data, asn1.MarshalWithFullTag(asn1.ClassContextSpecific, asn1.FormConstructed, f.tag, efData)...)
+		}
+	}
+
+	data = append(data, encodeAdditionalEFs(c.AdditionalEFs)...)
 
 	return data, nil
 }
@@ -676,6 +999,65 @@ func encodeOptCSIM(c *OptionalCSIM) ([]byte, error) {
 	if len(c.TemplateID) > 0 {
 		oidData := encodeOID(c.TemplateID)
 		data = append(data, asn1.Marshal(0x81, nil, oidData...)...)
+	}
+
+	efFields := []struct {
+		tag int
+		ef  *ElementaryFile
+	}{
+		{2, c.EF_SSCI},
+		{3, c.EF_FDN},
+		{4, c.EF_SMS},
+		{5, c.EF_SMSP},
+		{6, c.EF_SMSS},
+		{7, c.EF_SSFC},
+		{8, c.EF_SPN},
+		{9, c.EF_MDN},
+		{10, c.EF_ECC},
+		{11, c.EF_ME3GPDOPC},
+		{12, c.EF_3GPDOPM},
+		{13, c.EF_SIPCAP},
+		{14, c.EF_MIPCAP},
+		{15, c.EF_SIPUPP},
+		{16, c.EF_MIPUPP},
+		{17, c.EF_SIPSP},
+		{18, c.EF_MIPSP},
+		{19, c.EF_SIPPAPSS},
+		{20, c.EF_PUZL},
+		{21, c.EF_MAX_PUZL},
+		{22, c.EF_HRPDCAP},
+		{23, c.EF_HRPDUPP},
+		{24, c.EF_CSSPR},
+		{25, c.EF_ATC},
+		{26, c.EF_EPRL},
+		{30, c.EF_BCSMSP},
+		{33, c.EF_MMSN},
+		{34, c.EF_EXT8},
+		{35, c.EF_MMSICP},
+		{36, c.EF_MMSUP},
+		{37, c.EF_MMSUCP},
+		{39, c.EF_3GCIK},
+		{41, c.EF_GID1},
+		{42, c.EF_GID2},
+		{44, c.EF_SF_EUIMID},
+		{45, c.EF_EST},
+		{46, c.EF_HIDDEN_KEY},
+		{49, c.EF_SDN},
+		{50, c.EF_EXT2},
+		{51, c.EF_EXT3},
+		{52, c.EF_ICI},
+		{53, c.EF_OCI},
+		{54, c.EF_EXT5},
+		{55, c.EF_CCP2},
+		{57, c.EF_MODEL},
+		{58, c.EF_MEIDME},
+	}
+
+	for _, f := range efFields {
+		if f.ef != nil {
+			efData := encodeElementaryFile(f.ef)
+			data = append(data, asn1.MarshalWithFullTag(asn1.ClassContextSpecific, asn1.FormConstructed, f.tag, efData)...)
+		}
 	}
 
 	return data, nil
@@ -699,8 +1081,8 @@ func encodeGSMAccess(g *GSMAccessDF) ([]byte, error) {
 	}
 
 	if g.DFGSMAccess != nil {
-		fdData := encodeFileDescriptor(g.DFGSMAccess)
-		data = append(data, asn1.Marshal(0xA2, nil, fdData...)...)
+		fileData := encodeFile(g.DFGSMAccess)
+		data = append(data, asn1.Marshal(0xA2, nil, fileData...)...)
 	}
 
 	efList := []struct {
@@ -741,8 +1123,30 @@ func encodeDF5GS(d *DF5GS) ([]byte, error) {
 	}
 
 	if d.DFDF5GS != nil {
-		fdData := encodeFileDescriptor(d.DFDF5GS)
-		data = append(data, asn1.Marshal(0xA2, nil, fdData...)...)
+		fileData := encodeFile(d.DFDF5GS)
+		data = append(data, asn1.Marshal(0xA2, nil, fileData...)...)
+	}
+
+	efFields := []struct {
+		tag int
+		ef  *ElementaryFile
+	}{
+		{3, d.EF_5GS3GPPLOCI},
+		{4, d.EF_5GSN3GPPLOCI},
+		{5, d.EF_5GS3GPPNSC},
+		{6, d.EF_5GSN3GPPNSC},
+		{7, d.EF_5GAUTHKEYS},
+		{8, d.EF_UAC_AIC},
+		{9, d.EF_SUCI_CALC_INFO},
+		{10, d.EF_OPL5G},
+		{12, d.EF_ROUTING_INDICATOR},
+	}
+
+	for _, f := range efFields {
+		if f.ef != nil {
+			efData := encodeElementaryFile(f.ef)
+			data = append(data, asn1.MarshalWithFullTag(asn1.ClassContextSpecific, asn1.FormConstructed, f.tag, efData)...)
+		}
 	}
 
 	return data, nil
@@ -766,8 +1170,8 @@ func encodeDFSAIP(d *DFSAIP) ([]byte, error) {
 	}
 
 	if d.DFDFSAIP != nil {
-		fdData := encodeFileDescriptor(d.DFDFSAIP)
-		data = append(data, asn1.Marshal(0xA2, nil, fdData...)...)
+		fileData := encodeFile(d.DFDFSAIP)
+		data = append(data, asn1.Marshal(0xA2, nil, fileData...)...)
 	}
 
 	if d.EF_SUCI_CALC_INFO_USIM != nil {
@@ -856,7 +1260,15 @@ func encodeAlgoConfiguration(ac *AlgoConfiguration) []byte {
 		data = append(data, asn1.Marshal(0x86, nil, encodeInteger(ac.NumberOfKeccak)...)...)
 	}
 
-	return data
+	// Wrap in CHOICE based on algorithm type
+	// For simplicity, we assume Milenage/USIMTestAlgorithm uses [0]
+	// and Tuak uses [1]
+	choiceTag := byte(0xA0) // [0] milenage
+	if ac.AlgorithmID == AlgoTUAK {
+		choiceTag = 0xA1 // [1] tuak
+	}
+
+	return asn1.Marshal(choiceTag, nil, data...)
 }
 
 // ============================================================================
@@ -932,9 +1344,9 @@ func encodeFileManagementCMD(cmd FileManagementCMD) []byte {
 				data = append(data, asn1.Marshal(0x62, nil, fdData...)...)
 			}
 		case 2: // fillFileContent
-			data = append(data, asn1.Marshal(0x82, nil, item.FillFileContent...)...)
+			data = append(data, asn1.Marshal(0x81, nil, item.FillFileContent...)...)
 		case 3: // fillFileOffset
-			data = append(data, asn1.Marshal(0x83, nil, encodeInteger(item.FillFileOffset)...)...)
+			data = append(data, asn1.Marshal(0x82, nil, encodeInteger(item.FillFileOffset)...)...)
 		}
 	}
 
@@ -968,7 +1380,11 @@ func encodeSecurityDomain(sd *SecurityDomain) ([]byte, error) {
 	}
 
 	if len(sd.SDPersoData) > 0 {
-		data = append(data, asn1.Marshal(0xA3, nil, sd.SDPersoData...)...)
+		var persoData []byte
+		for _, data := range sd.SDPersoData {
+			persoData = append(persoData, asn1.Marshal(0x04, nil, data...)...)
+		}
+		data = append(data, asn1.Marshal(0xA3, nil, persoData...)...)
 	}
 
 	return data, nil
@@ -977,31 +1393,34 @@ func encodeSecurityDomain(sd *SecurityDomain) ([]byte, error) {
 func encodeSDInstance(inst *SDInstance) []byte {
 	var data []byte
 
+	// [APPLICATION 15] fields in order (0x4F)
 	if len(inst.ApplicationLoadPackageAID) > 0 {
-		data = append(data, asn1.Marshal(0x80, nil, inst.ApplicationLoadPackageAID...)...)
+		data = append(data, asn1.Marshal(0x4F, nil, inst.ApplicationLoadPackageAID...)...)
 	}
-
 	if len(inst.ClassAID) > 0 {
-		data = append(data, asn1.Marshal(0x81, nil, inst.ClassAID...)...)
+		data = append(data, asn1.Marshal(0x4F, nil, inst.ClassAID...)...)
 	}
-
 	if len(inst.InstanceAID) > 0 {
-		data = append(data, asn1.Marshal(0x82, nil, inst.InstanceAID...)...)
+		data = append(data, asn1.Marshal(0x4F, nil, inst.InstanceAID...)...)
 	}
 
+	// [2] applicationPrivileges (0x82)
 	if len(inst.ApplicationPrivileges) > 0 {
-		data = append(data, asn1.Marshal(0x83, nil, inst.ApplicationPrivileges...)...)
+		data = append(data, asn1.Marshal(0x82, nil, inst.ApplicationPrivileges...)...)
 	}
 
-	data = append(data, asn1.Marshal(0x84, nil, inst.LifeCycleState)...)
+	// [3] lifeCycleState (0x83)
+	data = append(data, asn1.Marshal(0x83, nil, inst.LifeCycleState)...)
 
+	// [PRIVATE 9] applicationSpecificParametersC9 (0xC9)
 	if len(inst.ApplicationSpecificParamsC9) > 0 {
-		data = append(data, asn1.Marshal(0x85, nil, inst.ApplicationSpecificParamsC9...)...)
+		data = append(data, asn1.Marshal(0xC9, nil, inst.ApplicationSpecificParamsC9...)...)
 	}
 
+	// [PRIVATE 10] CONSTRUCTED applicationParameters (0xEA)
 	if inst.ApplicationParameters != nil {
 		apData := encodeApplicationParameters(inst.ApplicationParameters)
-		data = append(data, asn1.Marshal(0xA6, nil, apData...)...)
+		data = append(data, asn1.Marshal(0xEA, nil, apData...)...)
 	}
 
 	return data
@@ -1020,18 +1439,26 @@ func encodeApplicationParameters(ap *ApplicationParameters) []byte {
 func encodeSDKey(key SDKey) []byte {
 	var data []byte
 
-	data = append(data, asn1.Marshal(0x80, nil, key.KeyUsageQualifier)...)
-	data = append(data, asn1.Marshal(0x81, nil, key.KeyAccess)...)
+	// [21] keyUsageQualifier (0x95 = context-specific primitive 21)
+	data = append(data, asn1.Marshal(0x95, nil, key.KeyUsageQualifier)...)
+
+	// [22] keyAccess (0x96 = context-specific primitive 22)
+	data = append(data, asn1.Marshal(0x96, nil, key.KeyAccess)...)
+
+	// [2] keyIdentifier (0x82)
 	data = append(data, asn1.Marshal(0x82, nil, key.KeyIdentifier)...)
+
+	// [3] keyVersionNumber (0x83)
 	data = append(data, asn1.Marshal(0x83, nil, key.KeyVersionNumber)...)
 
+	// keyCompontents - SEQUENCE
 	if len(key.KeyCompontents) > 0 {
 		var compData []byte
 		for _, comp := range key.KeyCompontents {
 			cd := encodeKeyComponent(comp)
 			compData = append(compData, asn1.Marshal(0x30, nil, cd...)...)
 		}
-		data = append(data, asn1.Marshal(0xA4, nil, compData...)...)
+		data = append(data, asn1.Marshal(0x30, nil, compData...)...)
 	}
 
 	return data
@@ -1040,14 +1467,17 @@ func encodeSDKey(key SDKey) []byte {
 func encodeKeyComponent(kc KeyComponent) []byte {
 	var data []byte
 
+	// [0] keyType
 	data = append(data, asn1.Marshal(0x80, nil, kc.KeyType)...)
 
+	// [6] keyData
 	if len(kc.KeyData) > 0 {
-		data = append(data, asn1.Marshal(0x81, nil, kc.KeyData...)...)
+		data = append(data, asn1.Marshal(0x86, nil, kc.KeyData...)...)
 	}
 
+	// [7] macLength
 	if kc.MACLength > 0 {
-		data = append(data, asn1.Marshal(0x82, nil, encodeInteger(kc.MACLength)...)...)
+		data = append(data, asn1.Marshal(0x87, nil, encodeInteger(kc.MACLength)...)...)
 	}
 
 	return data
@@ -1066,7 +1496,7 @@ func encodeRFM(rfm *RFMConfig) ([]byte, error) {
 	}
 
 	if len(rfm.InstanceAID) > 0 {
-		data = append(data, asn1.Marshal(0x81, nil, rfm.InstanceAID...)...)
+		data = append(data, asn1.MarshalWithFullTag(asn1.ClassApplication, asn1.FormPrimitive, 15, rfm.InstanceAID)...)
 	}
 
 	if len(rfm.TARList) > 0 {
@@ -1074,16 +1504,19 @@ func encodeRFM(rfm *RFMConfig) ([]byte, error) {
 		for _, tar := range rfm.TARList {
 			tarData = append(tarData, asn1.Marshal(0x04, nil, tar...)...)
 		}
-		data = append(data, asn1.Marshal(0xA2, nil, tarData...)...)
+		data = append(data, asn1.Marshal(0xA0, nil, tarData...)...)
 	}
 
-	data = append(data, asn1.Marshal(0x83, nil, rfm.MinimumSecurityLevel)...)
-	data = append(data, asn1.Marshal(0x84, nil, rfm.UICCAccessDomain)...)
-	data = append(data, asn1.Marshal(0x85, nil, rfm.UICCAdminAccessDomain)...)
+	if rfm.MinimumSecurityLevel != 0 {
+		data = append(data, asn1.Marshal(0x81, nil, rfm.MinimumSecurityLevel)...)
+	}
+
+	data = append(data, asn1.Marshal(0x04, nil, rfm.UICCAccessDomain)...)
+	data = append(data, asn1.Marshal(0x04, nil, rfm.UICCAdminAccessDomain)...)
 
 	if rfm.ADFRFMAccess != nil {
 		accData := encodeADFRFMAccess(rfm.ADFRFMAccess)
-		data = append(data, asn1.Marshal(0xA6, nil, accData...)...)
+		data = append(data, asn1.MarshalWithFullTag(asn1.ClassUniversal, asn1.FormConstructed, 16, accData)...)
 	}
 
 	return data, nil
@@ -1215,9 +1648,10 @@ func encodeApplicationInstance(inst *ApplicationInstance) []byte {
 		data = append(data, asn1.Marshal(0xCF, nil, inst.SystemSpecificParams...)...)
 	}
 
-	// [PRIVATE 10] applicationParameters (0xCA)
-	if len(inst.ApplicationParameters) > 0 {
-		data = append(data, asn1.Marshal(0xCA, nil, inst.ApplicationParameters...)...)
+	// [PRIVATE 10] applicationParameters (0xEA)
+	if inst.ApplicationParameters != nil {
+		apData := encodeApplicationParameters(inst.ApplicationParameters)
+		data = append(data, asn1.Marshal(0xEA, nil, apData...)...)
 	}
 
 	// processData - SEQUENCE OF OCTET STRING

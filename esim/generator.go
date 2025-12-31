@@ -26,9 +26,9 @@ func GenerateValueNotationFile(p *Profile, filename string) error {
 
 // Generator generates ASN.1 Value Notation text
 type Generator struct {
-	sb        *strings.Builder
-	indent    int
-	valueNum  int
+	sb       *strings.Builder
+	indent   int
+	valueNum int
 }
 
 func (g *Generator) write(s string) {
@@ -38,7 +38,7 @@ func (g *Generator) write(s string) {
 func (g *Generator) writeLine(s string) {
 	g.writeIndent()
 	g.sb.WriteString(s)
-	g.sb.WriteString("\n")
+	g.sb.WriteString("\r\n")
 }
 
 func (g *Generator) writeIndent() {
@@ -119,7 +119,7 @@ func (g *Generator) generateProfileElement(elem *ProfileElement, num int) {
 	case TagEnd:
 		g.generateEnd(elem.Value.(*EndElement))
 	default:
-		g.write("{\n}\n")
+		g.write("{\r\n}\r\n")
 	}
 }
 
@@ -177,7 +177,7 @@ func getChoiceFromTag(tag int) string {
 // ============================================================================
 
 func (g *Generator) generateProfileHeader(h *ProfileHeader) {
-	g.write("{\n")
+	g.write("{\r\n")
 	g.indent++
 
 	fields := make([]string, 0)
@@ -190,6 +190,10 @@ func (g *Generator) generateProfileHeader(h *ProfileHeader) {
 
 	if len(h.ICCID) > 0 {
 		fields = append(fields, fmt.Sprintf("iccid %s", g.formatHex(h.ICCID)))
+	}
+
+	if len(h.POL) > 0 {
+		fields = append(fields, fmt.Sprintf("pol %s", g.formatHex(h.POL)))
 	}
 
 	if h.MandatoryServices != nil {
@@ -208,7 +212,7 @@ func (g *Generator) generateProfileHeader(h *ProfileHeader) {
 
 func (g *Generator) sgenerateMandatoryServices(ms *MandatoryServices) string {
 	var sb strings.Builder
-	sb.WriteString("eUICC-Mandatory-services {\n")
+	sb.WriteString("eUICC-Mandatory-services {\r\n")
 	g.indent++
 
 	fields := make([]string, 0)
@@ -245,7 +249,7 @@ func (g *Generator) sgenerateMandatoryServices(ms *MandatoryServices) string {
 		if i < len(fields)-1 {
 			sb.WriteString(",")
 		}
-		sb.WriteString("\n")
+		sb.WriteString("\r\n")
 	}
 
 	g.indent--
@@ -258,7 +262,7 @@ func (g *Generator) sgenerateMandatoryServices(ms *MandatoryServices) string {
 
 func (g *Generator) sgenerateOIDList(name string, oids []OID) string {
 	var sb strings.Builder
-	sb.WriteString(name + " {\n")
+	sb.WriteString(name + " {\r\n")
 	g.indent++
 
 	for i, oid := range oids {
@@ -273,7 +277,7 @@ func (g *Generator) sgenerateOIDList(name string, oids []OID) string {
 		if i < len(oids)-1 {
 			sb.WriteString(",")
 		}
-		sb.WriteString("\n")
+		sb.WriteString("\r\n")
 	}
 
 	g.indent--
@@ -297,7 +301,7 @@ func (g *Generator) generateOID(oid OID) string {
 // ============================================================================
 
 func (g *Generator) generateMasterFile(mf *MasterFile) {
-	g.write("{\n")
+	g.write("{\r\n")
 	g.indent++
 
 	fields := make([]string, 0)
@@ -341,7 +345,7 @@ func (g *Generator) generateMasterFile(mf *MasterFile) {
 
 func (g *Generator) sgenerateElementHeader(name string, eh *ElementHeader) string {
 	var sb strings.Builder
-	sb.WriteString(name + " {\n")
+	sb.WriteString(name + " {\r\n")
 	g.indent++
 
 	fields := make([]string, 0)
@@ -358,7 +362,7 @@ func (g *Generator) sgenerateElementHeader(name string, eh *ElementHeader) strin
 		if i < len(fields)-1 {
 			sb.WriteString(",")
 		}
-		sb.WriteString("\n")
+		sb.WriteString("\r\n")
 	}
 
 	g.indent--
@@ -376,13 +380,14 @@ func (g *Generator) generateElementHeader(name string, eh *ElementHeader) {
 func (g *Generator) generateFileDescriptorWrapper(name string, fd *FileDescriptor) {
 	g.writeLine(name + " {")
 	g.indent++
-	g.generateFileDescriptorInner("fileDescriptor", fd)
+	g.writeLine(g.sgenerateFileDescriptorInner("fileDescriptor", fd))
 	g.indent--
 	g.writeLine("}")
 }
 
-func (g *Generator) generateFileDescriptorInner(name string, fd *FileDescriptor) {
-	g.writeLine(name + " : {")
+func (g *Generator) sgenerateFileDescriptorInner(name string, fd *FileDescriptor) string {
+	var sb strings.Builder
+	sb.WriteString(name + " : {\r\n")
 	g.indent++
 
 	fields := make([]string, 0)
@@ -417,15 +422,28 @@ func (g *Generator) generateFileDescriptorInner(name string, fd *FileDescriptor)
 		fields = append(fields, g.sgenerateProprietaryEFInfo(fd.ProprietaryEFInfo))
 	}
 
-	g.writeFields(fields)
+	for i, f := range fields {
+		for j := 0; j < g.indent; j++ {
+			sb.WriteString("  ")
+		}
+		sb.WriteString(f)
+		if i < len(fields)-1 {
+			sb.WriteString(",")
+		}
+		sb.WriteString("\r\n")
+	}
 
 	g.indent--
-	g.writeLine("}")
+	for j := 0; j < g.indent; j++ {
+		sb.WriteString("  ")
+	}
+	sb.WriteString("}")
+	return sb.String()
 }
 
 func (g *Generator) sgenerateProprietaryEFInfo(pei *ProprietaryEFInfo) string {
 	var sb strings.Builder
-	sb.WriteString("proprietaryEFInfo {\n")
+	sb.WriteString("proprietaryEFInfo {\r\n")
 	g.indent++
 
 	fields := make([]string, 0)
@@ -454,7 +472,7 @@ func (g *Generator) sgenerateProprietaryEFInfo(pei *ProprietaryEFInfo) string {
 		if i < len(fields)-1 {
 			sb.WriteString(",")
 		}
-		sb.WriteString("\n")
+		sb.WriteString("\r\n")
 	}
 
 	g.indent--
@@ -507,68 +525,12 @@ func (g *Generator) generateElementaryFile(name string, ef *ElementaryFile) {
 	g.writeLine("}")
 }
 
-func (g *Generator) sgenerateFileDescriptorInner(name string, fd *FileDescriptor) string {
-	var sb strings.Builder
-	sb.WriteString(name + " : {\n")
-	g.indent++
-
-	fields := make([]string, 0)
-	if len(fd.FileDescriptor) > 0 {
-		fields = append(fields, fmt.Sprintf("fileDescriptor %s", g.formatHex(fd.FileDescriptor)))
-	}
-	if len(fd.FileID) > 0 {
-		fields = append(fields, fmt.Sprintf("fileID %s", g.formatHex(fd.FileID)))
-	}
-	if len(fd.DFName) > 0 {
-		fields = append(fields, fmt.Sprintf("dfName %s", g.formatHex(fd.DFName)))
-	}
-	if len(fd.LCSI) > 0 {
-		fields = append(fields, fmt.Sprintf("lcsi %s", g.formatHex(fd.LCSI)))
-	}
-	if len(fd.SecurityAttributesReferenced) > 0 {
-		fields = append(fields, fmt.Sprintf("securityAttributesReferenced %s", g.formatHex(fd.SecurityAttributesReferenced)))
-	}
-	if len(fd.EFFileSize) > 0 {
-		fields = append(fields, fmt.Sprintf("efFileSize %s", g.formatHex(fd.EFFileSize)))
-	}
-	if fd.ShortEFID != nil {
-		fields = append(fields, fmt.Sprintf("shortEFID %s", g.formatHex(fd.ShortEFID)))
-	}
-	if len(fd.PinStatusTemplateDO) > 0 {
-		fields = append(fields, fmt.Sprintf("pinStatusTemplateDO %s", g.formatHex(fd.PinStatusTemplateDO)))
-	}
-	if len(fd.LinkPath) > 0 {
-		fields = append(fields, fmt.Sprintf("linkPath %s", g.formatHex(fd.LinkPath)))
-	}
-	if fd.ProprietaryEFInfo != nil {
-		fields = append(fields, g.sgenerateProprietaryEFInfo(fd.ProprietaryEFInfo))
-	}
-
-	for i, f := range fields {
-		for j := 0; j < g.indent; j++ {
-			sb.WriteString("  ")
-		}
-		sb.WriteString(f)
-		if i < len(fields)-1 {
-			sb.WriteString(",")
-		}
-		sb.WriteString("\n")
-	}
-
-	g.indent--
-	for j := 0; j < g.indent; j++ {
-		sb.WriteString("  ")
-	}
-	sb.WriteString("}")
-	return sb.String()
-}
-
 // ============================================================================
 // PUK/PIN Codes generator
 // ============================================================================
 
 func (g *Generator) generatePUKCodes(puk *PUKCodes) {
-	g.write("{\n")
+	g.write("{\r\n")
 	g.indent++
 
 	fields := make([]string, 0)
@@ -578,14 +540,14 @@ func (g *Generator) generatePUKCodes(puk *PUKCodes) {
 
 	if len(puk.Codes) > 0 {
 		var sb strings.Builder
-		sb.WriteString("pukCodes {\n")
+		sb.WriteString("pukCodes {\r\n")
 		g.indent++
 
 		for i, code := range puk.Codes {
 			for j := 0; j < g.indent; j++ {
 				sb.WriteString("  ")
 			}
-			sb.WriteString("{\n")
+			sb.WriteString("{\r\n")
 			g.indent++
 
 			cfields := make([]string, 0)
@@ -601,7 +563,7 @@ func (g *Generator) generatePUKCodes(puk *PUKCodes) {
 				if j < len(cfields)-1 {
 					sb.WriteString(",")
 				}
-				sb.WriteString("\n")
+				sb.WriteString("\r\n")
 			}
 
 			g.indent--
@@ -612,7 +574,7 @@ func (g *Generator) generatePUKCodes(puk *PUKCodes) {
 			if i < len(puk.Codes)-1 {
 				sb.WriteString(",")
 			}
-			sb.WriteString("\n")
+			sb.WriteString("\r\n")
 		}
 
 		g.indent--
@@ -630,7 +592,7 @@ func (g *Generator) generatePUKCodes(puk *PUKCodes) {
 }
 
 func (g *Generator) generatePINCodes(pin *PINCodes) {
-	g.write("{\n")
+	g.write("{\r\n")
 	g.indent++
 
 	fields := make([]string, 0)
@@ -640,14 +602,14 @@ func (g *Generator) generatePINCodes(pin *PINCodes) {
 
 	if len(pin.Configs) > 0 {
 		var sb strings.Builder
-		sb.WriteString("pinCodes pinconfig : {\n")
+		sb.WriteString("pinCodes pinconfig : {\r\n")
 		g.indent++
 
 		for i, config := range pin.Configs {
 			for j := 0; j < g.indent; j++ {
 				sb.WriteString("  ")
 			}
-			sb.WriteString("{\n")
+			sb.WriteString("{\r\n")
 			g.indent++
 
 			cfields := make([]string, 0)
@@ -667,7 +629,7 @@ func (g *Generator) generatePINCodes(pin *PINCodes) {
 				if j < len(cfields)-1 {
 					sb.WriteString(",")
 				}
-				sb.WriteString("\n")
+				sb.WriteString("\r\n")
 			}
 
 			g.indent--
@@ -678,7 +640,7 @@ func (g *Generator) generatePINCodes(pin *PINCodes) {
 			if i < len(pin.Configs)-1 {
 				sb.WriteString(",")
 			}
-			sb.WriteString("\n")
+			sb.WriteString("\r\n")
 		}
 
 		g.indent--
@@ -723,7 +685,7 @@ func (g *Generator) getKeyRefName(ref byte, isPUK bool) string {
 // ============================================================================
 
 func (g *Generator) generateTelecom(t *TelecomDF) {
-	g.write("{\n")
+	g.write("{\r\n")
 	g.indent++
 
 	fields := make([]string, 0)
@@ -799,7 +761,7 @@ func (g *Generator) generateTelecom(t *TelecomDF) {
 // ============================================================================
 
 func (g *Generator) generateUSIM(u *USIMApplication) {
-	g.write("{\n")
+	g.write("{\r\n")
 	g.indent++
 
 	fields := make([]string, 0)
@@ -859,13 +821,13 @@ func (g *Generator) generateUSIM(u *USIMApplication) {
 
 func (g *Generator) sgenerateFileDescriptorWrapper(name string, fd *FileDescriptor) string {
 	var sb strings.Builder
-	sb.WriteString(name + " {\n")
+	sb.WriteString(name + " {\r\n")
 	g.indent++
 	for j := 0; j < g.indent; j++ {
 		sb.WriteString("  ")
 	}
 	sb.WriteString(g.sgenerateFileDescriptorInner("fileDescriptor", fd))
-	sb.WriteString("\n")
+	sb.WriteString("\r\n")
 	g.indent--
 	for j := 0; j < g.indent; j++ {
 		sb.WriteString("  ")
@@ -876,7 +838,7 @@ func (g *Generator) sgenerateFileDescriptorWrapper(name string, fd *FileDescript
 
 func (g *Generator) sgenerateElementaryFile(name string, ef *ElementaryFile) string {
 	var sb strings.Builder
-	sb.WriteString(name + " {\n")
+	sb.WriteString(name + " {\r\n")
 	g.indent++
 
 	fields := make([]string, 0)
@@ -919,7 +881,7 @@ func (g *Generator) sgenerateElementaryFile(name string, ef *ElementaryFile) str
 		if i < len(fields)-1 {
 			sb.WriteString(",")
 		}
-		sb.WriteString("\n")
+		sb.WriteString("\r\n")
 	}
 
 	g.indent--
@@ -931,7 +893,7 @@ func (g *Generator) sgenerateElementaryFile(name string, ef *ElementaryFile) str
 }
 
 func (g *Generator) generateOptUSIM(u *OptionalUSIM) {
-	g.write("{\n")
+	g.write("{\r\n")
 	g.indent++
 
 	fields := make([]string, 0)
@@ -1052,7 +1014,7 @@ func (g *Generator) generateOptUSIM(u *OptionalUSIM) {
 // ============================================================================
 
 func (g *Generator) generateISIM(i *ISIMApplication) {
-	g.write("{\n")
+	g.write("{\r\n")
 	g.indent++
 
 	fields := make([]string, 0)
@@ -1092,7 +1054,7 @@ func (g *Generator) generateISIM(i *ISIMApplication) {
 }
 
 func (g *Generator) generateOptISIM(i *OptionalISIM) {
-	g.write("{\n")
+	g.write("{\r\n")
 	g.indent++
 
 	fields := make([]string, 0)
@@ -1148,7 +1110,7 @@ func (g *Generator) generateOptISIM(i *OptionalISIM) {
 // ============================================================================
 
 func (g *Generator) generateCSIM(c *CSIMApplication) {
-	g.write("{\n")
+	g.write("{\r\n")
 	g.indent++
 
 	fields := make([]string, 0)
@@ -1216,7 +1178,7 @@ func (g *Generator) generateCSIM(c *CSIMApplication) {
 }
 
 func (g *Generator) generateOptCSIM(c *OptionalCSIM) {
-	g.write("{\n")
+	g.write("{\r\n")
 	g.indent++
 
 	fields := make([]string, 0)
@@ -1293,7 +1255,7 @@ func (g *Generator) generateOptCSIM(c *OptionalCSIM) {
 // ============================================================================
 
 func (g *Generator) generateGSMAccess(gsm *GSMAccessDF) {
-	g.write("{\n")
+	g.write("{\r\n")
 	g.indent++
 
 	fields := make([]string, 0)
@@ -1335,7 +1297,7 @@ func (g *Generator) generateGSMAccess(gsm *GSMAccessDF) {
 // ============================================================================
 
 func (g *Generator) generateDF5GS(d *DF5GS) {
-	g.write("{\n")
+	g.write("{\r\n")
 	g.indent++
 
 	fields := make([]string, 0)
@@ -1382,7 +1344,7 @@ func (g *Generator) generateDF5GS(d *DF5GS) {
 // ============================================================================
 
 func (g *Generator) generateDFSAIP(d *DFSAIP) {
-	g.write("{\n")
+	g.write("{\r\n")
 	g.indent++
 
 	fields := make([]string, 0)
@@ -1412,7 +1374,7 @@ func (g *Generator) generateDFSAIP(d *DFSAIP) {
 // ============================================================================
 
 func (g *Generator) generateAKAParameter(aka *AKAParameter) {
-	g.write("{\n")
+	g.write("{\r\n")
 	g.indent++
 
 	fields := make([]string, 0)
@@ -1444,7 +1406,7 @@ func (g *Generator) generateAKAParameter(aka *AKAParameter) {
 
 func (g *Generator) sgenerateAlgoConfiguration(ac *AlgoConfiguration) string {
 	var sb strings.Builder
-	sb.WriteString("algoConfiguration algoParameter : {\n")
+	sb.WriteString("algoConfiguration algoParameter : {\r\n")
 	g.indent++
 
 	fields := make([]string, 0)
@@ -1475,7 +1437,7 @@ func (g *Generator) sgenerateAlgoConfiguration(ac *AlgoConfiguration) string {
 		if i < len(fields)-1 {
 			sb.WriteString(",")
 		}
-		sb.WriteString("\n")
+		sb.WriteString("\r\n")
 	}
 
 	g.indent--
@@ -1488,7 +1450,7 @@ func (g *Generator) sgenerateAlgoConfiguration(ac *AlgoConfiguration) string {
 
 func (g *Generator) sgenerateSQNInit(sqns [][]byte) string {
 	var sb strings.Builder
-	sb.WriteString("sqnInit {\n")
+	sb.WriteString("sqnInit {\r\n")
 	g.indent++
 	for i, sqn := range sqns {
 		for j := 0; j < g.indent; j++ {
@@ -1498,7 +1460,7 @@ func (g *Generator) sgenerateSQNInit(sqns [][]byte) string {
 		if i < len(sqns)-1 {
 			sb.WriteString(",")
 		}
-		sb.WriteString("\n")
+		sb.WriteString("\r\n")
 	}
 	g.indent--
 	for j := 0; j < g.indent; j++ {
@@ -1526,7 +1488,7 @@ func (g *Generator) getAlgorithmIDName(id AlgorithmID) string {
 // ============================================================================
 
 func (g *Generator) generateCDMAParameter(cdma *CDMAParameter) {
-	g.write("{\n")
+	g.write("{\r\n")
 	g.indent++
 
 	fields := make([]string, 0)
@@ -1560,7 +1522,7 @@ func (g *Generator) generateCDMAParameter(cdma *CDMAParameter) {
 // ============================================================================
 
 func (g *Generator) generateGenericFileManagement(gfm *GenericFileManagement) {
-	g.write("{\n")
+	g.write("{\r\n")
 	g.indent++
 
 	fields := make([]string, 0)
@@ -1570,14 +1532,14 @@ func (g *Generator) generateGenericFileManagement(gfm *GenericFileManagement) {
 
 	if len(gfm.FileManagementCMDs) > 0 {
 		var sb strings.Builder
-		sb.WriteString("fileManagementCMD {\n")
+		sb.WriteString("fileManagementCMD {\r\n")
 		g.indent++
 
 		for i, cmd := range gfm.FileManagementCMDs {
 			for j := 0; j < g.indent; j++ {
 				sb.WriteString("  ")
 			}
-			sb.WriteString("{\n")
+			sb.WriteString("{\r\n")
 			g.indent++
 
 			cfields := make([]string, 0)
@@ -1604,7 +1566,7 @@ func (g *Generator) generateGenericFileManagement(gfm *GenericFileManagement) {
 				if j < len(cfields)-1 {
 					sb.WriteString(",")
 				}
-				sb.WriteString("\n")
+				sb.WriteString("\r\n")
 			}
 
 			g.indent--
@@ -1615,7 +1577,7 @@ func (g *Generator) generateGenericFileManagement(gfm *GenericFileManagement) {
 			if i < len(gfm.FileManagementCMDs)-1 {
 				sb.WriteString(",")
 			}
-			sb.WriteString("\n")
+			sb.WriteString("\r\n")
 		}
 
 		g.indent--
@@ -1634,7 +1596,7 @@ func (g *Generator) generateGenericFileManagement(gfm *GenericFileManagement) {
 
 func (g *Generator) sgenerateFileDescriptorContent(fd *FileDescriptor) string {
 	var sb strings.Builder
-	sb.WriteString("createFCP : {\n")
+	sb.WriteString("createFCP : {\r\n")
 	g.indent++
 
 	fields := make([]string, 0)
@@ -1677,7 +1639,7 @@ func (g *Generator) sgenerateFileDescriptorContent(fd *FileDescriptor) string {
 		if i < len(fields)-1 {
 			sb.WriteString(",")
 		}
-		sb.WriteString("\n")
+		sb.WriteString("\r\n")
 	}
 
 	g.indent--
@@ -1689,7 +1651,7 @@ func (g *Generator) sgenerateFileDescriptorContent(fd *FileDescriptor) string {
 }
 
 func (g *Generator) generateSecurityDomain(sd *SecurityDomain) {
-	g.write("{\n")
+	g.write("{\r\n")
 	g.indent++
 
 	fields := make([]string, 0)
@@ -1698,7 +1660,7 @@ func (g *Generator) generateSecurityDomain(sd *SecurityDomain) {
 	}
 	if sd.Instance != nil {
 		var sb strings.Builder
-		sb.WriteString("instance {\n")
+		sb.WriteString("instance {\r\n")
 		g.indent++
 
 		ifields := make([]string, 0)
@@ -1730,7 +1692,7 @@ func (g *Generator) generateSecurityDomain(sd *SecurityDomain) {
 			if i < len(ifields)-1 {
 				sb.WriteString(",")
 			}
-			sb.WriteString("\n")
+			sb.WriteString("\r\n")
 		}
 
 		g.indent--
@@ -1743,14 +1705,14 @@ func (g *Generator) generateSecurityDomain(sd *SecurityDomain) {
 
 	if len(sd.KeyList) > 0 {
 		var sb strings.Builder
-		sb.WriteString("keyList {\n")
+		sb.WriteString("keyList {\r\n")
 		g.indent++
 
 		for i, key := range sd.KeyList {
 			for j := 0; j < g.indent; j++ {
 				sb.WriteString("  ")
 			}
-			sb.WriteString("{\n")
+			sb.WriteString("{\r\n")
 			g.indent++
 
 			kfields := make([]string, 0)
@@ -1771,7 +1733,7 @@ func (g *Generator) generateSecurityDomain(sd *SecurityDomain) {
 				if j < len(kfields)-1 {
 					sb.WriteString(",")
 				}
-				sb.WriteString("\n")
+				sb.WriteString("\r\n")
 			}
 
 			g.indent--
@@ -1782,7 +1744,7 @@ func (g *Generator) generateSecurityDomain(sd *SecurityDomain) {
 			if i < len(sd.KeyList)-1 {
 				sb.WriteString(",")
 			}
-			sb.WriteString("\n")
+			sb.WriteString("\r\n")
 		}
 
 		g.indent--
@@ -1795,12 +1757,18 @@ func (g *Generator) generateSecurityDomain(sd *SecurityDomain) {
 
 	if len(sd.SDPersoData) > 0 {
 		var sb strings.Builder
-		sb.WriteString("sdPersoData {\n")
+		sb.WriteString("sdPersoData {\r\n")
 		g.indent++
-		for j := 0; j < g.indent; j++ {
-			sb.WriteString("  ")
+		for i, data := range sd.SDPersoData {
+			for j := 0; j < g.indent; j++ {
+				sb.WriteString("  ")
+			}
+			sb.WriteString(g.formatHex(data))
+			if i < len(sd.SDPersoData)-1 {
+				sb.WriteString(",")
+			}
+			sb.WriteString("\r\n")
 		}
-		sb.WriteString(g.formatHex(sd.SDPersoData) + "\n")
 		g.indent--
 		for j := 0; j < g.indent; j++ {
 			sb.WriteString("  ")
@@ -1817,12 +1785,12 @@ func (g *Generator) generateSecurityDomain(sd *SecurityDomain) {
 
 func (g *Generator) sgenerateApplicationParameters(ap *ApplicationParameters) string {
 	var sb strings.Builder
-	sb.WriteString("applicationParameters {\n")
+	sb.WriteString("applicationParameters {\r\n")
 	g.indent++
 	for j := 0; j < g.indent; j++ {
 		sb.WriteString("  ")
 	}
-	sb.WriteString(fmt.Sprintf("uiccToolkitApplicationSpecificParametersField %s\n", g.formatHex(ap.UIICToolkitApplicationSpecificParametersField)))
+	sb.WriteString(fmt.Sprintf("uiccToolkitApplicationSpecificParametersField %s\r\n", g.formatHex(ap.UIICToolkitApplicationSpecificParametersField)))
 	g.indent--
 	for j := 0; j < g.indent; j++ {
 		sb.WriteString("  ")
@@ -1833,13 +1801,13 @@ func (g *Generator) sgenerateApplicationParameters(ap *ApplicationParameters) st
 
 func (g *Generator) sgenerateKeyCompontents(comps []KeyComponent) string {
 	var sb strings.Builder
-	sb.WriteString("keyCompontents {\n")
+	sb.WriteString("keyCompontents {\r\n")
 	g.indent++
 	for i, comp := range comps {
 		for j := 0; j < g.indent; j++ {
 			sb.WriteString("  ")
 		}
-		sb.WriteString("{\n")
+		sb.WriteString("{\r\n")
 		g.indent++
 
 		fields := make([]string, 0)
@@ -1855,7 +1823,7 @@ func (g *Generator) sgenerateKeyCompontents(comps []KeyComponent) string {
 			if j < len(fields)-1 {
 				sb.WriteString(",")
 			}
-			sb.WriteString("\n")
+			sb.WriteString("\r\n")
 		}
 
 		g.indent--
@@ -1866,7 +1834,7 @@ func (g *Generator) sgenerateKeyCompontents(comps []KeyComponent) string {
 		if i < len(comps)-1 {
 			sb.WriteString(",")
 		}
-		sb.WriteString("\n")
+		sb.WriteString("\r\n")
 	}
 	g.indent--
 	for j := 0; j < g.indent; j++ {
@@ -1881,7 +1849,7 @@ func (g *Generator) sgenerateKeyCompontents(comps []KeyComponent) string {
 // ============================================================================
 
 func (g *Generator) generateRFM(rfm *RFMConfig) {
-	g.write("{\n")
+	g.write("{\r\n")
 	g.indent++
 
 	fields := make([]string, 0)
@@ -1912,7 +1880,7 @@ func (g *Generator) generateRFM(rfm *RFMConfig) {
 
 func (g *Generator) sgenerateTARList(tars [][]byte) string {
 	var sb strings.Builder
-	sb.WriteString("tarList {\n")
+	sb.WriteString("tarList {\r\n")
 	g.indent++
 	for i, tar := range tars {
 		for j := 0; j < g.indent; j++ {
@@ -1922,7 +1890,7 @@ func (g *Generator) sgenerateTARList(tars [][]byte) string {
 		if i < len(tars)-1 {
 			sb.WriteString(",")
 		}
-		sb.WriteString("\n")
+		sb.WriteString("\r\n")
 	}
 	g.indent--
 	for j := 0; j < g.indent; j++ {
@@ -1934,7 +1902,7 @@ func (g *Generator) sgenerateTARList(tars [][]byte) string {
 
 func (g *Generator) sgenerateADFRFMAccess(acc *ADFRFMAccess) string {
 	var sb strings.Builder
-	sb.WriteString("adfRFMAccess {\n")
+	sb.WriteString("adfRFMAccess {\r\n")
 	g.indent++
 
 	fields := make([]string, 0)
@@ -1950,7 +1918,7 @@ func (g *Generator) sgenerateADFRFMAccess(acc *ADFRFMAccess) string {
 		if i < len(fields)-1 {
 			sb.WriteString(",")
 		}
-		sb.WriteString("\n")
+		sb.WriteString("\r\n")
 	}
 
 	g.indent--
@@ -1966,7 +1934,7 @@ func (g *Generator) sgenerateADFRFMAccess(acc *ADFRFMAccess) string {
 // ============================================================================
 
 func (g *Generator) generateApplication(app *Application) {
-	g.write("{\n")
+	g.write("{\r\n")
 	g.indent++
 
 	fields := make([]string, 0)
@@ -1989,7 +1957,7 @@ func (g *Generator) generateApplication(app *Application) {
 
 func (g *Generator) sgenerateApplicationLoadPackage(pkg *ApplicationLoadPackage) string {
 	var sb strings.Builder
-	sb.WriteString("loadBlock {\n")
+	sb.WriteString("loadBlock {\r\n")
 	g.indent++
 
 	fields := make([]string, 0)
@@ -2023,7 +1991,7 @@ func (g *Generator) sgenerateApplicationLoadPackage(pkg *ApplicationLoadPackage)
 		if i < len(fields)-1 {
 			sb.WriteString(",")
 		}
-		sb.WriteString("\n")
+		sb.WriteString("\r\n")
 	}
 
 	g.indent--
@@ -2036,14 +2004,14 @@ func (g *Generator) sgenerateApplicationLoadPackage(pkg *ApplicationLoadPackage)
 
 func (g *Generator) sgenerateApplicationInstanceList(instances []*ApplicationInstance) string {
 	var sb strings.Builder
-	sb.WriteString("instanceList {\n")
+	sb.WriteString("instanceList {\r\n")
 	g.indent++
 
 	for i, inst := range instances {
 		for j := 0; j < g.indent; j++ {
 			sb.WriteString("  ")
 		}
-		sb.WriteString("{\n")
+		sb.WriteString("{\r\n")
 		g.indent++
 
 		fields := make([]string, 0)
@@ -2084,7 +2052,7 @@ func (g *Generator) sgenerateApplicationInstanceList(instances []*ApplicationIns
 			if j < len(fields)-1 {
 				sb.WriteString(",")
 			}
-			sb.WriteString("\n")
+			sb.WriteString("\r\n")
 		}
 
 		g.indent--
@@ -2095,7 +2063,7 @@ func (g *Generator) sgenerateApplicationInstanceList(instances []*ApplicationIns
 		if i < len(instances)-1 {
 			sb.WriteString(",")
 		}
-		sb.WriteString("\n")
+		sb.WriteString("\r\n")
 	}
 
 	g.indent--
@@ -2108,7 +2076,7 @@ func (g *Generator) sgenerateApplicationInstanceList(instances []*ApplicationIns
 
 func (g *Generator) sgenerateProcessData(data [][]byte) string {
 	var sb strings.Builder
-	sb.WriteString("processData {\n")
+	sb.WriteString("processData {\r\n")
 	g.indent++
 	for i, d := range data {
 		for j := 0; j < g.indent; j++ {
@@ -2118,7 +2086,7 @@ func (g *Generator) sgenerateProcessData(data [][]byte) string {
 		if i < len(data)-1 {
 			sb.WriteString(",")
 		}
-		sb.WriteString("\n")
+		sb.WriteString("\r\n")
 	}
 	g.indent--
 	for j := 0; j < g.indent; j++ {
@@ -2133,7 +2101,7 @@ func (g *Generator) sgenerateProcessData(data [][]byte) string {
 // ============================================================================
 
 func (g *Generator) generateEnd(end *EndElement) {
-	g.write("{\n")
+	g.write("{\r\n")
 	g.indent++
 
 	fields := make([]string, 0)
@@ -2146,4 +2114,3 @@ func (g *Generator) generateEnd(end *EndElement) {
 	g.indent--
 	g.writeLine("}")
 }
-
