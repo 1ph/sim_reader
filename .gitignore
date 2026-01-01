@@ -31,3 +31,6 @@ Thumbs.db
 # Config files with sensitive data
 config.json
 *.key
+
+# Profile test directory (contains CAP files, templates, test profiles)
+profile/

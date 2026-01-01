@@ -301,6 +301,13 @@ func addAppletFromGPConfig(profile *Profile, cfg *sim.GPAppletLoadConfig) error 
 		return fmt.Errorf("read CAP file: %w", err)
 	}
 
+	// Convert CAP to IJC format if needed
+	// Working eSIM profiles require IJC format (starts with DECAFFED), not ZIP/CAP
+	ijcData, err := ConvertCAPToIJC(capData)
+	if err != nil {
+		return fmt.Errorf("convert CAP to IJC: %w", err)
+	}
+
 	// Parse AIDs
 	packageAID, err := hex.DecodeString(strings.ReplaceAll(cfg.PackageAID, ":", ""))
 	if err != nil {
@@ -351,24 +358,32 @@ func addAppletFromGPConfig(profile *Profile, cfg *sim.GPAppletLoadConfig) error 
 		}
 	}
 
-	// Create Application element
+	// Create Application element with correct values matching working profiles
+	// Key differences from broken profiles:
+	// - LoadBlockObject: IJC format (not raw CAP/ZIP)
+	// - Memory limits: Required for eUICC to allocate resources
+	// - ApplicationPrivileges: 1 byte (not 3)
+	// - ApplicationSpecificParamsC9: C9 00 format
 	app := &Application{
 		Header: &ElementHeader{
 			Mandated: true,
 		},
 		LoadBlock: &ApplicationLoadPackage{
-			LoadPackageAID:    packageAID,
-			SecurityDomainAID: sdAID,
-			LoadBlockObject:   capData,
+			LoadPackageAID:         packageAID,
+			SecurityDomainAID:      sdAID,
+			LoadBlockObject:        ijcData, // IJC format, not raw CAP
+			NonVolatileCodeLimitC6: []byte{0x00, 0x01, 0x00, 0x00}, // 64KB NV code limit
+			VolatileDataLimitC7:    []byte{0x10, 0x00},             // 4KB volatile data
+			NonVolatileDataLimitC8: []byte{0x20, 0x00},             // 8KB NV data
 		},
 		InstanceList: []*ApplicationInstance{
 			{
 				ApplicationLoadPackageAID:   packageAID,
 				ClassAID:                    classAID,
 				InstanceAID:                 instanceAID,
-				ApplicationPrivileges:       []byte{0x00, 0x00, 0x00}, // Default: no privileges
-				LifeCycleState:              0x07,                     // Selectable
-				ApplicationSpecificParamsC9: []byte{0x81, 0x00},      // Default C9
+				ApplicationPrivileges:       []byte{0x00},       // 1 byte, no privileges
+				LifeCycleState:              0x07,               // Selectable
+				ApplicationSpecificParamsC9: []byte{0xC9, 0x00}, // Correct C9 format
 				ProcessData:                 processData,
 			},
 		},

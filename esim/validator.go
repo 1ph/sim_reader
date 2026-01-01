@@ -323,6 +323,33 @@ func validateApplications(p *Profile, r *ValidationResult, opts *ValidationOptio
 			
 			if len(app.LoadBlock.LoadBlockObject) == 0 {
 				addError(r, appName, "LoadBlock.LoadBlockObject (CAP file) is empty")
+			} else {
+				// CRITICAL: Check LoadBlockObject format
+				// eUICC requires IJC format, not raw CAP/ZIP
+				format := GetLoadBlockFormat(app.LoadBlock.LoadBlockObject)
+				if format == "CAP/ZIP" {
+					addError(r, appName+".LoadBlockObject",
+						"LoadBlockObject is in CAP/ZIP format (starts with 504B) - eUICC requires IJC format. "+
+							"Use ConvertCAPToIJC() to convert before embedding.")
+				} else if format == "unknown" {
+					addWarning(r, appName+".LoadBlockObject",
+						fmt.Sprintf("LoadBlockObject format unrecognized (starts with %s). Expected IJC format.",
+							hex.EncodeToString(app.LoadBlock.LoadBlockObject[:min(4, len(app.LoadBlock.LoadBlockObject))])))
+				}
+			}
+			
+			// Check memory limits - required for eUICC resource allocation
+			if len(app.LoadBlock.NonVolatileCodeLimitC6) == 0 {
+				addWarning(r, appName+".LoadBlock",
+					"NonVolatileCodeLimitC6 (C6) missing - may cause install_failed_due_to_pe_processing_error on eUICC")
+			}
+			if len(app.LoadBlock.VolatileDataLimitC7) == 0 {
+				addWarning(r, appName+".LoadBlock",
+					"VolatileDataLimitC7 (C7) missing - may cause install_failed_due_to_pe_processing_error on eUICC")
+			}
+			if len(app.LoadBlock.NonVolatileDataLimitC8) == 0 {
+				addWarning(r, appName+".LoadBlock",
+					"NonVolatileDataLimitC8 (C8) missing - may cause install_failed_due_to_pe_processing_error on eUICC")
 			}
 		}
 
@@ -342,6 +369,25 @@ func validateApplications(p *Profile, r *ValidationResult, opts *ValidationOptio
 			if !isValidAID(inst.InstanceAID) {
 				addError(r, instName, fmt.Sprintf("InstanceAID invalid: %s",
 					hex.EncodeToString(inst.InstanceAID)))
+			}
+			
+			// ApplicationPrivileges length check
+			// Working profiles use 1 byte, broken profiles often have 3 bytes
+			if len(inst.ApplicationPrivileges) != 1 {
+				addWarning(r, instName+".ApplicationPrivileges",
+					fmt.Sprintf("ApplicationPrivileges length is %d bytes (expected 1 byte). "+
+						"This may cause install_failed_due_to_pe_processing_error on some eUICCs.",
+						len(inst.ApplicationPrivileges)))
+			}
+			
+			// Check C9 parameter format
+			// Correct format: C9 00 or C9 XX (with length)
+			// Broken format: 81 00
+			if len(inst.ApplicationSpecificParamsC9) >= 2 {
+				if inst.ApplicationSpecificParamsC9[0] == 0x81 {
+					addWarning(r, instName+".ApplicationSpecificParamsC9",
+						"C9 params start with 0x81 (incorrect). Should start with 0xC9 or be empty.")
+				}
 			}
 
 			// Validate ProcessData APDUs

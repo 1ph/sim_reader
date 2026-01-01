@@ -71,7 +71,7 @@
     "applets": {
       "loads": [
         {
-          "cap_path": "milenage-usim-applet.cap",
+          "cap_path": "milenage_usim_standalone.cap",
           "package_aid": "A00000008710020001",
           "applet_aid": "A000000087100201",
           "instance_aid": "A00000008710020101",
