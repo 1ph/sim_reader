@@ -327,13 +327,8 @@ func addAppletFromGPConfig(profile *Profile, cfg *sim.GPAppletLoadConfig) error 
 		}
 	}
 
-	var sdAID []byte
-	if cfg.SDAID != "" {
-		sdAID, err = hex.DecodeString(strings.ReplaceAll(cfg.SDAID, ":", ""))
-		if err != nil {
-			return fmt.Errorf("parse SD AID: %w", err)
-		}
-	}
+	// Note: SecurityDomainAID is intentionally not used in loadBlock
+	// Working eSIM profiles don't include it in PE-Application
 
 	// Build ProcessData APDUs from personalization config
 	var processData [][]byte
@@ -358,19 +353,31 @@ func addAppletFromGPConfig(profile *Profile, cfg *sim.GPAppletLoadConfig) error 
 		}
 	}
 
+	// Find max identification number in profile to assign next sequential ID
+	maxID := 0
+	for _, elem := range profile.Elements {
+		if hdr := getElementHeader(elem); hdr != nil && hdr.Identification > maxID {
+			maxID = hdr.Identification
+		}
+	}
+	nextID := maxID + 1
+
 	// Create Application element with correct values matching working profiles
 	// Key differences from broken profiles:
 	// - LoadBlockObject: IJC format (not raw CAP/ZIP)
 	// - Memory limits: Required for eUICC to allocate resources
 	// - ApplicationPrivileges: 1 byte (not 3)
-	// - ApplicationSpecificParamsC9: C9 00 format
+	// - ApplicationSpecificParamsC9: empty (C9 00) - just the length byte
+	// - SecurityDomainAID: NOT included in loadBlock (matching working profiles)
+	// - Identification: Sequential number matching profile structure
 	app := &Application{
 		Header: &ElementHeader{
-			Mandated: true,
+			Mandated:       true,
+			Identification: nextID,
 		},
 		LoadBlock: &ApplicationLoadPackage{
 			LoadPackageAID:         packageAID,
-			SecurityDomainAID:      sdAID,
+			// SecurityDomainAID is intentionally omitted - working profiles don't have it
 			LoadBlockObject:        ijcData, // IJC format, not raw CAP
 			NonVolatileCodeLimitC6: []byte{0x00, 0x01, 0x00, 0x00}, // 64KB NV code limit
 			VolatileDataLimitC7:    []byte{0x10, 0x00},             // 4KB volatile data
@@ -383,7 +390,7 @@ func addAppletFromGPConfig(profile *Profile, cfg *sim.GPAppletLoadConfig) error 
 				InstanceAID:                 instanceAID,
 				ApplicationPrivileges:       []byte{0x00},       // 1 byte, no privileges
 				LifeCycleState:              0x07,               // Selectable
-				ApplicationSpecificParamsC9: []byte{0xC9, 0x00}, // Correct C9 format
+				ApplicationSpecificParamsC9: []byte{0xC9, 0x00}, // Matches working profile 'C900'H
 				ProcessData:                 processData,
 			},
 		},
@@ -690,4 +697,52 @@ func BuildProfile(template *Profile, config *BuildConfig) (*Profile, error) {
 	}
 
 	return BuildProfileFromSIMConfig(template, simConfig)
+}
+
+// getElementHeader extracts ElementHeader from different profile element types
+func getElementHeader(elem ProfileElement) *ElementHeader {
+	switch v := elem.Value.(type) {
+	case *MasterFile:
+		return v.MFHeader
+	case *PUKCodes:
+		return v.Header
+	case *PINCodes:
+		return v.Header
+	case *TelecomDF:
+		return v.Header
+	case *USIMApplication:
+		return v.Header
+	case *OptionalUSIM:
+		return v.Header
+	case *ISIMApplication:
+		return v.Header
+	case *OptionalISIM:
+		return v.Header
+	case *CSIMApplication:
+		return v.Header
+	case *OptionalCSIM:
+		return v.Header
+	case *GSMAccessDF:
+		return v.Header
+	case *DF5GS:
+		return v.Header
+	case *DFSAIP:
+		return v.Header
+	case *AKAParameter:
+		return v.Header
+	case *CDMAParameter:
+		return v.Header
+	case *SecurityDomain:
+		return v.Header
+	case *RFMConfig:
+		return v.Header
+	case *Application:
+		return v.Header
+	case *GenericFileManagement:
+		return v.Header
+	case *EndElement:
+		return v.Header
+	default:
+		return nil
+	}
 }
