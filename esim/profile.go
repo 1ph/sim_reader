@@ -405,13 +405,14 @@ func (p *Profile) invalidate(tag int) {
 
 // Sanitize clears all sensitive data from profile (keys, IMSI, PINs)
 // to ensure no template data leaks into the final build.
+// NOTE: AlgorithmID is preserved from template - only keys are cleared.
 func (p *Profile) Sanitize() {
-	// 1. Clear all AKA keys and reset to Milenage (safe default)
+	// 1. Clear all AKA keys (preserve algorithmID from template)
 	for _, aka := range p.AKAParams {
 		if aka.AlgoConfig != nil {
 			aka.AlgoConfig.Key = make([]byte, 16) // Zero keys
 			aka.AlgoConfig.OPC = make([]byte, 16)
-			aka.AlgoConfig.AlgorithmID = AlgoMilenage
+			// AlgorithmID is NOT changed - preserve from template
 		}
 	}
 	p.invalidate(TagAKAParameter)

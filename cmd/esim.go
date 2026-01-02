@@ -265,7 +265,7 @@ func runEsimBuild(cmd *cobra.Command, args []string) {
 		config.UseAppletAuth = true
 	}
 
-	// Handle legacy --applet flag: add CAP to GlobalPlatform config
+	// Handle --applet flag: CLI takes priority over config file
 	if esimAppletCAP != "" {
 		if config.GlobalPlatform == nil {
 			config.GlobalPlatform = &sim.GlobalPlatformConfig{}
@@ -274,19 +274,27 @@ func runEsimBuild(cmd *cobra.Command, args []string) {
 			config.GlobalPlatform.Applets = &sim.GPAppletsConfig{}
 		}
 
-		// Check if there's already an applet config we can use
+		// CLI --applet takes priority: override CAPPath in existing applet config
 		foundApplet := false
+		
+		// First, try to find an applet with UseForESIM=true
 		for i := range config.GlobalPlatform.Applets.Loads {
-			if config.GlobalPlatform.Applets.Loads[i].CAPPath == "" {
+			if config.GlobalPlatform.Applets.Loads[i].UseForESIM {
 				config.GlobalPlatform.Applets.Loads[i].CAPPath = esimAppletCAP
-				config.GlobalPlatform.Applets.Loads[i].UseForESIM = true
 				foundApplet = true
 				break
 			}
 		}
+		
+		// If no UseForESIM applet, use the first one available
+		if !foundApplet && len(config.GlobalPlatform.Applets.Loads) > 0 {
+			config.GlobalPlatform.Applets.Loads[0].CAPPath = esimAppletCAP
+			config.GlobalPlatform.Applets.Loads[0].UseForESIM = true
+			foundApplet = true
+		}
 
 		// If no existing applet config, we need AID info from JSON
-		if !foundApplet && len(config.GlobalPlatform.Applets.Loads) == 0 {
+		if !foundApplet {
 			output.PrintWarning("--applet specified but no applet AID configuration in JSON config")
 			output.PrintWarning("Add global_platform.applets.loads section with package_aid, applet_aid, instance_aid")
 		}

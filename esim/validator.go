@@ -80,6 +80,9 @@ func ValidateProfile(p *Profile, opts *ValidationOptions) *ValidationResult {
 	// Security Domains
 	validateSecurityDomains(p, result)
 
+	// EF file sizes vs actual content
+	validateEFContentSizes(p, result)
+
 	// Template comparison (if provided)
 	if opts.Template != nil {
 		validateAgainstTemplateWithOpts(p, opts.Template, result, opts)
@@ -439,6 +442,170 @@ func validateSecurityDomains(p *Profile, r *ValidationResult) {
 	}
 
 	addCheck(r, "SecurityDomains", true, fmt.Sprintf("%d SD(s) found", len(p.SecurityDomains)))
+}
+
+// validateEFContentSizes checks that EF content fits within declared file sizes
+func validateEFContentSizes(p *Profile, r *ValidationResult) {
+	sizeErrors := 0
+	sizeWarnings := 0
+
+	// Check MF EFs
+	if p.MF != nil {
+		sizeErrors += checkEFSize("MF.EF_ICCID", p.MF.EF_ICCID, r)
+		sizeErrors += checkEFSize("MF.EF_DIR", p.MF.EF_DIR, r)
+		sizeErrors += checkEFSize("MF.EF_ARR", p.MF.EF_ARR, r)
+		sizeErrors += checkEFSize("MF.EF_PL", p.MF.EF_PL, r)
+		sizeErrors += checkEFSize("MF.EF_UMPC", p.MF.EF_UMPC, r)
+	}
+
+	// Check USIM EFs
+	if p.USIM != nil {
+		sizeErrors += checkEFSize("USIM.EF_IMSI", p.USIM.EF_IMSI, r)
+		sizeErrors += checkEFSize("USIM.EF_Keys", p.USIM.EF_Keys, r)
+		sizeErrors += checkEFSize("USIM.EF_KeysPS", p.USIM.EF_KeysPS, r)
+		sizeErrors += checkEFSize("USIM.EF_HPPLMN", p.USIM.EF_HPPLMN, r)
+		sizeErrors += checkEFSize("USIM.EF_UST", p.USIM.EF_UST, r)
+		sizeErrors += checkEFSize("USIM.EF_FDN", p.USIM.EF_FDN, r)
+		sizeErrors += checkEFSize("USIM.EF_SMS", p.USIM.EF_SMS, r)
+		sizeErrors += checkEFSize("USIM.EF_SMSP", p.USIM.EF_SMSP, r)
+		sizeErrors += checkEFSize("USIM.EF_SMSS", p.USIM.EF_SMSS, r)
+		sizeErrors += checkEFSize("USIM.EF_SPN", p.USIM.EF_SPN, r)
+		sizeErrors += checkEFSize("USIM.EF_EST", p.USIM.EF_EST, r)
+		sizeErrors += checkEFSize("USIM.EF_ACC", p.USIM.EF_ACC, r)
+		sizeErrors += checkEFSize("USIM.EF_FPLMN", p.USIM.EF_FPLMN, r)
+		sizeErrors += checkEFSize("USIM.EF_LOCI", p.USIM.EF_LOCI, r)
+		sizeErrors += checkEFSize("USIM.EF_AD", p.USIM.EF_AD, r)
+		sizeErrors += checkEFSize("USIM.EF_ECC", p.USIM.EF_ECC, r)
+		sizeErrors += checkEFSize("USIM.EF_NETPAR", p.USIM.EF_NETPAR, r)
+		sizeErrors += checkEFSize("USIM.EF_EPSLOCI", p.USIM.EF_EPSLOCI, r)
+		sizeErrors += checkEFSize("USIM.EF_EPSNSC", p.USIM.EF_EPSNSC, r)
+		sizeErrors += checkEFSize("USIM.EF_ARR", p.USIM.EF_ARR, r)
+	}
+
+	// Check OptionalUSIM EFs
+	if p.OptUSIM != nil {
+		sizeErrors += checkEFSize("OptUSIM.EF_LI", p.OptUSIM.EF_LI, r)
+		sizeErrors += checkEFSize("OptUSIM.EF_MSISDN", p.OptUSIM.EF_MSISDN, r)
+		sizeErrors += checkEFSize("OptUSIM.EF_CBMI", p.OptUSIM.EF_CBMI, r)
+		sizeErrors += checkEFSize("OptUSIM.EF_CBMID", p.OptUSIM.EF_CBMID, r)
+		sizeErrors += checkEFSize("OptUSIM.EF_SDN", p.OptUSIM.EF_SDN, r)
+		sizeErrors += checkEFSize("OptUSIM.EF_PNN", p.OptUSIM.EF_PNN, r)
+		sizeErrors += checkEFSize("OptUSIM.EF_OPL", p.OptUSIM.EF_OPL, r)
+		sizeErrors += checkEFSize("OptUSIM.EF_EHPLMN", p.OptUSIM.EF_EHPLMN, r)
+	}
+
+	// Check ISIM EFs
+	if p.ISIM != nil {
+		sizeErrors += checkEFSize("ISIM.EF_IMPI", p.ISIM.EF_IMPI, r)
+		sizeErrors += checkEFSize("ISIM.EF_IMPU", p.ISIM.EF_IMPU, r)
+		sizeErrors += checkEFSize("ISIM.EF_DOMAIN", p.ISIM.EF_DOMAIN, r)
+		sizeErrors += checkEFSize("ISIM.EF_IST", p.ISIM.EF_IST, r)
+		sizeErrors += checkEFSize("ISIM.EF_AD", p.ISIM.EF_AD, r)
+		sizeErrors += checkEFSize("ISIM.EF_ARR", p.ISIM.EF_ARR, r)
+	}
+
+	// Check OptionalISIM EFs
+	if p.OptISIM != nil {
+		sizeErrors += checkEFSize("OptISIM.EF_PCSCF", p.OptISIM.EF_PCSCF, r)
+		sizeErrors += checkEFSize("OptISIM.EF_GBABP", p.OptISIM.EF_GBABP, r)
+		sizeErrors += checkEFSize("OptISIM.EF_GBANL", p.OptISIM.EF_GBANL, r)
+	}
+
+	// Check CSIM EFs
+	if p.CSIM != nil {
+		sizeErrors += checkEFSize("CSIM.EF_IMSI_M", p.CSIM.EF_IMSI_M, r)
+		sizeErrors += checkEFSize("CSIM.EF_IMSI_T", p.CSIM.EF_IMSI_T, r)
+		sizeErrors += checkEFSize("CSIM.EF_TMSI", p.CSIM.EF_TMSI, r)
+		sizeErrors += checkEFSize("CSIM.EF_AD", p.CSIM.EF_AD, r)
+		sizeErrors += checkEFSize("CSIM.EF_ARR", p.CSIM.EF_ARR, r)
+	}
+
+	// Check Telecom EFs
+	if p.Telecom != nil {
+		sizeErrors += checkEFSize("Telecom.EF_ARR", p.Telecom.EF_ARR, r)
+		sizeErrors += checkEFSize("Telecom.EF_SUME", p.Telecom.EF_SUME, r)
+		sizeErrors += checkEFSize("Telecom.EF_PSISMSC", p.Telecom.EF_PSISMSC, r)
+		sizeErrors += checkEFSize("Telecom.EF_IMG", p.Telecom.EF_IMG, r)
+		sizeErrors += checkEFSize("Telecom.EF_PBR", p.Telecom.EF_PBR, r)
+		sizeErrors += checkEFSize("Telecom.EF_MLPL", p.Telecom.EF_MLPL, r)
+		sizeErrors += checkEFSize("Telecom.EF_MSPL", p.Telecom.EF_MSPL, r)
+	}
+
+	// Check DF-5GS EFs
+	if p.DF5GS != nil {
+		sizeErrors += checkEFSize("DF5GS.EF_5GS3GPPLOCI", p.DF5GS.EF_5GS3GPPLOCI, r)
+		sizeErrors += checkEFSize("DF5GS.EF_5GSN3GPPLOCI", p.DF5GS.EF_5GSN3GPPLOCI, r)
+		sizeErrors += checkEFSize("DF5GS.EF_5GS3GPPNSC", p.DF5GS.EF_5GS3GPPNSC, r)
+		sizeErrors += checkEFSize("DF5GS.EF_5GAUTHKEYS", p.DF5GS.EF_5GAUTHKEYS, r)
+		sizeErrors += checkEFSize("DF5GS.EF_UAC_AIC", p.DF5GS.EF_UAC_AIC, r)
+		sizeErrors += checkEFSize("DF5GS.EF_SUCI_CALC_INFO", p.DF5GS.EF_SUCI_CALC_INFO, r)
+		sizeErrors += checkEFSize("DF5GS.EF_OPL5G", p.DF5GS.EF_OPL5G, r)
+		sizeErrors += checkEFSize("DF5GS.EF_ROUTING_INDICATOR", p.DF5GS.EF_ROUTING_INDICATOR, r)
+	}
+
+	// Check GSM Access EFs
+	if p.GSMAccess != nil {
+		sizeErrors += checkEFSize("GSMAccess.EF_Kc", p.GSMAccess.EF_Kc, r)
+		sizeErrors += checkEFSize("GSMAccess.EF_KcGPRS", p.GSMAccess.EF_KcGPRS, r)
+		sizeErrors += checkEFSize("GSMAccess.EF_CPBCCH", p.GSMAccess.EF_CPBCCH, r)
+		sizeErrors += checkEFSize("GSMAccess.EF_INVSCAN", p.GSMAccess.EF_INVSCAN, r)
+	}
+
+	if sizeErrors > 0 {
+		addCheck(r, "EFFileSizes", false, fmt.Sprintf("%d EF(s) have content exceeding declared size", sizeErrors))
+	} else if sizeWarnings > 0 {
+		addCheck(r, "EFFileSizes", true, fmt.Sprintf("All EF sizes valid (%d warnings)", sizeWarnings))
+	} else {
+		addCheck(r, "EFFileSizes", true, "All EF content fits within declared sizes")
+	}
+}
+
+// checkEFSize validates that EF content fits within declared file size
+// Returns 1 if error found, 0 otherwise
+func checkEFSize(name string, ef *ElementaryFile, r *ValidationResult) int {
+	if ef == nil {
+		return 0
+	}
+
+	// Get declared file size
+	declaredSize := 0
+	if ef.Descriptor != nil && len(ef.Descriptor.EFFileSize) > 0 {
+		declaredSize = decodeFileSize(ef.Descriptor.EFFileSize)
+	}
+
+	// Calculate actual content size (considering offsets)
+	actualSize := calculateContentSize(ef)
+
+	// If no declared size or no content, skip
+	if declaredSize == 0 || actualSize == 0 {
+		return 0
+	}
+
+	// Check if content exceeds declared size
+	if actualSize > declaredSize {
+		addError(r, name, fmt.Sprintf("content size (%d bytes) exceeds declared file size (%d bytes)",
+			actualSize, declaredSize))
+		return 1
+	}
+
+	return 0
+}
+
+// calculateContentSize calculates the total content size considering offsets
+func calculateContentSize(ef *ElementaryFile) int {
+	if ef == nil || len(ef.FillContents) == 0 {
+		return 0
+	}
+
+	maxEnd := 0
+	for _, fc := range ef.FillContents {
+		end := fc.Offset + len(fc.Content)
+		if end > maxEnd {
+			maxEnd = end
+		}
+	}
+
+	return maxEnd
 }
 
 func validateAgainstTemplate(p *Profile, template *Profile, r *ValidationResult) {

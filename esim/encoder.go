@@ -1331,8 +1331,9 @@ func encodeAKAParameter(aka *AKAParameter) ([]byte, error) {
 func encodeAlgoConfiguration(ac *AlgoConfiguration) []byte {
 	var data []byte
 
-	// Check if using Milenage or USIM Test Algorithm (for DEFAULT handling)
-	isMilenageType := ac.AlgorithmID == AlgoMilenage || ac.AlgorithmID == AlgoUSIMTestAlgorithm
+	// Determine algorithm type for CHOICE and parameter handling
+	isPureMilenage := ac.AlgorithmID == AlgoMilenage
+	isTuakType := ac.AlgorithmID == AlgoTUAK || ac.AlgorithmID == AlgoUSIMTestAlgorithm
 
 	// [0] algorithmID
 	data = append(data, asn1.Marshal(0x80, nil, encodeInteger(int(ac.AlgorithmID))...)...)
@@ -1350,30 +1351,34 @@ func encodeAlgoConfiguration(ac *AlgoConfiguration) []byte {
 		data = append(data, asn1.Marshal(0x83, nil, ac.OPC...)...)
 	}
 
-	// [4] rotationConstants - DEFAULT "4000204060" for Milenage/USIMTestAlgorithm
+	// [4] rotationConstants - DEFAULT "4000204060"
+	// Include for both Milenage and TUAK if not default
 	defaultRotation, _ := hex.DecodeString("4000204060")
-	if len(ac.RotationConstants) > 0 && !(isMilenageType && bytes.Equal(ac.RotationConstants, defaultRotation)) {
+	if len(ac.RotationConstants) > 0 && !bytes.Equal(ac.RotationConstants, defaultRotation) {
 		data = append(data, asn1.Marshal(0x84, nil, ac.RotationConstants...)...)
 	}
 
-	// [5] xoringConstants - DEFAULT for Milenage/USIMTestAlgorithm
-	defaultXoring, _ := hex.DecodeString("0000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000020000000000000000000000000000000400000000000000000000000000000008")
-	if len(ac.XoringConstants) > 0 && !(isMilenageType && bytes.Equal(ac.XoringConstants, defaultXoring)) {
-		data = append(data, asn1.Marshal(0x85, nil, ac.XoringConstants...)...)
+	// [5] xoringConstants - ONLY for TUAK/USIM-Test-Algorithm, NOT for pure Milenage
+	if isTuakType && len(ac.XoringConstants) > 0 {
+		defaultXoring, _ := hex.DecodeString("0000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000020000000000000000000000000000000400000000000000000000000000000008")
+		if !bytes.Equal(ac.XoringConstants, defaultXoring) {
+			data = append(data, asn1.Marshal(0x85, nil, ac.XoringConstants...)...)
+		}
 	}
 
-	// [6] numberOfKeccak - DEFAULT 1
-	// Per DER rules: do not encode if value equals DEFAULT
-	if ac.NumberOfKeccak > 0 && ac.NumberOfKeccak != 1 {
+	// [6] numberOfKeccak - ONLY for TUAK/USIM-Test-Algorithm, NOT for pure Milenage
+	// Per DER rules: do not encode if value equals DEFAULT (1)
+	if isTuakType && ac.NumberOfKeccak > 0 && ac.NumberOfKeccak != 1 {
 		data = append(data, asn1.Marshal(0x86, nil, encodeInteger(ac.NumberOfKeccak)...)...)
 	}
 
 	// Wrap in CHOICE based on algorithm type
 	// Per SGP.22: [0] milenage (Milenage only), [1] tuak (TUAK + USIM Test Algorithm)
 	choiceTag := byte(0xA0) // [0] milenage
-	if ac.AlgorithmID == AlgoTUAK || ac.AlgorithmID == AlgoUSIMTestAlgorithm {
+	if isTuakType {
 		choiceTag = 0xA1 // [1] tuak / usim-test-algorithm
 	}
+	_ = isPureMilenage // used implicitly via !isTuakType
 
 	return asn1.Marshal(choiceTag, nil, data...)
 }

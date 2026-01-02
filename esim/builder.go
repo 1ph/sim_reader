@@ -73,73 +73,76 @@ func ApplyConfigToProfile(profile *Profile, config *sim.SIMConfig) error {
 		}
 	}
 
-	// Handle applet authentication delegation
+	// Set Ki and OPc - check applet keys first, then fallback to root config
+	var kiSource, opcSource string
+	
 	if config.UseAppletAuth {
-		// Find applet with MilenageUSIM personalization to get keys
+		// Try to get keys from applet personalization config
 		appletKeys := findAppletMilenageKeys(config)
 		if appletKeys != nil {
-			if appletKeys.Ki != "" {
-				ki, err := hex.DecodeString(appletKeys.Ki)
-				if err != nil {
-					return fmt.Errorf("parse applet Ki: %w", err)
-				}
-				if err := profile.SetKi(ki); err != nil {
-					return fmt.Errorf("set applet Ki: %w", err)
-				}
-			}
-
-			if appletKeys.OPc != "" {
-				opc, err := hex.DecodeString(appletKeys.OPc)
-				if err != nil {
-					return fmt.Errorf("parse applet OPc: %w", err)
-				}
-				if err := profile.SetOPC(opc); err != nil {
-					return fmt.Errorf("set applet OPc: %w", err)
-				}
-			}
+			kiSource = appletKeys.Ki
+			opcSource = appletKeys.OPc
 		}
-
-		// Set algorithm to delegate to applet
+	}
+	
+	// Fallback to root config keys if applet keys not found
+	if kiSource == "" && config.Ki != "" {
+		kiSource = config.Ki
+	}
+	if opcSource == "" && config.OPc != "" {
+		opcSource = config.OPc
+	}
+	
+	// Apply Ki
+	if kiSource != "" {
+		ki, err := hex.DecodeString(kiSource)
+		if err != nil {
+			return fmt.Errorf("parse Ki: %w", err)
+		}
+		if err := profile.SetKi(ki); err != nil {
+			return fmt.Errorf("set Ki: %w", err)
+		}
+	}
+	
+	// Apply OPc
+	if opcSource != "" {
+		opc, err := hex.DecodeString(opcSource)
+		if err != nil {
+			return fmt.Errorf("parse OPc: %w", err)
+		}
+		if err := profile.SetOPC(opc); err != nil {
+			return fmt.Errorf("set OPc: %w", err)
+		}
+	}
+	
+	// Set algorithm ID
+	if config.UseAppletAuth {
+		// Delegate authentication to applet (algorithmID=3)
 		for _, aka := range profile.AKAParams {
 			if aka.AlgoConfig != nil {
 				aka.AlgoConfig.AlgorithmID = AlgoUSIMTestAlgorithm
 			}
 		}
 		profile.invalidate(TagAKAParameter)
-	} else {
-		// Standard mode: use root ki/opc for AKA parameters
-
-		// Set Ki
-		if config.Ki != "" {
-			ki, err := hex.DecodeString(config.Ki)
-			if err != nil {
-				return fmt.Errorf("parse Ki: %w", err)
-			}
-			if err := profile.SetKi(ki); err != nil {
-				return fmt.Errorf("set Ki: %w", err)
-			}
-		}
-
-		// Set OPc
-		if config.OPc != "" {
-			opc, err := hex.DecodeString(config.OPc)
-			if err != nil {
-				return fmt.Errorf("parse OPc: %w", err)
-			}
-			if err := profile.SetOPC(opc); err != nil {
-				return fmt.Errorf("set OPc: %w", err)
-			}
-		}
-
-		// Set algorithm ID if specified
-		if config.AlgorithmID > 0 {
-			for _, aka := range profile.AKAParams {
-				if aka.AlgoConfig != nil {
-					aka.AlgoConfig.AlgorithmID = AlgorithmID(config.AlgorithmID)
+	} else if config.AlgorithmID > 0 {
+		// Use specified algorithm ID
+		for _, aka := range profile.AKAParams {
+			if aka.AlgoConfig != nil {
+				aka.AlgoConfig.AlgorithmID = AlgorithmID(config.AlgorithmID)
+				
+				// If switching to pure Milenage, clear TUAK-specific parameters
+				if AlgorithmID(config.AlgorithmID) == AlgoMilenage {
+					// For Milenage, use standard rotation constants (r1-r5)
+					// Default: r1=64, r2=0, r3=32, r4=64, r5=96 bits
+					aka.AlgoConfig.RotationConstants = []byte{0x40, 0x00, 0x20, 0x40, 0x60}
+					// Clear TUAK-specific xoring constants - use Milenage c1-c5 defaults
+					aka.AlgoConfig.XoringConstants = nil
+					// Clear numberOfKeccak (TUAK only)
+					aka.AlgoConfig.NumberOfKeccak = 0
 				}
 			}
-			profile.invalidate(TagAKAParameter)
 		}
+		profile.invalidate(TagAKAParameter)
 	}
 
 	// Set ISIM parameters
@@ -198,44 +201,74 @@ func applyISIMConfig(profile *Profile, isim *sim.ISIMConfig) error {
 	// Set IMPI
 	if isim.IMPI != "" && profile.ISIM.EF_IMPI != nil {
 		impiBytes := encodeIMPI(isim.IMPI)
-		if len(profile.ISIM.EF_IMPI.FillContents) > 0 {
-			profile.ISIM.EF_IMPI.FillContents[0].Content = impiBytes
-		} else {
-			profile.ISIM.EF_IMPI.FillContents = append(profile.ISIM.EF_IMPI.FillContents, FillContent{
-				Content: impiBytes,
-			})
-		}
-		profile.ISIM.EF_IMPI.Raw = nil
+		updateEFContent(profile.ISIM.EF_IMPI, impiBytes)
 	}
 
 	// Set IMPU
 	if len(isim.IMPU) > 0 && profile.ISIM.EF_IMPU != nil {
 		impuBytes := encodeIMPUList(isim.IMPU)
-		if len(profile.ISIM.EF_IMPU.FillContents) > 0 {
-			profile.ISIM.EF_IMPU.FillContents[0].Content = impuBytes
-		} else {
-			profile.ISIM.EF_IMPU.FillContents = append(profile.ISIM.EF_IMPU.FillContents, FillContent{
-				Content: impuBytes,
-			})
-		}
-		profile.ISIM.EF_IMPU.Raw = nil
+		updateEFContent(profile.ISIM.EF_IMPU, impuBytes)
 	}
 
 	// Set Domain
 	if isim.Domain != "" && profile.ISIM.EF_DOMAIN != nil {
 		domainBytes := encodeDomain(isim.Domain)
-		if len(profile.ISIM.EF_DOMAIN.FillContents) > 0 {
-			profile.ISIM.EF_DOMAIN.FillContents[0].Content = domainBytes
-		} else {
-			profile.ISIM.EF_DOMAIN.FillContents = append(profile.ISIM.EF_DOMAIN.FillContents, FillContent{
-				Content: domainBytes,
-			})
-		}
-		profile.ISIM.EF_DOMAIN.Raw = nil
+		updateEFContent(profile.ISIM.EF_DOMAIN, domainBytes)
 	}
 
 	profile.invalidate(TagISIM)
 	return nil
+}
+
+// updateEFContent updates EF content and adjusts file size if needed
+func updateEFContent(ef *ElementaryFile, content []byte) {
+	// Update content
+	if len(ef.FillContents) > 0 {
+		ef.FillContents[0].Content = content
+	} else {
+		ef.FillContents = append(ef.FillContents, FillContent{
+			Content: content,
+		})
+	}
+	ef.Raw = nil
+
+	// Update file size in descriptor if content is larger than current size
+	if ef.Descriptor != nil {
+		currentSize := decodeEFFileSize(ef.Descriptor.EFFileSize)
+		newSize := len(content)
+		
+		if newSize > currentSize {
+			// Encode new size (round up to next 16-byte boundary for alignment)
+			alignedSize := ((newSize + 15) / 16) * 16
+			ef.Descriptor.EFFileSize = encodeEFFileSize(alignedSize)
+		}
+	}
+}
+
+// decodeEFFileSize decodes file size from bytes
+func decodeEFFileSize(data []byte) int {
+	if len(data) == 0 {
+		return 0
+	}
+	size := 0
+	for _, b := range data {
+		size = size*256 + int(b)
+	}
+	return size
+}
+
+// encodeEFFileSize encodes file size to minimal bytes
+func encodeEFFileSize(size int) []byte {
+	if size == 0 {
+		return nil
+	}
+	if size <= 0xFF {
+		return []byte{byte(size)}
+	}
+	if size <= 0xFFFF {
+		return []byte{byte(size >> 8), byte(size)}
+	}
+	return []byte{byte(size >> 16), byte(size >> 8), byte(size)}
 }
 
 // applySecurityCodes applies PIN/PUK/ADM codes to profile
