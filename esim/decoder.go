@@ -154,6 +154,12 @@ func decodeMandatoryServices(a *asn1.ASN1) *MandatoryServices {
 			ms.ISIM = true
 		case 3:
 			ms.CSIM = true
+		case 4:
+			ms.Milenage = true
+		case 5:
+			ms.TUAK128 = true
+		case 16:
+			ms.TUAK256 = true
 		case 17:
 			ms.USIMTestAlgorithm = true
 		case 18:

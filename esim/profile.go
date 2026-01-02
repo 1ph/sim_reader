@@ -358,7 +358,7 @@ func (p *Profile) SetOPC(opc []byte) error {
 	return nil
 }
 
-// SetICCID sets new ICCID
+// SetICCID sets new ICCID with automatic Luhn checksum correction
 func (p *Profile) SetICCID(iccid string) error {
 	if p.Header == nil {
 		return fmt.Errorf("profile header not found")
@@ -372,6 +372,9 @@ func (p *Profile) SetICCID(iccid string) error {
 		}
 	}
 	s := digits.String()
+
+	// Fix Luhn checksum automatically
+	s = fixLuhnChecksum(s)
 
 	// Header uses normal BCD
 	p.Header.ICCID = encodeBCD(s)

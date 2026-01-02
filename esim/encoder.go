@@ -148,6 +148,15 @@ func encodeMandatoryServices(ms *MandatoryServices) []byte {
 	if ms.CSIM {
 		data = append(data, asn1.MarshalWithFullTag(asn1.ClassContextSpecific, asn1.FormPrimitive, 3, nil)...)
 	}
+	if ms.Milenage {
+		data = append(data, asn1.MarshalWithFullTag(asn1.ClassContextSpecific, asn1.FormPrimitive, 4, nil)...)
+	}
+	if ms.TUAK128 {
+		data = append(data, asn1.MarshalWithFullTag(asn1.ClassContextSpecific, asn1.FormPrimitive, 5, nil)...)
+	}
+	if ms.TUAK256 {
+		data = append(data, asn1.MarshalWithFullTag(asn1.ClassContextSpecific, asn1.FormPrimitive, 16, nil)...)
+	}
 	if ms.USIMTestAlgorithm {
 		data = append(data, asn1.MarshalWithFullTag(asn1.ClassContextSpecific, asn1.FormPrimitive, 17, nil)...)
 	}
@@ -1331,8 +1340,7 @@ func encodeAKAParameter(aka *AKAParameter) ([]byte, error) {
 func encodeAlgoConfiguration(ac *AlgoConfiguration) []byte {
 	var data []byte
 
-	// Determine algorithm type for CHOICE and parameter handling
-	isPureMilenage := ac.AlgorithmID == AlgoMilenage
+	// Determine algorithm type for parameter handling
 	isTuakType := ac.AlgorithmID == AlgoTUAK || ac.AlgorithmID == AlgoUSIMTestAlgorithm
 
 	// [0] algorithmID
@@ -1372,15 +1380,13 @@ func encodeAlgoConfiguration(ac *AlgoConfiguration) []byte {
 		data = append(data, asn1.Marshal(0x86, nil, encodeInteger(ac.NumberOfKeccak)...)...)
 	}
 
-	// Wrap in CHOICE based on algorithm type
-	// Per SGP.22: [0] milenage (Milenage only), [1] tuak (TUAK + USIM Test Algorithm)
-	choiceTag := byte(0xA0) // [0] milenage
-	if isTuakType {
-		choiceTag = 0xA1 // [1] tuak / usim-test-algorithm
-	}
-	_ = isPureMilenage // used implicitly via !isTuakType
-
-	return asn1.Marshal(choiceTag, nil, data...)
+	// Wrap in CHOICE for algoConfiguration
+	// Per ASN.1 spec: algoConfiguration CHOICE {
+	//   mappingParameter [0],   -- references another profile's AKA params
+	//   algoParameter [1]       -- contains actual Ki, OPc, algorithmID etc.
+	// }
+	// All algorithm types (milenage, tuak, usim-test-algorithm) use [1] algoParameter
+	return asn1.Marshal(0xA1, nil, data...) // [1] algoParameter
 }
 
 // ============================================================================

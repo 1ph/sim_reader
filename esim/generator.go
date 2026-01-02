@@ -225,6 +225,15 @@ func (g *Generator) sgenerateMandatoryServices(ms *MandatoryServices) string {
 	if ms.CSIM {
 		fields = append(fields, "csim NULL")
 	}
+	if ms.Milenage {
+		fields = append(fields, "milenage NULL")
+	}
+	if ms.TUAK128 {
+		fields = append(fields, "tuak128 NULL")
+	}
+	if ms.TUAK256 {
+		fields = append(fields, "tuak256 NULL")
+	}
 	if ms.USIMTestAlgorithm {
 		fields = append(fields, "usim-test-algorithm NULL")
 	}

@@ -115,7 +115,7 @@ func ApplyConfigToProfile(profile *Profile, config *sim.SIMConfig) error {
 		}
 	}
 	
-	// Set algorithm ID
+	// Set algorithm ID and update MandatoryServices accordingly
 	if config.UseAppletAuth {
 		// Delegate authentication to applet (algorithmID=3)
 		for _, aka := range profile.AKAParams {
@@ -124,6 +124,14 @@ func ApplyConfigToProfile(profile *Profile, config *sim.SIMConfig) error {
 			}
 		}
 		profile.invalidate(TagAKAParameter)
+		// Update MandatoryServices
+		if profile.Header != nil && profile.Header.MandatoryServices != nil {
+			profile.Header.MandatoryServices.USIMTestAlgorithm = true
+			profile.Header.MandatoryServices.Milenage = false
+			profile.Header.MandatoryServices.TUAK128 = false
+			profile.Header.MandatoryServices.TUAK256 = false
+			profile.invalidate(TagProfileHeader)
+		}
 	} else if config.AlgorithmID > 0 {
 		// Use specified algorithm ID
 		for _, aka := range profile.AKAParams {
@@ -143,6 +151,26 @@ func ApplyConfigToProfile(profile *Profile, config *sim.SIMConfig) error {
 			}
 		}
 		profile.invalidate(TagAKAParameter)
+		
+		// Update MandatoryServices to match algorithm
+		if profile.Header != nil && profile.Header.MandatoryServices != nil {
+			ms := profile.Header.MandatoryServices
+			// Clear all algorithm flags first
+			ms.Milenage = false
+			ms.TUAK128 = false
+			ms.TUAK256 = false
+			ms.USIMTestAlgorithm = false
+			// Set the appropriate one
+			switch AlgorithmID(config.AlgorithmID) {
+			case AlgoMilenage:
+				ms.Milenage = true
+			case AlgoTUAK:
+				ms.TUAK128 = true // TUAK with 128-bit key
+			case AlgoUSIMTestAlgorithm:
+				ms.USIMTestAlgorithm = true
+			}
+			profile.invalidate(TagProfileHeader)
+		}
 	}
 
 	// Set ISIM parameters

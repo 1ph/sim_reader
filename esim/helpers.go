@@ -272,6 +272,77 @@ func copyBytes(data []byte) []byte {
 	return result
 }
 
+// calculateLuhnDigit calculates the Luhn check digit for a string of digits
+// Returns the digit that should be appended to make the string pass Luhn validation
+func calculateLuhnDigit(s string) byte {
+	// Extract digits only
+	var digits []int
+	for _, r := range s {
+		if r >= '0' && r <= '9' {
+			digits = append(digits, int(r-'0'))
+		}
+	}
+
+	if len(digits) == 0 {
+		return '0'
+	}
+
+	// Luhn algorithm for check digit calculation:
+	// When calculating check digit, we process from right to left
+	// The rightmost digit of the input (not the check digit) is at position 1 and gets doubled
+	// Position 2 (second from right) is not doubled, etc.
+	sum := 0
+	for i := len(digits) - 1; i >= 0; i-- {
+		d := digits[i]
+		// Position from right (1-based): len(digits) - i
+		// Odd positions (1, 3, 5...) get doubled
+		posFromRight := len(digits) - i
+		if posFromRight%2 == 1 {
+			d *= 2
+			if d > 9 {
+				d -= 9
+			}
+		}
+		sum += d
+	}
+
+	// Check digit is the amount needed to make (sum + checkDigit) divisible by 10
+	checkDigit := (10 - (sum % 10)) % 10
+	return byte('0' + checkDigit)
+}
+
+// fixLuhnChecksum fixes the last digit of ICCID to have valid Luhn checksum
+// If ICCID has 19 digits, appends the check digit
+// If ICCID has 20 digits, replaces the last digit with correct check digit
+func fixLuhnChecksum(iccid string) string {
+	// Extract digits only
+	var digits []byte
+	for _, r := range iccid {
+		if r >= '0' && r <= '9' {
+			digits = append(digits, byte(r))
+		}
+	}
+
+	if len(digits) < 18 {
+		return string(digits)
+	}
+
+	// Standard ICCID is 19 or 20 digits
+	// If 19 digits - append check digit
+	// If 20 digits - recalculate last digit
+	var base string
+	if len(digits) == 19 {
+		base = string(digits)
+	} else if len(digits) >= 20 {
+		base = string(digits[:19])
+	} else {
+		base = string(digits)
+	}
+
+	checkDigit := calculateLuhnDigit(base)
+	return base + string(checkDigit)
+}
+
 // assignToProfile assigns decoded element to corresponding Profile field
 func assignToProfile(profile *Profile, elem *ProfileElement) {
 	switch elem.Tag {

@@ -59,7 +59,10 @@ type MandatoryServices struct {
 	USIM              bool
 	ISIM              bool
 	CSIM              bool
-	USIMTestAlgorithm bool
+	Milenage          bool // tag 4
+	TUAK128           bool // tag 5
+	TUAK256           bool // tag 16
+	USIMTestAlgorithm bool // tag 17
 	BERTLV            bool
 	GetIdentity       bool
 	ProfileAX25519    bool

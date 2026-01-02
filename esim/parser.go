@@ -450,6 +450,12 @@ func (p *Parser) parseMandatoryServices() (*MandatoryServices, error) {
 			ms.ISIM = true
 		case "csim":
 			ms.CSIM = true
+		case "milenage":
+			ms.Milenage = true
+		case "tuak128":
+			ms.TUAK128 = true
+		case "tuak256":
+			ms.TUAK256 = true
 		case "usim-test-algorithm":
 			ms.USIMTestAlgorithm = true
 		case "ber-tlv":
