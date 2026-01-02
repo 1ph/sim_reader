@@ -10,6 +10,7 @@ type Profile struct {
 	// Convenience references (populated during decoding)
 	Header          *ProfileHeader
 	MF              *MasterFile
+	CD              *CDDF
 	PukCodes        *PUKCodes
 	PinCodes        []*PINCodes
 	Telecom         *TelecomDF
@@ -17,11 +18,17 @@ type Profile struct {
 	OptUSIM         *OptionalUSIM
 	ISIM            *ISIMApplication
 	OptISIM         *OptionalISIM
+	Phonebook       *PhonebookDF
 	CSIM            *CSIMApplication
 	OptCSIM         *OptionalCSIM
+	EAP             *EAPDF
 	GSMAccess       *GSMAccessDF
 	DF5GS           *DF5GS
 	DFSAIP          *DFSAIP
+	DFSNPN          *DFSNPN
+	DF5GPROSE       *DF5GPROSE
+	IoT             *IoTPE
+	OptIoT          *OptionalIoT
 	AKAParams       []*AKAParameter
 	CDMAParams      *CDMAParameter
 	GFM             []*GenericFileManagement
@@ -45,28 +52,66 @@ type ProfileElement struct {
 
 // ProfileHeader represents profile header
 type ProfileHeader struct {
-	MajorVersion       int
-	MinorVersion       int
-	ProfileType        string
-	ICCID              []byte
-	POL                []byte
-	MandatoryServices  *MandatoryServices
-	MandatoryGFSTEList []OID
+	MajorVersion           int
+	MinorVersion           int
+	ProfileType            string
+	ICCID                  []byte
+	POL                    []byte
+	MandatoryServices      *MandatoryServices
+	MandatoryGFSTEList     []OID
+	ConnectivityParameters []byte
+	MandatoryAIDs          []MandatoryAID
+	IOTOptions             *IOTOptions
+}
+
+// IOTOptions represents IoT Minimal Profile options
+type IOTOptions struct {
+	PIX []byte
+}
+
+// MandatoryAID represents an entry in eUICC-Mandatory-AIDs
+type MandatoryAID struct {
+	AID     []byte
+	Version []byte
+}
+
+// ControlReferenceTemplate represents Control Reference Template
+type ControlReferenceTemplate struct {
+	ApplicationProviderIdentifier []byte
 }
 
 // MandatoryServices represents mandatory eUICC services
 type MandatoryServices struct {
-	USIM              bool
-	ISIM              bool
-	CSIM              bool
+	Contactless       bool // tag 0
+	USIM              bool // tag 1
+	ISIM              bool // tag 2
+	CSIM              bool // tag 3
 	Milenage          bool // tag 4
 	TUAK128           bool // tag 5
+	CAVE              bool // tag 6
+	GBAUSIM           bool // tag 7
+	GBAISIM           bool // tag 8
+	MBMS              bool // tag 9
+	EAP               bool // tag 10
+	JavaCard          bool // tag 11
+	Multos            bool // tag 12
+	MultipleUSIM      bool // tag 13
+	MultipleISIM      bool // tag 14
+	MultipleCSIM      bool // tag 15
 	TUAK256           bool // tag 16
 	USIMTestAlgorithm bool // tag 17
-	BERTLV            bool
-	GetIdentity       bool
-	ProfileAX25519    bool
-	ProfileBP256      bool
+	BERTLV            bool // tag 18
+	DFLink            bool // tag 19
+	CatTP             bool // tag 20
+	GetIdentity       bool // tag 21
+	ProfileAX25519    bool // tag 22
+	ProfileBP256      bool // tag 23
+	SuciCalculatorApi bool // tag 24
+	DNSResolution     bool // tag 25
+	SCP11ac           bool // tag 26
+	SCP11cAuth        bool // tag 27
+	S16Mode           bool // tag 28
+	EAKA              bool // tag 29
 }
 
 // ============================================================================
@@ -84,6 +129,21 @@ type MasterFile struct {
 	EF_ARR     *ElementaryFile
 	EF_UMPC    *ElementaryFile
 	EFList     []*ElementaryFile
+	// RawBytes preserves original encoding for lossless round-trip
+	RawBytes []byte
+}
+
+// ============================================================================
+// CD [17]
+// ============================================================================
+
+// CDDF represents CD directory
+type CDDF struct {
+	Header       *ElementHeader
+	TemplateID   OID
+	DFCD         *FileDescriptor
+	EF_LaunchPad *ElementaryFile
+	EF_Icon      *ElementaryFile
 	// RawBytes preserves original encoding for lossless round-trip
 	RawBytes []byte
 }
@@ -110,6 +170,7 @@ type FileDescriptor struct {
 	PinStatusTemplateDO          []byte
 	ProprietaryEFInfo            *ProprietaryEFInfo
 	LinkPath                     []byte
+	UnknownTag                   []byte // [PRIVATE 99]
 }
 
 // ProprietaryEFInfo represents proprietary file information
@@ -164,8 +225,9 @@ type FillContent struct {
 
 // PUKCodes represents PUK codes block
 type PUKCodes struct {
-	Header *ElementHeader
-	Codes  []PUKCode
+	Header   *ElementHeader
+	FilePath []byte
+	Codes    []PUKCode
 }
 
 // PUKCode represents single PUK code
@@ -177,8 +239,9 @@ type PUKCode struct {
 
 // PINCodes represents PIN codes block
 type PINCodes struct {
-	Header  *ElementHeader
-	Configs []PINConfig
+	Header   *ElementHeader
+	FilePath []byte
+	Configs  []PINConfig
 }
 
 // PINConfig represents single PIN configuration
@@ -221,15 +284,65 @@ type TelecomDF struct {
 	EF_PUID       *ElementaryFile
 	EF_IAP        *ElementaryFile
 	EF_ADN        *ElementaryFile
+	EF_PBC        *ElementaryFile
+	EF_ANR        *ElementaryFile
+	EF_PURI       *ElementaryFile
+	EF_EMAIL      *ElementaryFile
+	EF_SNE        *ElementaryFile
+	EF_UID        *ElementaryFile
+	EF_GRP        *ElementaryFile
+	EF_CCP1       *ElementaryFile
+	DFMultimedia  *FileDescriptor
+	EF_MML        *ElementaryFile
+	EF_MMDF       *ElementaryFile
 	DFMMSS        *FileDescriptor
 	EF_MLPL       *ElementaryFile
 	EF_MSPL       *ElementaryFile
+	EF_MMSSMODE   *ElementaryFile
 	EF_MMSSCONF   *ElementaryFile
 	EF_MMSSID     *ElementaryFile
+	DFMCS         *FileDescriptor
+	EF_MST        *ElementaryFile
+	EF_MCSConfig  *ElementaryFile
+	DFV2X         *FileDescriptor
+	EF_VST        *ElementaryFile
+	EF_V2XConfig  *ElementaryFile
+	EF_V2XPPC5    *ElementaryFile
+	EF_V2XPUu     *ElementaryFile
 	// UseNewMMSSTags: if true, use tags 36-40 (SAIP 2.3+), otherwise use tags 25-29
 	UseNewMMSSTags bool
 	// Additional fields as needed
 	AdditionalEFs map[string]*ElementaryFile
+	// RawBytes preserves original encoding for lossless round-trip
+	RawBytes []byte
+}
+
+// ============================================================================
+// Phonebook [23]
+// ============================================================================
+
+// PhonebookDF represents phonebook directory
+type PhonebookDF struct {
+	Header      *ElementHeader
+	TemplateID  OID
+	DFPhonebook *FileDescriptor
+	EF_PBR      *ElementaryFile
+	EF_EXT1     *ElementaryFile
+	EF_AAS      *ElementaryFile
+	EF_GAS      *ElementaryFile
+	EF_PSC      *ElementaryFile
+	EF_CC       *ElementaryFile
+	EF_PUID     *ElementaryFile
+	EF_IAP      *ElementaryFile
+	EF_ADN      *ElementaryFile
+	EF_PBC      *ElementaryFile
+	EF_ANR      *ElementaryFile
+	EF_PURI     *ElementaryFile
+	EF_EMAIL    *ElementaryFile
+	EF_SNE      *ElementaryFile
+	EF_UID      *ElementaryFile
+	EF_GRP      *ElementaryFile
+	EF_CCP1     *ElementaryFile
 	// RawBytes preserves original encoding for lossless round-trip
 	RawBytes []byte
 }
@@ -363,6 +476,7 @@ type OptionalUSIM struct {
 	EF_EARFCNLIST      *ElementaryFile
 	EF_MUDMIDCONFIGDATA *ElementaryFile
 	EF_EAKA            *ElementaryFile
+	// ... additional optional files can be added as needed
 	AdditionalEFs map[string]*ElementaryFile
 	// RawBytes preserves original encoding for lossless round-trip
 	RawBytes []byte
@@ -390,17 +504,24 @@ type ISIMApplication struct {
 
 // OptionalISIM represents optional ISIM files
 type OptionalISIM struct {
-	Header                      *ElementHeader
-	TemplateID                  OID
-	EF_PCSCF                    *ElementaryFile
-	EF_GBABP                    *ElementaryFile
-	EF_GBANL                    *ElementaryFile
-	EF_NASCONFIG                *ElementaryFile
-	EF_UICCIARI                 *ElementaryFile
-	EF_3GPPPSDATAOFF            *ElementaryFile
-	EF_3GPPPSDATAOFFSERVICELIST *ElementaryFile
-	EF_XCAPCONFIGDATA           *ElementaryFile
-	EF_EAKA                     *ElementaryFile
+	Header              *ElementHeader
+	TemplateID          OID
+	EF_PCSCF            *ElementaryFile
+	EF_SMS              *ElementaryFile
+	EF_SMSP             *ElementaryFile
+	EF_SMSS             *ElementaryFile
+	EF_SMSR             *ElementaryFile
+	EF_GBABP            *ElementaryFile
+	EF_GBANL            *ElementaryFile
+	EF_NAFKCA           *ElementaryFile
+	EF_UICCIARI         *ElementaryFile
+	EF_FROMPREFERRED    *ElementaryFile
+	EF_IMSCONFIGDATA    *ElementaryFile
+	EF_XCAPCONFIGDATA    *ElementaryFile
+	EF_WEBRTCURI        *ElementaryFile
+	EF_MUDMIDCONFIGDATA  *ElementaryFile
+	EF_NASCONFIG        *ElementaryFile
+	EF_EAKA             *ElementaryFile
 	// UseNewGBATags: if true, use tags 7-8 (SAIP 2.3+), otherwise use tags 3-4
 	UseNewGBATags bool
 	AdditionalEFs map[string]*ElementaryFile
@@ -486,6 +607,28 @@ type OptionalCSIM struct {
 	EF_ATC        *ElementaryFile
 	EF_EPRL       *ElementaryFile
 	EF_BCSMSP     *ElementaryFile
+	EF_BCSMSConfig *ElementaryFile
+	EF_BCSMSPref   *ElementaryFile
+	EF_BCSMSTable  *ElementaryFile
+	EF_BAKPara     *ElementaryFile
+	EF_UPBAKPara   *ElementaryFile
+	EF_AuthCapability *ElementaryFile
+	EF_DCK         *ElementaryFile
+	EF_CDMACNL     *ElementaryFile
+	EF_LCSVer      *ElementaryFile
+	EF_LCSCP       *ElementaryFile
+	EF_AppLabels   *ElementaryFile
+	EF_RC          *ElementaryFile
+	EF_SMSCap      *ElementaryFile
+	EF_MIPFlags    *ElementaryFile
+	EF_3GPDUppeExt *ElementaryFile
+	EF_IPv6Cap     *ElementaryFile
+	EF_TCPConfig   *ElementaryFile
+	EF_DGC         *ElementaryFile
+	EF_WAPBrowserCP *ElementaryFile
+	EF_WAPBrowserBM *ElementaryFile
+	EF_MMSConfig   *ElementaryFile
+	EF_JDL         *ElementaryFile
 	EF_MMSN       *ElementaryFile
 	EF_EXT8       *ElementaryFile
 	EF_MMSICP     *ElementaryFile
@@ -507,6 +650,26 @@ type OptionalCSIM struct {
 	EF_MODEL      *ElementaryFile
 	EF_MEIDME     *ElementaryFile
 	AdditionalEFs map[string]*ElementaryFile
+	// RawBytes preserves original encoding for lossless round-trip
+	RawBytes []byte
+}
+
+// ============================================================================
+// EAP [27]
+// ============================================================================
+
+// EAPDF represents EAP directory
+type EAPDF struct {
+	Header      *ElementHeader
+	TemplateID  OID
+	DFEAP       *FileDescriptor
+	EF_EAPKeys  *ElementaryFile
+	EF_EAPStatus *ElementaryFile
+	EF_PUID     *ElementaryFile
+	EF_PS       *ElementaryFile
+	EF_CURID    *ElementaryFile
+	EF_REID     *ElementaryFile
+	EF_Realm    *ElementaryFile
 	// RawBytes preserves original encoding for lossless round-trip
 	RawBytes []byte
 }
@@ -546,7 +709,17 @@ type DF5GS struct {
 	EF_UAC_AIC           *ElementaryFile
 	EF_SUCI_CALC_INFO    *ElementaryFile
 	EF_OPL5G             *ElementaryFile
+	EF_SUPI_NAI          *ElementaryFile
 	EF_ROUTING_INDICATOR *ElementaryFile
+	EF_URSP              *ElementaryFile
+	EF_TN3GPPSNN         *ElementaryFile
+	EF_CAG               *ElementaryFile
+	EF_SOR_CMCI          *ElementaryFile
+	EF_DRI               *ElementaryFile
+	EF_5GSEDRX           *ElementaryFile
+	EF_5GNSWO_CONF       *ElementaryFile
+	EF_MCHPPLMN          *ElementaryFile
+	EF_KAUSF_DERIVATION  *ElementaryFile
 	AdditionalEFs        map[string]*ElementaryFile
 	// RawBytes preserves original encoding for lossless round-trip
 	RawBytes []byte
@@ -568,17 +741,119 @@ type DFSAIP struct {
 }
 
 // ============================================================================
+// DF-SNPN [30]
+// ============================================================================
+
+// DFSNPN represents SNPN directory
+type DFSNPN struct {
+	Header      *ElementHeader
+	TemplateID  OID
+	DFDFSNPN    *FileDescriptor
+	EF_PWS_SNPN *ElementaryFile
+	// RawBytes preserves original encoding for lossless round-trip
+	RawBytes []byte
+}
+
+// ============================================================================
+// DF-5GPROSE [31]
+// ============================================================================
+
+// DF5GPROSE represents 5G ProSe directory
+type DF5GPROSE struct {
+	Header          *ElementHeader
+	TemplateID      OID
+	DFDF5GProSe    *FileDescriptor
+	EF_5G_ProSe_ST  *ElementaryFile
+	EF_5G_ProSe_DD  *ElementaryFile
+	EF_5G_ProSe_DC  *ElementaryFile
+	EF_5G_ProSe_U2NRU *ElementaryFile
+	EF_5G_ProSe_RU  *ElementaryFile
+	EF_5G_ProSe_UIR *ElementaryFile
+	// RawBytes preserves original encoding for lossless round-trip
+	RawBytes []byte
+}
+
+// ============================================================================
+// IoT [32]
+// ============================================================================
+
+// IoTPE represents IoT profile element
+type IoTPE struct {
+	Header       *ElementHeader
+	TemplateID   OID
+	MF           *File
+	EF_PL        *File
+	EF_ICCID     *File
+	EF_DIR       *File
+	EF_ARR       *File
+	EF_UMPC      *File
+	ADF_USIM     *File
+	EF_IMSI      *File
+	EF_ARR_USIM  *File
+	EF_Keys      *File
+	EF_KeysPS    *File
+	EF_HPPLMN    *File
+	EF_UST       *File
+	EF_StartHFN  *File
+	EF_Threshold *File
+	EF_PSLOCI    *File
+	EF_ACC       *File
+	EF_FPLMN     *File
+	EF_LOCI      *File
+	EF_AD        *File
+	EF_ECC       *File
+	EF_NETPAR    *File
+	// RawBytes preserves original encoding for lossless round-trip
+	RawBytes []byte
+}
+
+// OptionalIoT represents optional IoT profile element
+type OptionalIoT struct {
+	Header               *ElementHeader
+	TemplateID           OID
+	EF_FDN               *File
+	EF_SMS               *File
+	EF_SMSP              *File
+	EF_SMSS              *File
+	EF_SPN               *File
+	EF_EST               *File
+	EF_OPLMNWACT         *File
+	EF_HPLMNWACT         *File
+	EF_EHPLMN            *File
+	EF_EPSLOCI           *File
+	EF_EPSNSC            *File
+	DF_DF_5GS            *File
+	EF_5GS3GPPLOCI       *File
+	EF_5GSN3GPPLOCI      *File
+	EF_5GS3GPPNSC        *File
+	EF_5GSN3GPPNSC       *File
+	EF_5GAUTHKEYS        *File
+	EF_UAC_AIC           *File
+	EF_SUCI_CALC_INFO    *File
+	EF_OPL5G             *File
+	EF_SUPI_NAI          *File
+	EF_ROUTING_INDICATOR *File
+	EF_URSP              *File
+	EF_TN3GPPSNN         *File
+	DF_DF_SAIP           *File
+	EF_SUCI_CALC_INFO_USIM *File
+	// RawBytes preserves original encoding for lossless round-trip
+	RawBytes []byte
+}
+
+// ============================================================================
 // AKA Parameter [22]
 // ============================================================================
 
 // AKAParameter represents authentication parameters
 type AKAParameter struct {
-	Header      *ElementHeader
-	AlgoConfig  *AlgoConfiguration
-	SQNOptions  byte
-	SQNDelta    []byte
-	SQNAgeLimit []byte
-	SQNInit     [][]byte // 32 entries of 6 bytes each
+	Header           *ElementHeader
+	AlgoConfig       *AlgoConfiguration
+	SQNOptions       byte
+	SQNDelta         []byte
+	SQNAgeLimit      []byte
+	SQNInit          [][]byte // 32 entries of 6 bytes each
+	MappingParameter *MappingParameter
 }
 
 // AlgoConfiguration represents authentication algorithm configuration
@@ -589,7 +864,15 @@ type AlgoConfiguration struct {
 	OPC               []byte // 16 or 32 bytes
 	RotationConstants []byte // r1-r5
 	XoringConstants   []byte // c1-c5
+	AuthCounterMax    []byte // [3] OPTIONAL
 	NumberOfKeccak    int    // for TUAK
+	MappingParameter  *MappingParameter
+}
+
+// MappingParameter represents AKA mapping parameter
+type MappingParameter struct {
+	MappingOptions byte
+	MappingSource  []byte // ApplicationIdentifier
 }
 
 // AlgorithmID represents authentication algorithm type
@@ -647,28 +930,33 @@ type FileManagementCMD []FileManagementItem
 
 // SecurityDomain represents GlobalPlatform security domain
 type SecurityDomain struct {
-	Header      *ElementHeader
-	Instance    *SDInstance
-	KeyList     []SDKey
-	SDPersoData [][]byte
+	Header          *ElementHeader
+	Instance        *ApplicationInstance
+	KeyList         []SDKey
+	SDPersoData     [][]byte
+	OpenPersoData   *OpenPersoData
+	CatTpParameters *CatTpParameters
 	// RawBytes preserves original encoding for lossless round-trip
 	RawBytes []byte
 }
 
-// SDInstance represents Security Domain instance
-type SDInstance struct {
-	ApplicationLoadPackageAID   []byte
-	ClassAID                    []byte
-	InstanceAID                 []byte
-	ApplicationPrivileges       []byte
-	LifeCycleState              byte
-	ApplicationSpecificParamsC9 []byte
-	ApplicationParameters       *ApplicationParameters
+// OpenPersoData represents GlobalPlatform Open personalization data
+type OpenPersoData struct {
+	RestrictParameter             []byte // [PRIVATE 25]
+	ContactlessProtocolParameters []byte
 }
 
-// ApplicationParameters represents application parameters
-type ApplicationParameters struct {
-	UIICToolkitApplicationSpecificParametersField []byte
+// CatTpParameters represents CAT_TP parameters
+type CatTpParameters struct {
+	CatTpMaxSduSize int
+	CatTpMaxPduSize int
+}
+
+// UICCApplicationParameters represents application parameters
+type UICCApplicationParameters struct {
+	UiccToolkitApplicationSpecificParametersField []byte
+	UiccAccessApplicationSpecificParametersField  []byte
+	UiccAdministrativeAccessApplicationSpecificParametersField []byte
 }
 
 // SDKey represents Security Domain key
@@ -677,7 +965,8 @@ type SDKey struct {
 	KeyAccess         byte
 	KeyIdentifier     byte
 	KeyVersionNumber  byte
-	KeyCompontents     []KeyComponent
+	KeyCounterValue   []byte
+	KeyComponents     []KeyComponent
 }
 
 // KeyComponent represents key component
@@ -747,10 +1036,26 @@ type ApplicationInstance struct {
 	ApplicationPrivileges        []byte // [2] - Privileges byte(s)
 	LifeCycleState               byte   // [3] - GP lifecycle state (default 0x07)
 	ApplicationSpecificParamsC9  []byte // [PRIVATE 9] - C9 install params
-	SystemSpecificParams         []byte // [PRIVATE 15] OPTIONAL - System params
-	ApplicationParameters        *ApplicationParameters // [PRIVATE 10] OPTIONAL - UICC app params
+	SystemSpecificParams         *ApplicationSystemParameters // [PRIVATE 15] OPTIONAL - System params
+	ApplicationParameters        *UICCApplicationParameters // [PRIVATE 10] OPTIONAL - UICC app params
 	ProcessData                  [][]byte // Personalization APDU commands (executed after install)
-	ControlReferenceTemplate     []byte // [16] OPTIONAL - CRT for SCP
+	ControlReferenceTemplate     *ControlReferenceTemplate // [16] OPTIONAL - CRT for SCP
+}
+
+// ApplicationSystemParameters represents GP system specific parameters
+type ApplicationSystemParameters struct {
+	VolatileMemoryQuotaC7       []byte // [PRIVATE 7]
+	NonVolatileMemoryQuotaC8    []byte // [PRIVATE 8]
+	GlobalServiceParameters     []byte // [PRIVATE 11]
+	ImplicitSelectionParameter   []byte // [PRIVATE 15]
+	VolatileReservedMemory      []byte // [PRIVATE 23]
+	NonVolatileReservedMemory   []byte // [PRIVATE 24]
+	TS102226SIMFileAccessToolkitParameter []byte // [PRIVATE 10]
+	TS102226AdditionalContactlessParameters []byte // [0]
+	ContactlessProtocolParameters []byte // [PRIVATE 25]
+	UserInteractionContactlessParameters []byte // [PRIVATE 26]
+	CumulativeGrantedVolatileMemory    []byte // [2]
+	CumulativeGrantedNonVolatileMemory []byte // [3]
 }
 
 // ============================================================================

@@ -84,6 +84,20 @@ func decodeProfileElement(a *asn1.ASN1, rawBytes []byte) (*ProfileElement, error
 		elem.Value, err = decodeRFM(inner)
 	case TagApplication:
 		elem.Value, err = decodeApplication(inner)
+	case TagCD:
+		elem.Value, err = decodeCDDF(inner)
+	case TagPhonebook:
+		elem.Value, err = decodePhonebookDF(inner)
+	case TagEAP:
+		elem.Value, err = decodeEAPDF(inner)
+	case TagDFSNPN:
+		elem.Value, err = decodeDFSNPN(inner)
+	case TagDF5GPROSE:
+		elem.Value, err = decodeDF5GPROSE(inner)
+	case TagIoT:
+		elem.Value, err = decodeIoTPE(inner)
+	case TagOptIoT:
+		elem.Value, err = decodeOptionalIoT(inner)
 	case TagEnd:
 		elem.Value, err = decodeEnd(inner)
 	default:
@@ -128,10 +142,47 @@ func decodeProfileHeader(a *asn1.ASN1) (*ProfileHeader, error) {
 			h.MandatoryServices = decodeMandatoryServices(inner)
 		case 6: // eUICC-Mandatory-GFSTEList
 			h.MandatoryGFSTEList = decodeOIDList(inner)
+		case 7: // connectivityParameters
+			h.ConnectivityParameters = copyBytes(a.Data)
+		case 8: // eUICC-Mandatory-AIDs
+			h.MandatoryAIDs = decodeMandatoryAIDList(inner)
+		case 9: // iotOptions
+			h.IOTOptions = decodeIOTOptions(inner)
 		}
 	}
 
 	return h, nil
+}
+
+func decodeMandatoryAIDList(a *asn1.ASN1) []MandatoryAID {
+	var list []MandatoryAID
+	for a.Unmarshal() {
+		inner := asn1.Init(a.Data)
+		aid := MandatoryAID{}
+		for inner.Unmarshal() {
+			tagNum := getContextTag(inner)
+			switch tagNum {
+			case 0:
+				aid.AID = copyBytes(inner.Data)
+			case 1:
+				aid.Version = copyBytes(inner.Data)
+			}
+		}
+		list = append(list, aid)
+	}
+	return list
+}
+
+func decodeIOTOptions(a *asn1.ASN1) *IOTOptions {
+	io := &IOTOptions{}
+	for a.Unmarshal() {
+		tagNum := getContextTag(a)
+		switch tagNum {
+		case 0:
+			io.PIX = copyBytes(a.Data)
+		}
+	}
+	return io
 }
 
 func decodeMandatoryServices(a *asn1.ASN1) *MandatoryServices {
@@ -148,6 +199,8 @@ func decodeMandatoryServices(a *asn1.ASN1) *MandatoryServices {
 		// 24=suciCalculatorApi, 25=dns-resolution, 26=scp11ac
 		// 27=scp11c-authorization-mechanism, 28=s16mode, 29=eaka
 		switch tagNum {
+		case 0:
+			ms.Contactless = true
 		case 1:
 			ms.USIM = true
 		case 2:
@@ -158,18 +211,54 @@ func decodeMandatoryServices(a *asn1.ASN1) *MandatoryServices {
 			ms.Milenage = true
 		case 5:
 			ms.TUAK128 = true
+		case 6:
+			ms.CAVE = true
+		case 7:
+			ms.GBAUSIM = true
+		case 8:
+			ms.GBAISIM = true
+		case 9:
+			ms.MBMS = true
+		case 10:
+			ms.EAP = true
+		case 11:
+			ms.JavaCard = true
+		case 12:
+			ms.Multos = true
+		case 13:
+			ms.MultipleUSIM = true
+		case 14:
+			ms.MultipleISIM = true
+		case 15:
+			ms.MultipleCSIM = true
 		case 16:
 			ms.TUAK256 = true
 		case 17:
 			ms.USIMTestAlgorithm = true
 		case 18:
 			ms.BERTLV = true
+		case 19:
+			ms.DFLink = true
+		case 20:
+			ms.CatTP = true
 		case 21:
 			ms.GetIdentity = true
 		case 22:
 			ms.ProfileAX25519 = true
 		case 23:
 			ms.ProfileBP256 = true
+		case 24:
+			ms.SuciCalculatorApi = true
+		case 25:
+			ms.DNSResolution = true
+		case 26:
+			ms.SCP11ac = true
+		case 27:
+			ms.SCP11cAuth = true
+		case 28:
+			ms.S16Mode = true
+		case 29:
+			ms.EAKA = true
 		}
 	}
 
@@ -357,6 +446,33 @@ func decodeElementaryFile(a *asn1.ASN1) *ElementaryFile {
 	}
 
 	return ef
+}
+
+func decodeFile(a *asn1.ASN1) *File {
+	var f File
+	var currentOffset int
+
+	for a.Unmarshal() {
+		tagNum := getContextTag(a)
+		inner := asn1.Init(a.Data)
+
+		// File ::= SEQUENCE OF CHOICE { doNotCreate[0], fileDescriptor[1], fillFileOffset[2], fillFileContent[3] }
+		switch tagNum {
+		case 0: // doNotCreate NULL
+			f = append(f, FileElement{Type: FileElementDoNotCreate})
+		case 1: // fileDescriptor Fcp
+			fd := decodeFileDescriptor(inner)
+			f = append(f, FileElement{Type: FileElementDescriptor, Descriptor: fd})
+		case 2: // fillFileOffset UInt16
+			currentOffset = decodeInteger(a.Data)
+			f = append(f, FileElement{Type: FileElementOffset, Offset: currentOffset})
+		case 3: // fillFileContent OCTET STRING
+			content := copyBytes(a.Data)
+			f = append(f, FileElement{Type: FileElementContent, Content: content})
+		}
+	}
+
+	return &f
 }
 
 // ============================================================================
@@ -893,23 +1009,27 @@ func decodeOptISIM(a *asn1.ASN1) (*OptionalISIM, error) {
 			i.TemplateID = decodeOID(a.Data)
 		case 2: // ef-pcscf
 			i.EF_PCSCF = decodeElementaryFile(inner)
-		case 3: // ef-gbabp (old tags)
+		case 3: // ef-sms
+			i.EF_SMS = decodeElementaryFile(inner)
+		case 4: // ef-smsp
+			i.EF_SMSP = decodeElementaryFile(inner)
+		case 5: // ef-smss
+			i.EF_SMSS = decodeElementaryFile(inner)
+		case 6: // ef-smsr
+			i.EF_SMSR = decodeElementaryFile(inner)
+		case 7: // ef-gbabp
 			i.EF_GBABP = decodeElementaryFile(inner)
-		case 7: // ef-gbabp (new tags SAIP 2.3+)
-			i.EF_GBABP = decodeElementaryFile(inner)
-			i.UseNewGBATags = true
-		case 4: // ef-gbanl (old tags)
+		case 8: // ef-gbanl
 			i.EF_GBANL = decodeElementaryFile(inner)
-		case 8: // ef-gbanl (new tags SAIP 2.3+)
-			i.EF_GBANL = decodeElementaryFile(inner)
-			i.UseNewGBATags = true
-		case 5: // ef-nasconfig
+		case 9: // ef-nafkca
+			i.EF_NAFKCA = decodeElementaryFile(inner)
+		case 10: // ef-webrtcuri
+			i.EF_WEBRTCURI = decodeElementaryFile(inner)
+		case 11: // ef-mudmidconfigdata
+			i.EF_MUDMIDCONFIGDATA = decodeElementaryFile(inner)
+		case 12: // ef-nasconfig
 			i.EF_NASCONFIG = decodeElementaryFile(inner)
-		case 6: // ef-uicciari
-			i.EF_UICCIARI = decodeElementaryFile(inner)
-		case 9: // ef-xcapconfigdata
-			i.EF_XCAPCONFIGDATA = decodeElementaryFile(inner)
-		case 10: // ef-eaka
+		case 13: // ef-eaka
 			i.EF_EAKA = decodeElementaryFile(inner)
 		default:
 			ef := decodeElementaryFile(inner)
@@ -1280,6 +1400,8 @@ func decodeAKAParameter(a *asn1.ASN1) (*AKAParameter, error) {
 			for inner.Unmarshal() {
 				aka.SQNInit = append(aka.SQNInit, copyBytes(inner.Data))
 			}
+		case 6: // mappingParameter
+			aka.MappingParameter = decodeMappingParameter(inner)
 		}
 	}
 
@@ -1301,31 +1423,52 @@ func decodeAKAParameter(a *asn1.ASN1) (*AKAParameter, error) {
 	return aka, nil
 }
 
+func decodeMappingParameter(a *asn1.ASN1) *MappingParameter {
+	mp := &MappingParameter{}
+	for a.Unmarshal() {
+		tagNum := getContextTag(a)
+		switch tagNum {
+		case 0: // mappingOptions
+			if len(a.Data) > 0 {
+				mp.MappingOptions = a.Data[0]
+			}
+		case 1: // mappingSource
+			mp.MappingSource = copyBytes(a.Data)
+		}
+	}
+	return mp
+}
+
 func decodeAlgoConfiguration(a *asn1.ASN1) *AlgoConfiguration {
 	ac := &AlgoConfiguration{
 		NumberOfKeccak: 1, // Default from reference
 	}
 
-	// AlgoConfiguration is a CHOICE: [0] milenage, [1] tuak
+	// AlgoConfiguration is a CHOICE: [0] mappingParameter, [1] algoParameter
 	if !a.Unmarshal() {
 		return ac
 	}
 
-	// choiceTag := getContextTag(a)
+	choiceTag := getContextTag(a)
 	inner := asn1.Init(a.Data)
 
-	// Fields inside are AlgoParameter (SEQUENCE)
-	for inner.Unmarshal() {
-		parseAlgoField(inner, ac)
-	}
-
-	// Set defaults for Milenage/USIMTestAlgorithm if missing
-	if ac.AlgorithmID == AlgoMilenage || ac.AlgorithmID == AlgoUSIMTestAlgorithm {
-		if len(ac.RotationConstants) == 0 {
-			ac.RotationConstants, _ = hex.DecodeString("4000204060")
+	switch choiceTag {
+	case 0: // [0] mappingParameter
+		ac.MappingParameter = decodeMappingParameter(inner)
+	case 1: // [1] algoParameter
+		// Fields inside are AlgoParameter (SEQUENCE)
+		for inner.Unmarshal() {
+			parseAlgoField(inner, ac)
 		}
-		if len(ac.XoringConstants) == 0 {
-			ac.XoringConstants, _ = hex.DecodeString("0000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000020000000000000000000000000000000400000000000000000000000000000008")
+
+		// Set defaults for Milenage/USIMTestAlgorithm if missing
+		if ac.AlgorithmID == AlgoMilenage || ac.AlgorithmID == AlgoUSIMTestAlgorithm {
+			if len(ac.RotationConstants) == 0 {
+				ac.RotationConstants, _ = hex.DecodeString("4000204060")
+			}
+			if len(ac.XoringConstants) == 0 {
+				ac.XoringConstants, _ = hex.DecodeString("0000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000020000000000000000000000000000000400000000000000000000000000000008")
+			}
 		}
 	}
 
@@ -1351,6 +1494,8 @@ func parseAlgoField(a *asn1.ASN1, ac *AlgoConfiguration) {
 		ac.XoringConstants = copyBytes(a.Data)
 	case 6: // numberOfKeccak
 		ac.NumberOfKeccak = decodeInteger(a.Data)
+	case 7: // authCounterMax
+		ac.AuthCounterMax = copyBytes(a.Data)
 	}
 }
 
@@ -1470,7 +1615,7 @@ func decodeSecurityDomain(a *asn1.ASN1) (*SecurityDomain, error) {
 		case 0: // sd-Header
 			sd.Header = decodeElementHeader(inner)
 		case 1: // instance
-			sd.Instance = decodeSDInstance(inner)
+			sd.Instance = decodeApplicationInstance(inner)
 		case 2: // keyList
 			for inner.Unmarshal() {
 				key := decodeSDKey(asn1.Init(inner.Data))
@@ -1480,69 +1625,109 @@ func decodeSecurityDomain(a *asn1.ASN1) (*SecurityDomain, error) {
 			for inner.Unmarshal() {
 				sd.SDPersoData = append(sd.SDPersoData, copyBytes(inner.Data))
 			}
+		case 4: // openPersoData
+			sd.OpenPersoData = decodeOpenPersoData(inner)
+		case 5: // catTpParameters
+			sd.CatTpParameters = decodeCatTpParameters(inner)
 		}
 	}
 
 	return sd, nil
 }
 
-func decodeSDInstance(a *asn1.ASN1) *SDInstance {
-	inst := &SDInstance{}
-
-	// Track APPLICATION 15 tag occurrences for ordered fields
-	appTagCount := 0
-
+func decodeOpenPersoData(a *asn1.ASN1) *OpenPersoData {
+	opd := &OpenPersoData{}
 	for a.Unmarshal() {
-		// Check raw tag for better matching
-		switch a.Tag {
-		case 0x4F: // APPLICATION [15] - used for AIDs
-			switch appTagCount {
-			case 0:
-				inst.ApplicationLoadPackageAID = copyBytes(a.Data)
-			case 1:
-				inst.ClassAID = copyBytes(a.Data)
-			case 2:
-				inst.InstanceAID = copyBytes(a.Data)
-			}
-			appTagCount++
-
-		case 0x82: // [2] applicationPrivileges
-			inst.ApplicationPrivileges = copyBytes(a.Data)
-
-		case 0x83: // [3] lifeCycleState
-			if len(a.Data) > 0 {
-				inst.LifeCycleState = a.Data[0]
-			}
-
-		case 0xC9: // PRIVATE [9] applicationSpecificParametersC9
-			inst.ApplicationSpecificParamsC9 = copyBytes(a.Data)
-
-		case 0xEA: // PRIVATE [10] CONSTRUCTED applicationParameters
-			inner := asn1.Init(a.Data)
-			inst.ApplicationParameters = decodeApplicationParameters(inner)
+		tagNum := getTagNumber(a)
+		switch tagNum {
+		case 25: // restrictParameter [PRIVATE 25]
+			opd.RestrictParameter = copyBytes(a.Data)
+		default: // assume contactlessProtocolParameters
+			opd.ContactlessProtocolParameters = copyBytes(a.Data)
 		}
 	}
-
-	return inst
+	return opd
 }
 
-func decodeApplicationParameters(a *asn1.ASN1) *ApplicationParameters {
-	ap := &ApplicationParameters{}
+func decodeCatTpParameters(a *asn1.ASN1) *CatTpParameters {
+	ctp := &CatTpParameters{}
+	for a.Unmarshal() {
+		tagNum := getContextTag(a)
+		switch tagNum {
+		case 0:
+			ctp.CatTpMaxSduSize = decodeInteger(a.Data)
+		case 1:
+			ctp.CatTpMaxPduSize = decodeInteger(a.Data)
+		}
+	}
+	return ctp
+}
+
+func decodeUICCApplicationParameters(a *asn1.ASN1) *UICCApplicationParameters {
+	ap := &UICCApplicationParameters{}
 
 	for a.Unmarshal() {
 		tagNum := getContextTag(a)
 		switch tagNum {
 		case 0: // uiccToolkitApplicationSpecificParametersField
-			ap.UIICToolkitApplicationSpecificParametersField = copyBytes(a.Data)
+			ap.UiccToolkitApplicationSpecificParametersField = copyBytes(a.Data)
+		case 1: // uiccAccessApplicationSpecificParametersField
+			ap.UiccAccessApplicationSpecificParametersField = copyBytes(a.Data)
+		case 2: // uiccAdministrativeAccessApplicationSpecificParametersField
+			ap.UiccAdministrativeAccessApplicationSpecificParametersField = copyBytes(a.Data)
 		}
 	}
 
 	return ap
 }
 
+func decodeApplicationSystemParameters(a *asn1.ASN1) *ApplicationSystemParameters {
+	asp := &ApplicationSystemParameters{}
+	for a.Unmarshal() {
+		tagNum := getTagNumber(a)
+		switch tagNum {
+		case 7: // volatileMemoryQuotaC7 [PRIVATE 7]
+			asp.VolatileMemoryQuotaC7 = copyBytes(a.Data)
+		case 8: // nonVolatileMemoryQuotaC8 [PRIVATE 8]
+			asp.NonVolatileMemoryQuotaC8 = copyBytes(a.Data)
+		case 11: // globalServiceParameters [PRIVATE 11]
+			asp.GlobalServiceParameters = copyBytes(a.Data)
+		case 15: // implicitSelectionParameter [PRIVATE 15]
+			asp.ImplicitSelectionParameter = copyBytes(a.Data)
+		case 23: // volatileReservedMemory [PRIVATE 23]
+			asp.VolatileReservedMemory = copyBytes(a.Data)
+		case 24: // nonVolatileReservedMemory [PRIVATE 24]
+			asp.NonVolatileReservedMemory = copyBytes(a.Data)
+		case 10: // ts102226SIMFileAccessToolkitParameter [PRIVATE 10]
+			asp.TS102226SIMFileAccessToolkitParameter = copyBytes(a.Data)
+		case 0: // ts102226AdditionalContactlessParameters [0]
+			asp.TS102226AdditionalContactlessParameters = copyBytes(a.Data)
+		case 25: // contactlessProtocolParameters [PRIVATE 25]
+			asp.ContactlessProtocolParameters = copyBytes(a.Data)
+		case 26: // userInteractionContactlessParameters [PRIVATE 26]
+			asp.UserInteractionContactlessParameters = copyBytes(a.Data)
+		case 2: // cumulativeGrantedVolatileMemory [2]
+			asp.CumulativeGrantedVolatileMemory = copyBytes(a.Data)
+		case 3: // cumulativeGrantedNonVolatileMemory [3]
+			asp.CumulativeGrantedNonVolatileMemory = copyBytes(a.Data)
+		}
+	}
+	return asp
+}
+
+func decodeControlReferenceTemplate(a *asn1.ASN1) *ControlReferenceTemplate {
+	crt := &ControlReferenceTemplate{}
+	for a.Unmarshal() {
+		if a.Class == asn1.ClassApplication && getTagNumber(a) == 32 {
+			crt.ApplicationProviderIdentifier = copyBytes(a.Data)
+		}
+	}
+	return crt
+}
+
 func decodeSDKey(a *asn1.ASN1) SDKey {
 	key := SDKey{
-		KeyCompontents: make([]KeyComponent, 0),
+		KeyComponents: make([]KeyComponent, 0),
 	}
 
 	for a.Unmarshal() {
@@ -1551,7 +1736,7 @@ func decodeSDKey(a *asn1.ASN1) SDKey {
 		// 0x96 = [22] IMPLICIT keyAccess (optional, DEFAULT 00)
 		// 0x82 = [2] keyIdentifier
 		// 0x83 = [3] keyVersionNumber
-		// 0x30 = SEQUENCE for keyCompontents
+		// 0x30 = SEQUENCE for keyComponents
 		switch a.Tag {
 		case 0x95: // keyUsageQualifier [21]
 			if len(a.Data) > 0 {
@@ -1569,11 +1754,11 @@ func decodeSDKey(a *asn1.ASN1) SDKey {
 			if len(a.Data) > 0 {
 				key.KeyVersionNumber = a.Data[0]
 			}
-		case 0x30: // SEQUENCE = keyCompontents
+		case 0x30: // SEQUENCE = keyComponents
 			inner := asn1.Init(a.Data)
 			for inner.Unmarshal() {
 				comp := decodeKeyComponent(asn1.Init(inner.Data))
-				key.KeyCompontents = append(key.KeyCompontents, comp)
+				key.KeyComponents = append(key.KeyComponents, comp)
 			}
 		}
 	}
@@ -1785,7 +1970,8 @@ func decodeApplicationInstance(a *asn1.ASN1) *ApplicationInstance {
 					inst.LifeCycleState = a.Data[0]
 				}
 			case 16: // controlReferenceTemplate
-				inst.ControlReferenceTemplate = copyBytes(a.Data)
+				inner := asn1.Init(a.Data)
+				inst.ControlReferenceTemplate = decodeControlReferenceTemplate(inner)
 			}
 
 		case a.Class == asn1.ClassPrivate:
@@ -1794,9 +1980,9 @@ func decodeApplicationInstance(a *asn1.ASN1) *ApplicationInstance {
 			case 9: // applicationSpecificParametersC9
 				inst.ApplicationSpecificParamsC9 = copyBytes(a.Data)
 			case 10: // applicationParameters (UICCApplicationParameters)
-				inst.ApplicationParameters = decodeApplicationParameters(asn1.Init(a.Data))
+				inst.ApplicationParameters = decodeUICCApplicationParameters(asn1.Init(a.Data))
 			case 15: // systemSpecificParameters
-				inst.SystemSpecificParams = copyBytes(a.Data)
+				inst.SystemSpecificParams = decodeApplicationSystemParameters(asn1.Init(a.Data))
 			}
 
 		case a.Class == asn1.ClassUniversal && a.Tag == 0x30:
@@ -1816,6 +2002,291 @@ func decodeApplicationInstance(a *asn1.ASN1) *ApplicationInstance {
 // ============================================================================
 // End [10]
 // ============================================================================
+
+func decodeCDDF(a *asn1.ASN1) (*CDDF, error) {
+	cd := &CDDF{}
+	for a.Unmarshal() {
+		tagNum := getContextTag(a)
+		inner := asn1.Init(a.Data)
+		switch tagNum {
+		case 0:
+			cd.Header = decodeElementHeader(inner)
+		case 1:
+			cd.TemplateID = decodeOID(a.Data)
+		case 2:
+			cd.DFCD = decodeFileDescriptor(inner)
+		case 3:
+			cd.EF_LaunchPad = decodeElementaryFile(inner)
+		case 4:
+			cd.EF_Icon = decodeElementaryFile(inner)
+		}
+	}
+	return cd, nil
+}
+
+func decodePhonebookDF(a *asn1.ASN1) (*PhonebookDF, error) {
+	p := &PhonebookDF{}
+	for a.Unmarshal() {
+		tagNum := getContextTag(a)
+		inner := asn1.Init(a.Data)
+		switch tagNum {
+		case 0:
+			p.Header = decodeElementHeader(inner)
+		case 1:
+			p.TemplateID = decodeOID(a.Data)
+		case 2:
+			p.DFPhonebook = decodeFileDescriptor(inner)
+		case 3:
+			p.EF_PBR = decodeElementaryFile(inner)
+		case 4:
+			p.EF_EXT1 = decodeElementaryFile(inner)
+		case 5:
+			p.EF_AAS = decodeElementaryFile(inner)
+		case 6:
+			p.EF_GAS = decodeElementaryFile(inner)
+		case 7:
+			p.EF_PSC = decodeElementaryFile(inner)
+		case 8:
+			p.EF_CC = decodeElementaryFile(inner)
+		case 9:
+			p.EF_PUID = decodeElementaryFile(inner)
+		case 10:
+			p.EF_IAP = decodeElementaryFile(inner)
+		case 11:
+			p.EF_ADN = decodeElementaryFile(inner)
+		case 12:
+			p.EF_PBC = decodeElementaryFile(inner)
+		case 13:
+			p.EF_ANR = decodeElementaryFile(inner)
+		case 14:
+			p.EF_PURI = decodeElementaryFile(inner)
+		case 15:
+			p.EF_EMAIL = decodeElementaryFile(inner)
+		case 16:
+			p.EF_SNE = decodeElementaryFile(inner)
+		case 17:
+			p.EF_UID = decodeElementaryFile(inner)
+		case 18:
+			p.EF_GRP = decodeElementaryFile(inner)
+		case 19:
+			p.EF_CCP1 = decodeElementaryFile(inner)
+		}
+	}
+	return p, nil
+}
+
+func decodeEAPDF(a *asn1.ASN1) (*EAPDF, error) {
+	e := &EAPDF{}
+	for a.Unmarshal() {
+		tagNum := getContextTag(a)
+		inner := asn1.Init(a.Data)
+		switch tagNum {
+		case 0:
+			e.Header = decodeElementHeader(inner)
+		case 1:
+			e.TemplateID = decodeOID(a.Data)
+		case 2:
+			e.DFEAP = decodeFileDescriptor(inner)
+		case 3:
+			e.EF_EAPKeys = decodeElementaryFile(inner)
+		case 4:
+			e.EF_EAPStatus = decodeElementaryFile(inner)
+		case 5:
+			e.EF_PUID = decodeElementaryFile(inner)
+		case 6:
+			e.EF_PS = decodeElementaryFile(inner)
+		case 7:
+			e.EF_CURID = decodeElementaryFile(inner)
+		case 8:
+			e.EF_REID = decodeElementaryFile(inner)
+		case 9:
+			e.EF_Realm = decodeElementaryFile(inner)
+		}
+	}
+	return e, nil
+}
+
+func decodeDFSNPN(a *asn1.ASN1) (*DFSNPN, error) {
+	d := &DFSNPN{}
+	for a.Unmarshal() {
+		tagNum := getContextTag(a)
+		inner := asn1.Init(a.Data)
+		switch tagNum {
+		case 0:
+			d.Header = decodeElementHeader(inner)
+		case 1:
+			d.TemplateID = decodeOID(a.Data)
+		case 2:
+			d.DFDFSNPN = decodeFileDescriptor(inner)
+		case 3:
+			d.EF_PWS_SNPN = decodeElementaryFile(inner)
+		}
+	}
+	return d, nil
+}
+
+func decodeDF5GPROSE(a *asn1.ASN1) (*DF5GPROSE, error) {
+	d := &DF5GPROSE{}
+	for a.Unmarshal() {
+		tagNum := getContextTag(a)
+		inner := asn1.Init(a.Data)
+		switch tagNum {
+		case 0:
+			d.Header = decodeElementHeader(inner)
+		case 1:
+			d.TemplateID = decodeOID(a.Data)
+		case 2:
+			d.DFDF5GProSe = decodeFileDescriptor(inner)
+		case 3:
+			d.EF_5G_ProSe_ST = decodeElementaryFile(inner)
+		case 4:
+			d.EF_5G_ProSe_DD = decodeElementaryFile(inner)
+		case 5:
+			d.EF_5G_ProSe_DC = decodeElementaryFile(inner)
+		case 6:
+			d.EF_5G_ProSe_U2NRU = decodeElementaryFile(inner)
+		case 7:
+			d.EF_5G_ProSe_RU = decodeElementaryFile(inner)
+		case 8:
+			d.EF_5G_ProSe_UIR = decodeElementaryFile(inner)
+		}
+	}
+	return d, nil
+}
+
+func decodeIoTPE(a *asn1.ASN1) (*IoTPE, error) {
+	i := &IoTPE{}
+	for a.Unmarshal() {
+		tagNum := getContextTag(a)
+		inner := asn1.Init(a.Data)
+		switch tagNum {
+		case 0:
+			i.Header = decodeElementHeader(inner)
+		case 1:
+			i.TemplateID = decodeOID(a.Data)
+		case 2:
+			i.MF = decodeFile(inner)
+		case 3:
+			i.EF_PL = decodeFile(inner)
+		case 4:
+			i.EF_ICCID = decodeFile(inner)
+		case 5:
+			i.EF_DIR = decodeFile(inner)
+		case 6:
+			i.EF_ARR = decodeFile(inner)
+		case 7:
+			i.EF_UMPC = decodeFile(inner)
+		case 8:
+			i.ADF_USIM = decodeFile(inner)
+		case 9:
+			i.EF_IMSI = decodeFile(inner)
+		case 10:
+			i.EF_ARR_USIM = decodeFile(inner)
+		case 11:
+			i.EF_Keys = decodeFile(inner)
+		case 12:
+			i.EF_KeysPS = decodeFile(inner)
+		case 13:
+			i.EF_HPPLMN = decodeFile(inner)
+		case 14:
+			i.EF_UST = decodeFile(inner)
+		case 15:
+			i.EF_StartHFN = decodeFile(inner)
+		case 16:
+			i.EF_Threshold = decodeFile(inner)
+		case 17:
+			i.EF_PSLOCI = decodeFile(inner)
+		case 18:
+			i.EF_ACC = decodeFile(inner)
+		case 19:
+			i.EF_FPLMN = decodeFile(inner)
+		case 20:
+			i.EF_LOCI = decodeFile(inner)
+		case 21:
+			i.EF_AD = decodeFile(inner)
+		case 22:
+			i.EF_ECC = decodeFile(inner)
+		case 23:
+			i.EF_NETPAR = decodeFile(inner)
+		}
+	}
+	return i, nil
+}
+
+func decodeOptionalIoT(a *asn1.ASN1) (*OptionalIoT, error) {
+	o := &OptionalIoT{}
+	for a.Unmarshal() {
+		tagNum := getContextTag(a)
+		inner := asn1.Init(a.Data)
+		switch tagNum {
+		case 0:
+			o.Header = decodeElementHeader(inner)
+		case 1:
+			o.TemplateID = decodeOID(a.Data)
+		case 2:
+			o.EF_FDN = decodeFile(inner)
+		case 3:
+			o.EF_SMS = decodeFile(inner)
+		case 4:
+			o.EF_SMSP = decodeFile(inner)
+		case 5:
+			o.EF_SMSS = decodeFile(inner)
+		case 6:
+			o.EF_SPN = decodeFile(inner)
+		case 7:
+			o.EF_EST = decodeFile(inner)
+		case 8:
+			o.EF_OPLMNWACT = decodeFile(inner)
+		case 9:
+			o.EF_HPLMNWACT = decodeFile(inner)
+		case 10:
+			o.EF_EHPLMN = decodeFile(inner)
+		case 11:
+			o.EF_EPSLOCI = decodeFile(inner)
+		case 12:
+			o.EF_EPSNSC = decodeFile(inner)
+		case 13:
+			o.DF_DF_5GS = decodeFile(inner)
+		case 14:
+			o.EF_5GS3GPPLOCI = decodeFile(inner)
+		case 15:
+			o.EF_5GSN3GPPLOCI = decodeFile(inner)
+		case 16:
+			o.EF_5GS3GPPNSC = decodeFile(inner)
+		case 17:
+			o.EF_5GSN3GPPNSC = decodeFile(inner)
+		case 18:
+			o.EF_5GAUTHKEYS = decodeFile(inner)
+		case 19:
+			o.EF_UAC_AIC = decodeFile(inner)
+		case 20:
+			o.EF_SUCI_CALC_INFO = decodeFile(inner)
+		case 21:
+			o.EF_OPL5G = decodeFile(inner)
+		case 22:
+			o.EF_SUPI_NAI = decodeFile(inner)
+		case 23:
+			o.EF_ROUTING_INDICATOR = decodeFile(inner)
+		case 24:
+			o.EF_URSP = decodeFile(inner)
+		case 25:
+			o.EF_TN3GPPSNN = decodeFile(inner)
+		case 26:
+			o.DF_DF_SAIP = decodeFile(inner)
+		case 27:
+			o.EF_SUCI_CALC_INFO_USIM = decodeFile(inner)
+		}
+	}
+	return o, nil
+}
+
+func decodeHexList(a *asn1.ASN1) [][]byte {
+	list := make([][]byte, 0)
+	for a.Unmarshal() {
+		list = append(list, copyBytes(a.Data))
+	}
+	return list
+}
 
 func decodeEnd(a *asn1.ASN1) (*EndElement, error) {
 	end := &EndElement{}

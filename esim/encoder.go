@@ -76,6 +76,20 @@ func encodeProfileElement(elem *ProfileElement) ([]byte, error) {
 		data, err = encodeRFM(elem.Value.(*RFMConfig))
 	case TagApplication:
 		data, err = encodeApplication(elem.Value.(*Application))
+	case TagCD:
+		data, err = encodeCDDF(elem.Value.(*CDDF))
+	case TagPhonebook:
+		data, err = encodePhonebookDF(elem.Value.(*PhonebookDF))
+	case TagEAP:
+		data, err = encodeEAPDF(elem.Value.(*EAPDF))
+	case TagDFSNPN:
+		data, err = encodeDFSNPN(elem.Value.(*DFSNPN))
+	case TagDF5GPROSE:
+		data, err = encodeDF5GPROSE(elem.Value.(*DF5GPROSE))
+	case TagIoT:
+		data, err = encodeIoTPE(elem.Value.(*IoTPE))
+	case TagOptIoT:
+		data, err = encodeOptionalIoT(elem.Value.(*OptionalIoT))
 	case TagEnd:
 		data, err = encodeEnd(elem.Value.(*EndElement))
 	default:
@@ -133,12 +147,55 @@ func encodeProfileHeader(h *ProfileHeader) ([]byte, error) {
 		data = append(data, asn1.Marshal(0xA6, nil, listData...)...)
 	}
 
+	// [7] connectivityParameters
+	if len(h.ConnectivityParameters) > 0 {
+		data = append(data, asn1.Marshal(0x87, nil, h.ConnectivityParameters...)...)
+	}
+
+	// [8] eUICC-Mandatory-AIDs
+	if len(h.MandatoryAIDs) > 0 {
+		listData := encodeMandatoryAIDList(h.MandatoryAIDs)
+		data = append(data, asn1.Marshal(0xA8, nil, listData...)...)
+	}
+
+	// [9] iotOptions
+	if h.IOTOptions != nil {
+		ioData := encodeIOTOptions(h.IOTOptions)
+		data = append(data, asn1.Marshal(0xA9, nil, ioData...)...)
+	}
+
 	return data, nil
+}
+
+func encodeMandatoryAIDList(list []MandatoryAID) []byte {
+	var data []byte
+	for _, aid := range list {
+		var aidData []byte
+		if len(aid.AID) > 0 {
+			aidData = append(aidData, asn1.Marshal(0x80, nil, aid.AID...)...)
+		}
+		if len(aid.Version) > 0 {
+			aidData = append(aidData, asn1.Marshal(0x81, nil, aid.Version...)...)
+		}
+		data = append(data, asn1.Marshal(0x30, nil, aidData...)...)
+	}
+	return data
+}
+
+func encodeIOTOptions(io *IOTOptions) []byte {
+	var data []byte
+	if len(io.PIX) > 0 {
+		data = append(data, asn1.Marshal(0x80, nil, io.PIX...)...)
+	}
+	return data
 }
 
 func encodeMandatoryServices(ms *MandatoryServices) []byte {
 	var data []byte
 
+	if ms.Contactless {
+		data = append(data, asn1.MarshalWithFullTag(asn1.ClassContextSpecific, asn1.FormPrimitive, 0, nil)...)
+	}
 	if ms.USIM {
 		data = append(data, asn1.MarshalWithFullTag(asn1.ClassContextSpecific, asn1.FormPrimitive, 1, nil)...)
 	}
@@ -154,6 +211,36 @@ func encodeMandatoryServices(ms *MandatoryServices) []byte {
 	if ms.TUAK128 {
 		data = append(data, asn1.MarshalWithFullTag(asn1.ClassContextSpecific, asn1.FormPrimitive, 5, nil)...)
 	}
+	if ms.CAVE {
+		data = append(data, asn1.MarshalWithFullTag(asn1.ClassContextSpecific, asn1.FormPrimitive, 6, nil)...)
+	}
+	if ms.GBAUSIM {
+		data = append(data, asn1.MarshalWithFullTag(asn1.ClassContextSpecific, asn1.FormPrimitive, 7, nil)...)
+	}
+	if ms.GBAISIM {
+		data = append(data, asn1.MarshalWithFullTag(asn1.ClassContextSpecific, asn1.FormPrimitive, 8, nil)...)
+	}
+	if ms.MBMS {
+		data = append(data, asn1.MarshalWithFullTag(asn1.ClassContextSpecific, asn1.FormPrimitive, 9, nil)...)
+	}
+	if ms.EAP {
+		data = append(data, asn1.MarshalWithFullTag(asn1.ClassContextSpecific, asn1.FormPrimitive, 10, nil)...)
+	}
+	if ms.JavaCard {
+		data = append(data, asn1.MarshalWithFullTag(asn1.ClassContextSpecific, asn1.FormPrimitive, 11, nil)...)
+	}
+	if ms.Multos {
+		data = append(data, asn1.MarshalWithFullTag(asn1.ClassContextSpecific, asn1.FormPrimitive, 12, nil)...)
+	}
+	if ms.MultipleUSIM {
+		data = append(data, asn1.MarshalWithFullTag(asn1.ClassContextSpecific, asn1.FormPrimitive, 13, nil)...)
+	}
+	if ms.MultipleISIM {
+		data = append(data, asn1.MarshalWithFullTag(asn1.ClassContextSpecific, asn1.FormPrimitive, 14, nil)...)
+	}
+	if ms.MultipleCSIM {
+		data = append(data, asn1.MarshalWithFullTag(asn1.ClassContextSpecific, asn1.FormPrimitive, 15, nil)...)
+	}
 	if ms.TUAK256 {
 		data = append(data, asn1.MarshalWithFullTag(asn1.ClassContextSpecific, asn1.FormPrimitive, 16, nil)...)
 	}
@@ -163,6 +250,12 @@ func encodeMandatoryServices(ms *MandatoryServices) []byte {
 	if ms.BERTLV {
 		data = append(data, asn1.MarshalWithFullTag(asn1.ClassContextSpecific, asn1.FormPrimitive, 18, nil)...)
 	}
+	if ms.DFLink {
+		data = append(data, asn1.MarshalWithFullTag(asn1.ClassContextSpecific, asn1.FormPrimitive, 19, nil)...)
+	}
+	if ms.CatTP {
+		data = append(data, asn1.MarshalWithFullTag(asn1.ClassContextSpecific, asn1.FormPrimitive, 20, nil)...)
+	}
 	if ms.GetIdentity {
 		data = append(data, asn1.MarshalWithFullTag(asn1.ClassContextSpecific, asn1.FormPrimitive, 21, nil)...)
 	}
@@ -171,6 +264,24 @@ func encodeMandatoryServices(ms *MandatoryServices) []byte {
 	}
 	if ms.ProfileBP256 {
 		data = append(data, asn1.MarshalWithFullTag(asn1.ClassContextSpecific, asn1.FormPrimitive, 23, nil)...)
+	}
+	if ms.SuciCalculatorApi {
+		data = append(data, asn1.MarshalWithFullTag(asn1.ClassContextSpecific, asn1.FormPrimitive, 24, nil)...)
+	}
+	if ms.DNSResolution {
+		data = append(data, asn1.MarshalWithFullTag(asn1.ClassContextSpecific, asn1.FormPrimitive, 25, nil)...)
+	}
+	if ms.SCP11ac {
+		data = append(data, asn1.MarshalWithFullTag(asn1.ClassContextSpecific, asn1.FormPrimitive, 26, nil)...)
+	}
+	if ms.SCP11cAuth {
+		data = append(data, asn1.MarshalWithFullTag(asn1.ClassContextSpecific, asn1.FormPrimitive, 27, nil)...)
+	}
+	if ms.S16Mode {
+		data = append(data, asn1.MarshalWithFullTag(asn1.ClassContextSpecific, asn1.FormPrimitive, 28, nil)...)
+	}
+	if ms.EAKA {
+		data = append(data, asn1.MarshalWithFullTag(asn1.ClassContextSpecific, asn1.FormPrimitive, 29, nil)...)
 	}
 
 	return data
@@ -407,6 +518,36 @@ func encodeElementaryFile(ef *ElementaryFile) []byte {
 		}
 		// [3] fillFileContent
 		data = append(data, asn1.Marshal(0x83, nil, fc.Content...)...)
+	}
+
+	return data
+}
+
+func encodeFileType(f *File) []byte {
+	var data []byte
+
+	if f == nil {
+		return data
+	}
+
+	for _, elem := range *f {
+		switch elem.Type {
+		case FileElementDoNotCreate:
+			// [0] doNotCreate NULL
+			data = append(data, asn1.Marshal(0x80, nil)...)
+		case FileElementDescriptor:
+			// [1] fileDescriptor Fcp (constructed)
+			if elem.Descriptor != nil {
+				fdData := encodeFileDescriptor(elem.Descriptor)
+				data = append(data, asn1.Marshal(0xA1, nil, fdData...)...)
+			}
+		case FileElementOffset:
+			// [2] fillFileOffset UInt16
+			data = append(data, asn1.Marshal(0x82, nil, encodeInteger(elem.Offset)...)...)
+		case FileElementContent:
+			// [3] fillFileContent OCTET STRING
+			data = append(data, asn1.Marshal(0x83, nil, elem.Content...)...)
+		}
 	}
 
 	return data
@@ -918,83 +1059,28 @@ func encodeOptISIM(i *OptionalISIM) ([]byte, error) {
 		data = append(data, asn1.Marshal(0x81, nil, oidData...)...)
 	}
 
-	// Determine tags for GBA fields based on spec version
-	gbabpTag, gbanlTag := 3, 4
-	if i.UseNewGBATags {
-		gbabpTag, gbanlTag = 7, 8
+	efFields := []struct {
+		tag int
+		ef  *ElementaryFile
+	}{
+		{2, i.EF_PCSCF},
+		{3, i.EF_SMS},
+		{4, i.EF_SMSP},
+		{5, i.EF_SMSS},
+		{6, i.EF_SMSR},
+		{7, i.EF_GBABP},
+		{8, i.EF_GBANL},
+		{9, i.EF_NAFKCA},
+		{10, i.EF_WEBRTCURI},
+		{11, i.EF_MUDMIDCONFIGDATA},
+		{12, i.EF_NASCONFIG},
+		{13, i.EF_EAKA},
 	}
 
-	// Encode EF_PCSCF first (tag 2)
-	if i.EF_PCSCF != nil {
-		efData := encodeElementaryFile(i.EF_PCSCF)
-		data = append(data, asn1.MarshalWithFullTag(asn1.ClassContextSpecific, asn1.FormConstructed, 2, efData)...)
-	}
-
-	// Fields that come before or after GBA fields depend on UseNewGBATags
-	if !i.UseNewGBATags {
-		// Old tags: 3=gbabp, 4=gbanl, then 5,6,7,8,9,10
-		if i.EF_GBABP != nil {
-			efData := encodeElementaryFile(i.EF_GBABP)
-			data = append(data, asn1.MarshalWithFullTag(asn1.ClassContextSpecific, asn1.FormConstructed, gbabpTag, efData)...)
-		}
-		if i.EF_GBANL != nil {
-			efData := encodeElementaryFile(i.EF_GBANL)
-			data = append(data, asn1.MarshalWithFullTag(asn1.ClassContextSpecific, asn1.FormConstructed, gbanlTag, efData)...)
-		}
-		efFields := []struct {
-			tag int
-			ef  *ElementaryFile
-		}{
-			{5, i.EF_NASCONFIG},
-			{6, i.EF_UICCIARI},
-			{7, i.EF_3GPPPSDATAOFF},
-			{8, i.EF_3GPPPSDATAOFFSERVICELIST},
-			{9, i.EF_XCAPCONFIGDATA},
-			{10, i.EF_EAKA},
-		}
-		for _, f := range efFields {
-			if f.ef != nil {
-				efData := encodeElementaryFile(f.ef)
-				data = append(data, asn1.MarshalWithFullTag(asn1.ClassContextSpecific, asn1.FormConstructed, f.tag, efData)...)
-			}
-		}
-	} else {
-		// New tags: 3,4,5,6 first, then 7=gbabp, 8=gbanl, 9,10
-		efFields1 := []struct {
-			tag int
-			ef  *ElementaryFile
-		}{
-			{3, i.EF_NASCONFIG},
-			{4, i.EF_UICCIARI},
-			{5, i.EF_3GPPPSDATAOFF},
-			{6, i.EF_3GPPPSDATAOFFSERVICELIST},
-		}
-		for _, f := range efFields1 {
-			if f.ef != nil {
-				efData := encodeElementaryFile(f.ef)
-				data = append(data, asn1.MarshalWithFullTag(asn1.ClassContextSpecific, asn1.FormConstructed, f.tag, efData)...)
-			}
-		}
-		if i.EF_GBABP != nil {
-			efData := encodeElementaryFile(i.EF_GBABP)
-			data = append(data, asn1.MarshalWithFullTag(asn1.ClassContextSpecific, asn1.FormConstructed, gbabpTag, efData)...)
-		}
-		if i.EF_GBANL != nil {
-			efData := encodeElementaryFile(i.EF_GBANL)
-			data = append(data, asn1.MarshalWithFullTag(asn1.ClassContextSpecific, asn1.FormConstructed, gbanlTag, efData)...)
-		}
-		efFields2 := []struct {
-			tag int
-			ef  *ElementaryFile
-		}{
-			{9, i.EF_XCAPCONFIGDATA},
-			{10, i.EF_EAKA},
-		}
-		for _, f := range efFields2 {
-			if f.ef != nil {
-				efData := encodeElementaryFile(f.ef)
-				data = append(data, asn1.MarshalWithFullTag(asn1.ClassContextSpecific, asn1.FormConstructed, f.tag, efData)...)
-			}
+	for _, f := range efFields {
+		if f.ef != nil {
+			efData := encodeElementaryFile(f.ef)
+			data = append(data, asn1.MarshalWithFullTag(asn1.ClassContextSpecific, asn1.FormConstructed, f.tag, efData)...)
 		}
 	}
 
@@ -1282,69 +1368,64 @@ func encodeAKAParameter(aka *AKAParameter) ([]byte, error) {
 		data = append(data, asn1.Marshal(0xA0, nil, ehData...)...)
 	}
 
-	// [1] algoConfiguration
+	// [1] algoConfiguration CHOICE
 	if aka.AlgoConfig != nil {
-		acData := encodeAlgoConfiguration(aka.AlgoConfig)
-		data = append(data, asn1.Marshal(0xA1, nil, acData...)...)
+		var algoConfigData []byte
+		if aka.AlgoConfig.MappingParameter != nil {
+			// CHOICE [0] mappingParameter
+			mpData := encodeMappingParameter(aka.AlgoConfig.MappingParameter)
+			algoConfigData = asn1.Marshal(0xA0, nil, mpData...)
+		} else {
+			// CHOICE [1] algoParameter
+			apData := encodeAlgoParameter(aka.AlgoConfig)
+			algoConfigData = asn1.Marshal(0xA1, nil, apData...)
+		}
+		// Wrap in [1] algoConfiguration
+		data = append(data, asn1.Marshal(0xA1, nil, algoConfigData...)...)
 	}
 
-	// Per DER rules: omit fields with DEFAULT values
-	isTestAlgo := aka.AlgoConfig != nil && aka.AlgoConfig.AlgorithmID == AlgoUSIMTestAlgorithm
-
 	// [2] sqnOptions - DEFAULT 0x02
-	// Per DER rules: do not encode if value equals DEFAULT
 	if aka.SQNOptions != 0x02 {
 		data = append(data, asn1.Marshal(0x82, nil, aka.SQNOptions)...)
 	}
 
-	// [3] sqnDelta - DEFAULT "000010000000" for USIM Test Algorithm
-	defaultSQNDelta, _ := hex.DecodeString("000010000000")
-	if len(aka.SQNDelta) > 0 && !(isTestAlgo && bytes.Equal(aka.SQNDelta, defaultSQNDelta)) {
+	// [3] sqnDelta - DEFAULT "000010000000"
+	defaultSQN, _ := hex.DecodeString("000010000000")
+	if len(aka.SQNDelta) > 0 && !bytes.Equal(aka.SQNDelta, defaultSQN) {
 		data = append(data, asn1.Marshal(0x83, nil, aka.SQNDelta...)...)
 	}
 
-	// [4] sqnAgeLimit - DEFAULT "000010000000" for USIM Test Algorithm
-	if len(aka.SQNAgeLimit) > 0 && !(isTestAlgo && bytes.Equal(aka.SQNAgeLimit, defaultSQNDelta)) {
+	// [4] sqnAgeLimit - DEFAULT "000010000000"
+	if len(aka.SQNAgeLimit) > 0 && !bytes.Equal(aka.SQNAgeLimit, defaultSQN) {
 		data = append(data, asn1.Marshal(0x84, nil, aka.SQNAgeLimit...)...)
 	}
 
-	// [5] sqnInit - DEFAULT 32 zero elements for USIM Test Algorithm
-	// Per DER rules: do not encode if all elements are zeros (DEFAULT for test algorithm)
+	// [5] sqnInit
 	if len(aka.SQNInit) > 0 {
-		allZeros := isTestAlgo && len(aka.SQNInit) == 32
-		if allZeros {
-			for _, sqn := range aka.SQNInit {
-				for _, b := range sqn {
-					if b != 0 {
-						allZeros = false
-						break
-					}
-				}
-				if !allZeros {
-					break
-				}
-			}
+		var sqnData []byte
+		for _, sqn := range aka.SQNInit {
+			sqnData = append(sqnData, asn1.Marshal(0x04, nil, sqn...)...)
 		}
-		if !allZeros {
-			var sqnData []byte
-			for _, sqn := range aka.SQNInit {
-				sqnData = append(sqnData, asn1.Marshal(0x04, nil, sqn...)...) // OCTET STRING
-			}
-			data = append(data, asn1.Marshal(0xA5, nil, sqnData...)...)
-		}
+		data = append(data, asn1.Marshal(0xA5, nil, sqnData...)...)
 	}
 
 	return data, nil
 }
 
-func encodeAlgoConfiguration(ac *AlgoConfiguration) []byte {
+func encodeMappingParameter(mp *MappingParameter) []byte {
+	var data []byte
+	data = append(data, asn1.Marshal(0x80, nil, mp.MappingOptions)...)
+	if len(mp.MappingSource) > 0 {
+		data = append(data, asn1.Marshal(0x81, nil, mp.MappingSource...)...)
+	}
+	return data
+}
+
+func encodeAlgoParameter(ac *AlgoConfiguration) []byte {
 	var data []byte
 
-	// Determine algorithm type for parameter handling
-	isTuakType := ac.AlgorithmID == AlgoTUAK || ac.AlgorithmID == AlgoUSIMTestAlgorithm
-
 	// [0] algorithmID
-	data = append(data, asn1.Marshal(0x80, nil, encodeInteger(int(ac.AlgorithmID))...)...)
+	data = append(data, asn1.Marshal(0x80, nil, byte(ac.AlgorithmID))...)
 
 	// [1] algorithmOptions
 	data = append(data, asn1.Marshal(0x81, nil, ac.AlgorithmOptions)...)
@@ -1359,34 +1440,28 @@ func encodeAlgoConfiguration(ac *AlgoConfiguration) []byte {
 		data = append(data, asn1.Marshal(0x83, nil, ac.OPC...)...)
 	}
 
-	// [4] rotationConstants - DEFAULT "4000204060"
-	// Include for both Milenage and TUAK if not default
-	defaultRotation, _ := hex.DecodeString("4000204060")
-	if len(ac.RotationConstants) > 0 && !bytes.Equal(ac.RotationConstants, defaultRotation) {
+	// [4] rotationConstants - DEFAULT '4000204060'H
+	rotDefault, _ := hex.DecodeString("4000204060")
+	if len(ac.RotationConstants) > 0 && !bytes.Equal(ac.RotationConstants, rotDefault) {
 		data = append(data, asn1.Marshal(0x84, nil, ac.RotationConstants...)...)
 	}
 
-	// [5] xoringConstants - ONLY for TUAK/USIM-Test-Algorithm, NOT for pure Milenage
-	if isTuakType && len(ac.XoringConstants) > 0 {
-		defaultXoring, _ := hex.DecodeString("0000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000020000000000000000000000000000000400000000000000000000000000000008")
-		if !bytes.Equal(ac.XoringConstants, defaultXoring) {
-			data = append(data, asn1.Marshal(0x85, nil, ac.XoringConstants...)...)
-		}
+	// [5] xoringConstants - DEFAULT 80 bytes
+	if len(ac.XoringConstants) > 0 {
+		data = append(data, asn1.Marshal(0x85, nil, ac.XoringConstants...)...)
 	}
 
-	// [6] numberOfKeccak - ONLY for TUAK/USIM-Test-Algorithm, NOT for pure Milenage
-	// Per DER rules: do not encode if value equals DEFAULT (1)
-	if isTuakType && ac.NumberOfKeccak > 0 && ac.NumberOfKeccak != 1 {
-		data = append(data, asn1.Marshal(0x86, nil, encodeInteger(ac.NumberOfKeccak)...)...)
+	// [6] authCounterMax
+	if len(ac.AuthCounterMax) > 0 {
+		data = append(data, asn1.Marshal(0x86, nil, ac.AuthCounterMax...)...)
 	}
 
-	// Wrap in CHOICE for algoConfiguration
-	// Per ASN.1 spec: algoConfiguration CHOICE {
-	//   mappingParameter [0],   -- references another profile's AKA params
-	//   algoParameter [1]       -- contains actual Ki, OPc, algorithmID etc.
-	// }
-	// All algorithm types (milenage, tuak, usim-test-algorithm) use [1] algoParameter
-	return asn1.Marshal(0xA1, nil, data...) // [1] algoParameter
+	// [7] numberOfKeccak - DEFAULT 1
+	if ac.NumberOfKeccak > 0 && ac.NumberOfKeccak != 1 {
+		data = append(data, asn1.Marshal(0x87, nil, byte(ac.NumberOfKeccak))...)
+	}
+
+	return data
 }
 
 // ============================================================================
@@ -1484,7 +1559,8 @@ func encodeSecurityDomain(sd *SecurityDomain) ([]byte, error) {
 	}
 
 	if sd.Instance != nil {
-		instData := encodeSDInstance(sd.Instance)
+		instData := encodeApplicationInstance(sd.Instance)
+		// [1] instance (context-specific tag 1, constructed)
 		data = append(data, asn1.Marshal(0xA1, nil, instData...)...)
 	}
 
@@ -1499,58 +1575,106 @@ func encodeSecurityDomain(sd *SecurityDomain) ([]byte, error) {
 
 	if len(sd.SDPersoData) > 0 {
 		var persoData []byte
-		for _, data := range sd.SDPersoData {
-			persoData = append(persoData, asn1.Marshal(0x04, nil, data...)...)
+		for _, pd := range sd.SDPersoData {
+			persoData = append(persoData, asn1.Marshal(0x04, nil, pd...)...)
 		}
 		data = append(data, asn1.Marshal(0xA3, nil, persoData...)...)
+	}
+
+	if sd.OpenPersoData != nil {
+		opdData := encodeOpenPersoData(sd.OpenPersoData)
+		data = append(data, asn1.Marshal(0xA4, nil, opdData...)...)
+	}
+
+	if sd.CatTpParameters != nil {
+		ctpData := encodeCatTpParameters(sd.CatTpParameters)
+		data = append(data, asn1.Marshal(0xA5, nil, ctpData...)...)
 	}
 
 	return data, nil
 }
 
-func encodeSDInstance(inst *SDInstance) []byte {
+func encodeOpenPersoData(opd *OpenPersoData) []byte {
+	var data []byte
+	if len(opd.RestrictParameter) > 0 {
+		data = append(data, asn1.Marshal(0x99|0x40, nil, opd.RestrictParameter...)...) // [PRIVATE 25]
+	}
+	if len(opd.ContactlessProtocolParameters) > 0 {
+		data = append(data, asn1.Marshal(0x04, nil, opd.ContactlessProtocolParameters...)...)
+	}
+	return data
+}
+
+func encodeCatTpParameters(ctp *CatTpParameters) []byte {
+	var data []byte
+	data = append(data, asn1.Marshal(0x80, nil, encodeInteger(ctp.CatTpMaxSduSize)...)...)
+	data = append(data, asn1.Marshal(0x81, nil, encodeInteger(ctp.CatTpMaxPduSize)...)...)
+	return data
+}
+
+
+func encodeUICCApplicationParameters(uap *UICCApplicationParameters) []byte {
 	var data []byte
 
-	// [APPLICATION 15] fields in order (0x4F)
-	if len(inst.ApplicationLoadPackageAID) > 0 {
-		data = append(data, asn1.Marshal(0x4F, nil, inst.ApplicationLoadPackageAID...)...)
+	if len(uap.UiccToolkitApplicationSpecificParametersField) > 0 {
+		data = append(data, asn1.Marshal(0x80, nil, uap.UiccToolkitApplicationSpecificParametersField...)...)
 	}
-	if len(inst.ClassAID) > 0 {
-		data = append(data, asn1.Marshal(0x4F, nil, inst.ClassAID...)...)
+	if len(uap.UiccAccessApplicationSpecificParametersField) > 0 {
+		data = append(data, asn1.Marshal(0x81, nil, uap.UiccAccessApplicationSpecificParametersField...)...)
 	}
-	if len(inst.InstanceAID) > 0 {
-		data = append(data, asn1.Marshal(0x4F, nil, inst.InstanceAID...)...)
-	}
-
-	// [2] applicationPrivileges (0x82)
-	if len(inst.ApplicationPrivileges) > 0 {
-		data = append(data, asn1.Marshal(0x82, nil, inst.ApplicationPrivileges...)...)
-	}
-
-	// [3] lifeCycleState (0x83)
-	data = append(data, asn1.Marshal(0x83, nil, inst.LifeCycleState)...)
-
-	// [PRIVATE 9] applicationSpecificParametersC9 (0xC9)
-	if len(inst.ApplicationSpecificParamsC9) > 0 {
-		data = append(data, asn1.Marshal(0xC9, nil, inst.ApplicationSpecificParamsC9...)...)
-	}
-
-	// [PRIVATE 10] CONSTRUCTED applicationParameters (0xEA)
-	if inst.ApplicationParameters != nil {
-		apData := encodeApplicationParameters(inst.ApplicationParameters)
-		data = append(data, asn1.Marshal(0xEA, nil, apData...)...)
+	if len(uap.UiccAdministrativeAccessApplicationSpecificParametersField) > 0 {
+		data = append(data, asn1.Marshal(0x82, nil, uap.UiccAdministrativeAccessApplicationSpecificParametersField...)...)
 	}
 
 	return data
 }
 
-func encodeApplicationParameters(ap *ApplicationParameters) []byte {
+func encodeApplicationSystemParameters(asp *ApplicationSystemParameters) []byte {
 	var data []byte
-
-	if len(ap.UIICToolkitApplicationSpecificParametersField) > 0 {
-		data = append(data, asn1.Marshal(0x80, nil, ap.UIICToolkitApplicationSpecificParametersField...)...)
+	if len(asp.VolatileMemoryQuotaC7) > 0 {
+		data = append(data, asn1.Marshal(0x87|0x40, nil, asp.VolatileMemoryQuotaC7...)...) // [PRIVATE 7]
 	}
+	if len(asp.NonVolatileMemoryQuotaC8) > 0 {
+		data = append(data, asn1.Marshal(0x88|0x40, nil, asp.NonVolatileMemoryQuotaC8...)...) // [PRIVATE 8]
+	}
+	if len(asp.GlobalServiceParameters) > 0 {
+		data = append(data, asn1.Marshal(0x8B|0x40, nil, asp.GlobalServiceParameters...)...) // [PRIVATE 11]
+	}
+	if len(asp.ImplicitSelectionParameter) > 0 {
+		data = append(data, asn1.Marshal(0x8F|0x40, nil, asp.ImplicitSelectionParameter...)...) // [PRIVATE 15]
+	}
+	if len(asp.VolatileReservedMemory) > 0 {
+		data = append(data, asn1.Marshal(0x97|0x40, nil, asp.VolatileReservedMemory...)...) // [PRIVATE 23]
+	}
+	if len(asp.NonVolatileReservedMemory) > 0 {
+		data = append(data, asn1.Marshal(0x98|0x40, nil, asp.NonVolatileReservedMemory...)...) // [PRIVATE 24]
+	}
+	if len(asp.TS102226SIMFileAccessToolkitParameter) > 0 {
+		data = append(data, asn1.Marshal(0x8A|0x40, nil, asp.TS102226SIMFileAccessToolkitParameter...)...) // [PRIVATE 10]
+	}
+	if len(asp.TS102226AdditionalContactlessParameters) > 0 {
+		data = append(data, asn1.Marshal(0x80, nil, asp.TS102226AdditionalContactlessParameters...)...) // [0]
+	}
+	if len(asp.ContactlessProtocolParameters) > 0 {
+		data = append(data, asn1.Marshal(0x99|0x40, nil, asp.ContactlessProtocolParameters...)...) // [PRIVATE 25]
+	}
+	if len(asp.UserInteractionContactlessParameters) > 0 {
+		data = append(data, asn1.Marshal(0x9A|0x40, nil, asp.UserInteractionContactlessParameters...)...) // [PRIVATE 26]
+	}
+	if len(asp.CumulativeGrantedVolatileMemory) > 0 {
+		data = append(data, asn1.Marshal(0x82, nil, asp.CumulativeGrantedVolatileMemory...)...) // [2]
+	}
+	if len(asp.CumulativeGrantedNonVolatileMemory) > 0 {
+		data = append(data, asn1.Marshal(0x83, nil, asp.CumulativeGrantedNonVolatileMemory...)...) // [3]
+	}
+	return data
+}
 
+func encodeControlReferenceTemplate(crt *ControlReferenceTemplate) []byte {
+	var data []byte
+	if len(crt.ApplicationProviderIdentifier) > 0 {
+		data = append(data, asn1.MarshalWithFullTag(asn1.ClassApplication, asn1.FormPrimitive, 32, crt.ApplicationProviderIdentifier)...)
+	}
 	return data
 }
 
@@ -1572,10 +1696,10 @@ func encodeSDKey(key SDKey) []byte {
 	// [3] keyVersionNumber (0x83)
 	data = append(data, asn1.Marshal(0x83, nil, key.KeyVersionNumber)...)
 
-	// keyCompontents - SEQUENCE
-	if len(key.KeyCompontents) > 0 {
+	// keyComponents - SEQUENCE
+	if len(key.KeyComponents) > 0 {
 		var compData []byte
-		for _, comp := range key.KeyCompontents {
+		for _, comp := range key.KeyComponents {
 			cd := encodeKeyComponent(comp)
 			compData = append(compData, asn1.Marshal(0x30, nil, cd...)...)
 		}
@@ -1766,13 +1890,14 @@ func encodeApplicationInstance(inst *ApplicationInstance) []byte {
 	}
 
 	// [PRIVATE 15] systemSpecificParameters (0xCF)
-	if len(inst.SystemSpecificParams) > 0 {
-		data = append(data, asn1.Marshal(0xCF, nil, inst.SystemSpecificParams...)...)
+	if inst.SystemSpecificParams != nil {
+		aspData := encodeApplicationSystemParameters(inst.SystemSpecificParams)
+		data = append(data, asn1.Marshal(0xCF, nil, aspData...)...)
 	}
 
 	// [PRIVATE 10] applicationParameters (0xEA)
 	if inst.ApplicationParameters != nil {
-		apData := encodeApplicationParameters(inst.ApplicationParameters)
+		apData := encodeUICCApplicationParameters(inst.ApplicationParameters)
 		data = append(data, asn1.Marshal(0xEA, nil, apData...)...)
 	}
 
@@ -1786,8 +1911,9 @@ func encodeApplicationInstance(inst *ApplicationInstance) []byte {
 	}
 
 	// [16] controlReferenceTemplate (0xB0 = context-specific constructed 16)
-	if len(inst.ControlReferenceTemplate) > 0 {
-		data = append(data, asn1.Marshal(0xB0, nil, inst.ControlReferenceTemplate...)...)
+	if inst.ControlReferenceTemplate != nil {
+		crtData := encodeControlReferenceTemplate(inst.ControlReferenceTemplate)
+		data = append(data, asn1.Marshal(0xB0, nil, crtData...)...)
 	}
 
 	return data
@@ -1796,6 +1922,240 @@ func encodeApplicationInstance(inst *ApplicationInstance) []byte {
 // ============================================================================
 // End [10]
 // ============================================================================
+
+func encodeCDDF(cd *CDDF) ([]byte, error) {
+	var data []byte
+	if cd.Header != nil {
+		data = append(data, asn1.Marshal(0xA0, nil, encodeElementHeader(cd.Header)...)...)
+	}
+	if len(cd.TemplateID) > 0 {
+		data = append(data, asn1.Marshal(0x81, nil, encodeOID(cd.TemplateID)...)...)
+	}
+	if cd.DFCD != nil {
+		data = append(data, asn1.Marshal(0xA2, nil, encodeFileDescriptor(cd.DFCD)...)...)
+	}
+	if cd.EF_LaunchPad != nil {
+		data = append(data, asn1.Marshal(0xA3, nil, encodeElementaryFile(cd.EF_LaunchPad)...)...)
+	}
+	if cd.EF_Icon != nil {
+		data = append(data, asn1.Marshal(0xA4, nil, encodeElementaryFile(cd.EF_Icon)...)...)
+	}
+	return data, nil
+}
+
+func encodePhonebookDF(p *PhonebookDF) ([]byte, error) {
+	var data []byte
+	if p.Header != nil {
+		data = append(data, asn1.Marshal(0xA0, nil, encodeElementHeader(p.Header)...)...)
+	}
+	if len(p.TemplateID) > 0 {
+		data = append(data, asn1.Marshal(0x81, nil, encodeOID(p.TemplateID)...)...)
+	}
+	if p.DFPhonebook != nil {
+		data = append(data, asn1.Marshal(0xA2, nil, encodeFileDescriptor(p.DFPhonebook)...)...)
+	}
+	efFields := []struct {
+		tag int
+		ef  *ElementaryFile
+	}{
+		{3, p.EF_PBR},
+		{4, p.EF_EXT1},
+		{5, p.EF_AAS},
+		{6, p.EF_GAS},
+		{7, p.EF_PSC},
+		{8, p.EF_CC},
+		{9, p.EF_PUID},
+		{10, p.EF_IAP},
+		{11, p.EF_ADN},
+		{12, p.EF_PBC},
+		{13, p.EF_ANR},
+		{14, p.EF_PURI},
+		{15, p.EF_EMAIL},
+		{16, p.EF_SNE},
+		{17, p.EF_UID},
+		{18, p.EF_GRP},
+		{19, p.EF_CCP1},
+	}
+	for _, f := range efFields {
+		if f.ef != nil {
+			efData := encodeElementaryFile(f.ef)
+			data = append(data, asn1.MarshalWithFullTag(asn1.ClassContextSpecific, asn1.FormConstructed, f.tag, efData)...)
+		}
+	}
+	return data, nil
+}
+
+func encodeEAPDF(e *EAPDF) ([]byte, error) {
+	var data []byte
+	if e.Header != nil {
+		data = append(data, asn1.Marshal(0xA0, nil, encodeElementHeader(e.Header)...)...)
+	}
+	if len(e.TemplateID) > 0 {
+		data = append(data, asn1.Marshal(0x81, nil, encodeOID(e.TemplateID)...)...)
+	}
+	if e.DFEAP != nil {
+		data = append(data, asn1.Marshal(0xA2, nil, encodeFileDescriptor(e.DFEAP)...)...)
+	}
+	efFields := []struct {
+		tag int
+		ef  *ElementaryFile
+	}{
+		{3, e.EF_EAPKeys},
+		{4, e.EF_EAPStatus},
+		{5, e.EF_PUID},
+		{6, e.EF_PS},
+		{7, e.EF_CURID},
+		{8, e.EF_REID},
+		{9, e.EF_Realm},
+	}
+	for _, f := range efFields {
+		if f.ef != nil {
+			efData := encodeElementaryFile(f.ef)
+			data = append(data, asn1.MarshalWithFullTag(asn1.ClassContextSpecific, asn1.FormConstructed, f.tag, efData)...)
+		}
+	}
+	return data, nil
+}
+
+func encodeDFSNPN(d *DFSNPN) ([]byte, error) {
+	var data []byte
+	if d.Header != nil {
+		data = append(data, asn1.Marshal(0xA0, nil, encodeElementHeader(d.Header)...)...)
+	}
+	if len(d.TemplateID) > 0 {
+		data = append(data, asn1.Marshal(0x81, nil, encodeOID(d.TemplateID)...)...)
+	}
+	if d.DFDFSNPN != nil {
+		data = append(data, asn1.Marshal(0xA2, nil, encodeFileDescriptor(d.DFDFSNPN)...)...)
+	}
+	if d.EF_PWS_SNPN != nil {
+		data = append(data, asn1.Marshal(0xA3, nil, encodeElementaryFile(d.EF_PWS_SNPN)...)...)
+	}
+	return data, nil
+}
+
+func encodeDF5GPROSE(d *DF5GPROSE) ([]byte, error) {
+	var data []byte
+	if d.Header != nil {
+		data = append(data, asn1.Marshal(0xA0, nil, encodeElementHeader(d.Header)...)...)
+	}
+	if len(d.TemplateID) > 0 {
+		data = append(data, asn1.Marshal(0x81, nil, encodeOID(d.TemplateID)...)...)
+	}
+	if d.DFDF5GProSe != nil {
+		data = append(data, asn1.Marshal(0xA2, nil, encodeFileDescriptor(d.DFDF5GProSe)...)...)
+	}
+	efFields := []struct {
+		tag int
+		ef  *ElementaryFile
+	}{
+		{3, d.EF_5G_ProSe_ST},
+		{4, d.EF_5G_ProSe_DD},
+		{5, d.EF_5G_ProSe_DC},
+		{6, d.EF_5G_ProSe_U2NRU},
+		{7, d.EF_5G_ProSe_RU},
+		{8, d.EF_5G_ProSe_UIR},
+	}
+	for _, f := range efFields {
+		if f.ef != nil {
+			efData := encodeElementaryFile(f.ef)
+			data = append(data, asn1.MarshalWithFullTag(asn1.ClassContextSpecific, asn1.FormConstructed, f.tag, efData)...)
+		}
+	}
+	return data, nil
+}
+
+func encodeIoTPE(i *IoTPE) ([]byte, error) {
+	var data []byte
+	if i.Header != nil {
+		data = append(data, asn1.Marshal(0xA0, nil, encodeElementHeader(i.Header)...)...)
+	}
+	if len(i.TemplateID) > 0 {
+		data = append(data, asn1.Marshal(0x81, nil, encodeOID(i.TemplateID)...)...)
+	}
+	efFields := []struct {
+		tag int
+		f   *File
+	}{
+		{2, i.MF},
+		{3, i.EF_PL},
+		{4, i.EF_ICCID},
+		{5, i.EF_DIR},
+		{6, i.EF_ARR},
+		{7, i.EF_UMPC},
+		{8, i.ADF_USIM},
+		{9, i.EF_IMSI},
+		{10, i.EF_ARR_USIM},
+		{11, i.EF_Keys},
+		{12, i.EF_KeysPS},
+		{13, i.EF_HPPLMN},
+		{14, i.EF_UST},
+		{15, i.EF_StartHFN},
+		{16, i.EF_Threshold},
+		{17, i.EF_PSLOCI},
+		{18, i.EF_ACC},
+		{19, i.EF_FPLMN},
+		{20, i.EF_LOCI},
+		{21, i.EF_AD},
+		{22, i.EF_ECC},
+		{23, i.EF_NETPAR},
+	}
+	for _, f := range efFields {
+		if f.f != nil {
+			fileData := encodeFileType(f.f)
+			data = append(data, asn1.MarshalWithFullTag(asn1.ClassContextSpecific, asn1.FormConstructed, f.tag, fileData)...)
+		}
+	}
+	return data, nil
+}
+
+func encodeOptionalIoT(o *OptionalIoT) ([]byte, error) {
+	var data []byte
+	if o.Header != nil {
+		data = append(data, asn1.Marshal(0xA0, nil, encodeElementHeader(o.Header)...)...)
+	}
+	if len(o.TemplateID) > 0 {
+		data = append(data, asn1.Marshal(0x81, nil, encodeOID(o.TemplateID)...)...)
+	}
+	efFields := []struct {
+		tag int
+		f   *File
+	}{
+		{2, o.EF_FDN},
+		{3, o.EF_SMS},
+		{4, o.EF_SMSP},
+		{5, o.EF_SMSS},
+		{6, o.EF_SPN},
+		{7, o.EF_EST},
+		{8, o.EF_OPLMNWACT},
+		{9, o.EF_HPLMNWACT},
+		{10, o.EF_EHPLMN},
+		{11, o.EF_EPSLOCI},
+		{12, o.EF_EPSNSC},
+		{13, o.DF_DF_5GS},
+		{14, o.EF_5GS3GPPLOCI},
+		{15, o.EF_5GSN3GPPLOCI},
+		{16, o.EF_5GS3GPPNSC},
+		{17, o.EF_5GSN3GPPNSC},
+		{18, o.EF_5GAUTHKEYS},
+		{19, o.EF_UAC_AIC},
+		{20, o.EF_SUCI_CALC_INFO},
+		{21, o.EF_OPL5G},
+		{22, o.EF_SUPI_NAI},
+		{23, o.EF_ROUTING_INDICATOR},
+		{24, o.EF_URSP},
+		{25, o.EF_TN3GPPSNN},
+		{26, o.DF_DF_SAIP},
+		{27, o.EF_SUCI_CALC_INFO_USIM},
+	}
+	for _, f := range efFields {
+		if f.f != nil {
+			fileData := encodeFileType(f.f)
+			data = append(data, asn1.MarshalWithFullTag(asn1.ClassContextSpecific, asn1.FormConstructed, f.tag, fileData)...)
+		}
+	}
+	return data, nil
+}
 
 func encodeEnd(end *EndElement) ([]byte, error) {
 	var data []byte

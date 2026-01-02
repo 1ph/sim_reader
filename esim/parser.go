@@ -281,6 +281,30 @@ func (p *Parser) parseProfileElement(choice string) (*ProfileElement, error) {
 			return nil, err
 		}
 		elem.Value = val
+	case "df-snpn":
+		val, err := p.parseDFSNPN()
+		if err != nil {
+			return nil, err
+		}
+		elem.Value = val
+	case "df-5gprose":
+		val, err := p.parseDF5GPROSE()
+		if err != nil {
+			return nil, err
+		}
+		elem.Value = val
+	case "iot":
+		val, err := p.parseIoT()
+		if err != nil {
+			return nil, err
+		}
+		elem.Value = val
+	case "opt-iot":
+		val, err := p.parseOptIoT()
+		if err != nil {
+			return nil, err
+		}
+		elem.Value = val
 	case "genericFileManagement":
 		val, err := p.parseGenericFileManagement()
 		if err != nil {
@@ -307,6 +331,24 @@ func (p *Parser) parseProfileElement(choice string) (*ProfileElement, error) {
 		elem.Value = val
 	case "end":
 		val, err := p.parseEnd()
+		if err != nil {
+			return nil, err
+		}
+		elem.Value = val
+	case "cd":
+		val, err := p.parseCD()
+		if err != nil {
+			return nil, err
+		}
+		elem.Value = val
+	case "phonebook":
+		val, err := p.parsePhonebook()
+		if err != nil {
+			return nil, err
+		}
+		elem.Value = val
+	case "eap":
+		val, err := p.parseEAP()
 		if err != nil {
 			return nil, err
 		}
@@ -352,6 +394,14 @@ func getTagFromChoice(choice string) int {
 		return TagDF5GS
 	case "df-saip":
 		return TagDFSAIP
+	case "df-snpn":
+		return TagDFSNPN
+	case "df-5gprose":
+		return TagDF5GPROSE
+	case "iot":
+		return TagIoT
+	case "opt-iot":
+		return TagOptIoT
 	case "genericFileManagement":
 		return TagGenericFileManagement
 	case "securityDomain":
@@ -362,6 +412,12 @@ func getTagFromChoice(choice string) int {
 		return TagApplication
 	case "end":
 		return TagEnd
+	case "cd":
+		return TagCD
+	case "phonebook":
+		return TagPhonebook
+	case "eap":
+		return TagEAP
 	default:
 		return -1
 	}
@@ -399,6 +455,12 @@ func (p *Parser) parseProfileHeader() (*ProfileHeader, error) {
 			h.MandatoryServices, err = p.parseMandatoryServices()
 		case "eUICC-Mandatory-GFSTEList":
 			h.MandatoryGFSTEList, err = p.parseOIDList()
+		case "connectivityParameters":
+			h.ConnectivityParameters, err = p.parseHexValue()
+		case "eUICC-Mandatory-AIDs":
+			h.MandatoryAIDs, err = p.parseMandatoryAIDList()
+		case "iotOptions":
+			h.IOTOptions, err = p.parseIOTOptions()
 		default:
 			// Skip unknown fields
 			if err := p.skipValue(); err != nil {
@@ -444,6 +506,8 @@ func (p *Parser) parseMandatoryServices() (*MandatoryServices, error) {
 		}
 
 		switch fieldName.Value {
+		case "contactless":
+			ms.Contactless = true
 		case "usim":
 			ms.USIM = true
 		case "isim":
@@ -454,18 +518,54 @@ func (p *Parser) parseMandatoryServices() (*MandatoryServices, error) {
 			ms.Milenage = true
 		case "tuak128":
 			ms.TUAK128 = true
+		case "cave":
+			ms.CAVE = true
+		case "gba-usim":
+			ms.GBAUSIM = true
+		case "gba-isim":
+			ms.GBAISIM = true
+		case "mbms":
+			ms.MBMS = true
+		case "eap":
+			ms.EAP = true
+		case "javacard":
+			ms.JavaCard = true
+		case "multos":
+			ms.Multos = true
+		case "multiple-usim":
+			ms.MultipleUSIM = true
+		case "multiple-isim":
+			ms.MultipleISIM = true
+		case "multiple-csim":
+			ms.MultipleCSIM = true
 		case "tuak256":
 			ms.TUAK256 = true
 		case "usim-test-algorithm":
 			ms.USIMTestAlgorithm = true
 		case "ber-tlv":
 			ms.BERTLV = true
+		case "dfLink":
+			ms.DFLink = true
+		case "cat-tp":
+			ms.CatTP = true
 		case "get-identity":
 			ms.GetIdentity = true
 		case "profile-a-x25519":
 			ms.ProfileAX25519 = true
 		case "profile-b-p256":
 			ms.ProfileBP256 = true
+		case "suciCalculatorApi":
+			ms.SuciCalculatorApi = true
+		case "dns-resolution":
+			ms.DNSResolution = true
+		case "scp11ac":
+			ms.SCP11ac = true
+		case "scp11c-authorization-mechanism":
+			ms.SCP11cAuth = true
+		case "s16mode":
+			ms.S16Mode = true
+		case "eaka":
+			ms.EAKA = true
 		}
 
 		p.skipComma()
@@ -697,6 +797,8 @@ func (p *Parser) parseFileDescriptor() (*FileDescriptor, error) {
 			fd.LinkPath, err = p.parseHexValue()
 		case "proprietaryEFInfo":
 			fd.ProprietaryEFInfo, err = p.parseProprietaryEFInfo()
+		case "unknownTag":
+			fd.UnknownTag, err = p.parseHexValue()
 		default:
 			if err := p.skipValue(); err != nil {
 				return nil, err
@@ -972,14 +1074,23 @@ func (p *Parser) parsePINCodes() (*PINCodes, error) {
 		case "pin-Header":
 			pin.Header, err = p.parseElementHeader()
 		case "pinCodes":
-			// Skip "pinconfig :" if present
+			// CHOICE: pinconfig SEQUENCE OR filePath OCTET STRING
 			if p.peek().Type == TokenIdent && p.peek().Value == "pinconfig" {
 				p.advance()
 				if p.peek().Type == TokenColon {
 					p.advance()
 				}
+				pin.Configs, err = p.parsePINConfigList()
+			} else if p.peek().Type == TokenIdent && p.peek().Value == "filePath" {
+				p.advance()
+				if p.peek().Type == TokenColon {
+					p.advance()
+				}
+				pin.FilePath, err = p.parseHexValue()
+			} else {
+				// Default to pinconfig if no choice label
+				pin.Configs, err = p.parsePINConfigList()
 			}
-			pin.Configs, err = p.parsePINConfigList()
 		default:
 			if err := p.skipValue(); err != nil {
 				return nil, err
@@ -1169,6 +1280,28 @@ func (p *Parser) parseTelecom() (*TelecomDF, error) {
 			t.EF_IAP, err = p.parseElementaryFile()
 		case "ef-adn":
 			t.EF_ADN, err = p.parseElementaryFile()
+		case "ef-pbc":
+			t.EF_PBC, err = p.parseElementaryFile()
+		case "ef-anr":
+			t.EF_ANR, err = p.parseElementaryFile()
+		case "ef-puri":
+			t.EF_PURI, err = p.parseElementaryFile()
+		case "ef-email":
+			t.EF_EMAIL, err = p.parseElementaryFile()
+		case "ef-sne":
+			t.EF_SNE, err = p.parseElementaryFile()
+		case "ef-uid":
+			t.EF_UID, err = p.parseElementaryFile()
+		case "ef-grp":
+			t.EF_GRP, err = p.parseElementaryFile()
+		case "ef-ccp1":
+			t.EF_CCP1, err = p.parseElementaryFile()
+		case "df-multimedia":
+			t.DFMultimedia, err = p.parseFileDescriptorWrapper()
+		case "ef-mml":
+			t.EF_MML, err = p.parseElementaryFile()
+		case "ef-mmdf":
+			t.EF_MMDF, err = p.parseElementaryFile()
 		case "df-mmss":
 			t.DFMMSS, err = p.parseFileDescriptorWrapper()
 		case "ef-mlpl":
@@ -1179,6 +1312,24 @@ func (p *Parser) parseTelecom() (*TelecomDF, error) {
 			t.EF_MMSSCONF, err = p.parseElementaryFile()
 		case "ef-mmssid":
 			t.EF_MMSSID, err = p.parseElementaryFile()
+		case "ef-mmssmode":
+			t.EF_MMSSMODE, err = p.parseElementaryFile()
+		case "df-mcs":
+			t.DFMCS, err = p.parseFileDescriptorWrapper()
+		case "ef-mst":
+			t.EF_MST, err = p.parseElementaryFile()
+		case "ef-mcs-config":
+			t.EF_MCSConfig, err = p.parseElementaryFile()
+		case "df-v2x":
+			t.DFV2X, err = p.parseFileDescriptorWrapper()
+		case "ef-vst":
+			t.EF_VST, err = p.parseElementaryFile()
+		case "ef-v2x-config":
+			t.EF_V2XConfig, err = p.parseElementaryFile()
+		case "ef-v2xp-pc5":
+			t.EF_V2XPPC5, err = p.parseElementaryFile()
+		case "ef-v2xp-Uu":
+			t.EF_V2XPUu, err = p.parseElementaryFile()
 		default:
 			// Store unknown EFs
 			if strings.HasPrefix(fieldName.Value, "ef-") {
@@ -1593,20 +1744,26 @@ func (p *Parser) parseOptISIM() (*OptionalISIM, error) {
 			i.TemplateID, err = p.parseOID()
 		case "ef-pcscf":
 			i.EF_PCSCF, err = p.parseElementaryFile()
+		case "ef-sms":
+			i.EF_SMS, err = p.parseElementaryFile()
+		case "ef-smsp":
+			i.EF_SMSP, err = p.parseElementaryFile()
+		case "ef-smss":
+			i.EF_SMSS, err = p.parseElementaryFile()
+		case "ef-smsr":
+			i.EF_SMSR, err = p.parseElementaryFile()
 		case "ef-gbabp":
 			i.EF_GBABP, err = p.parseElementaryFile()
 		case "ef-gbanl":
 			i.EF_GBANL, err = p.parseElementaryFile()
+		case "ef-nafkca":
+			i.EF_NAFKCA, err = p.parseElementaryFile()
+		case "ef-webrtcuri":
+			i.EF_WEBRTCURI, err = p.parseElementaryFile()
+		case "ef-mudmidconfigdata":
+			i.EF_MUDMIDCONFIGDATA, err = p.parseElementaryFile()
 		case "ef-nasconfig":
 			i.EF_NASCONFIG, err = p.parseElementaryFile()
-		case "ef-uicciari":
-			i.EF_UICCIARI, err = p.parseElementaryFile()
-		case "ef-3gpppsdataoff":
-			i.EF_3GPPPSDATAOFF, err = p.parseElementaryFile()
-		case "ef-3gpppsdataoffservicelist":
-			i.EF_3GPPPSDATAOFFSERVICELIST, err = p.parseElementaryFile()
-		case "ef-xcapconfigdata":
-			i.EF_XCAPCONFIGDATA, err = p.parseElementaryFile()
 		case "ef-eaka":
 			i.EF_EAKA, err = p.parseElementaryFile()
 		default:
@@ -1812,9 +1969,9 @@ func (p *Parser) parseOptCSIM() (*OptionalCSIM, error) {
 		case "ef-sippapss":
 			c.EF_SIPPAPSS, err = p.parseElementaryFile()
 		case "ef-puzl":
-			c.EF_EPRL, err = p.parseElementaryFile()
+			c.EF_PUZL, err = p.parseElementaryFile()
 		case "ef-max-puzl":
-			c.EF_BCSMSP, err = p.parseElementaryFile()
+			c.EF_MAX_PUZL, err = p.parseElementaryFile()
 		case "ef-hrpdcap":
 			c.EF_HRPDCAP, err = p.parseElementaryFile()
 		case "ef-hrpdupp":
@@ -1825,8 +1982,18 @@ func (p *Parser) parseOptCSIM() (*OptionalCSIM, error) {
 			c.EF_ATC, err = p.parseElementaryFile()
 		case "ef-eprl":
 			c.EF_EPRL, err = p.parseElementaryFile()
+		case "ef-bcsmscfg":
+			c.EF_BCSMSConfig, err = p.parseElementaryFile()
+		case "ef-bcsmspref":
+			c.EF_BCSMSPref, err = p.parseElementaryFile()
+		case "ef-bcsmstable":
+			c.EF_BCSMSTable, err = p.parseElementaryFile()
 		case "ef-bcsmsp":
 			c.EF_BCSMSP, err = p.parseElementaryFile()
+		case "ef-bakpara":
+			c.EF_BAKPara, err = p.parseElementaryFile()
+		case "ef-upbakpara":
+			c.EF_UPBAKPara, err = p.parseElementaryFile()
 		case "ef-mmsn":
 			c.EF_MMSN, err = p.parseElementaryFile()
 		case "ef-ext8":
@@ -1837,18 +2004,28 @@ func (p *Parser) parseOptCSIM() (*OptionalCSIM, error) {
 			c.EF_MMSUP, err = p.parseElementaryFile()
 		case "ef-mmsucp":
 			c.EF_MMSUCP, err = p.parseElementaryFile()
+		case "ef-auth-capability":
+			c.EF_AuthCapability, err = p.parseElementaryFile()
 		case "ef-3gcik":
 			c.EF_3GCIK, err = p.parseElementaryFile()
+		case "ef-dck":
+			c.EF_DCK, err = p.parseElementaryFile()
 		case "ef-gid1":
 			c.EF_GID1, err = p.parseElementaryFile()
 		case "ef-gid2":
 			c.EF_GID2, err = p.parseElementaryFile()
+		case "ef-cdmacnl":
+			c.EF_CDMACNL, err = p.parseElementaryFile()
 		case "ef-sf-euimid":
 			c.EF_SF_EUIMID, err = p.parseElementaryFile()
 		case "ef-est":
 			c.EF_EST, err = p.parseElementaryFile()
 		case "ef-hidden-key":
 			c.EF_HIDDEN_KEY, err = p.parseElementaryFile()
+		case "ef-lcsver":
+			c.EF_LCSVer, err = p.parseElementaryFile()
+		case "ef-lcscp":
+			c.EF_LCSCP, err = p.parseElementaryFile()
 		case "ef-sdn":
 			c.EF_SDN, err = p.parseElementaryFile()
 		case "ef-ext2":
@@ -1863,8 +2040,32 @@ func (p *Parser) parseOptCSIM() (*OptionalCSIM, error) {
 			c.EF_EXT5, err = p.parseElementaryFile()
 		case "ef-ccp2":
 			c.EF_CCP2, err = p.parseElementaryFile()
+		case "ef-applabels":
+			c.EF_AppLabels, err = p.parseElementaryFile()
 		case "ef-model":
 			c.EF_MODEL, err = p.parseElementaryFile()
+		case "ef-rc":
+			c.EF_RC, err = p.parseElementaryFile()
+		case "ef-smscap":
+			c.EF_SMSCap, err = p.parseElementaryFile()
+		case "ef-mipflags":
+			c.EF_MIPFlags, err = p.parseElementaryFile()
+		case "ef-3gpduppext":
+			c.EF_3GPDUppeExt, err = p.parseElementaryFile()
+		case "ef-ipv6cap":
+			c.EF_IPv6Cap, err = p.parseElementaryFile()
+		case "ef-tcpconfig":
+			c.EF_TCPConfig, err = p.parseElementaryFile()
+		case "ef-dgc":
+			c.EF_DGC, err = p.parseElementaryFile()
+		case "ef-wapbrowsercp":
+			c.EF_WAPBrowserCP, err = p.parseElementaryFile()
+		case "ef-wapbrowserbm":
+			c.EF_WAPBrowserBM, err = p.parseElementaryFile()
+		case "ef-mmsconfig":
+			c.EF_MMSConfig, err = p.parseElementaryFile()
+		case "ef-jdl":
+			c.EF_JDL, err = p.parseElementaryFile()
 		case "ef-meidme":
 			c.EF_MEIDME, err = p.parseElementaryFile()
 		default:
@@ -1995,8 +2196,28 @@ func (p *Parser) parseDF5GS() (*DF5GS, error) {
 			d.EF_SUCI_CALC_INFO, err = p.parseElementaryFile()
 		case "ef-opl5g":
 			d.EF_OPL5G, err = p.parseElementaryFile()
+		case "ef-supinai":
+			d.EF_SUPI_NAI, err = p.parseElementaryFile()
 		case "ef-routing-indicator":
 			d.EF_ROUTING_INDICATOR, err = p.parseElementaryFile()
+		case "ef-ursp":
+			d.EF_URSP, err = p.parseElementaryFile()
+		case "ef-tn3gppsnn":
+			d.EF_TN3GPPSNN, err = p.parseElementaryFile()
+		case "ef-cag":
+			d.EF_CAG, err = p.parseElementaryFile()
+		case "ef-sor-cmci":
+			d.EF_SOR_CMCI, err = p.parseElementaryFile()
+		case "ef-dri":
+			d.EF_DRI, err = p.parseElementaryFile()
+		case "ef-5gsedrx":
+			d.EF_5GSEDRX, err = p.parseElementaryFile()
+		case "ef-5gnswo-conf":
+			d.EF_5GNSWO_CONF, err = p.parseElementaryFile()
+		case "ef-mchpplmn":
+			d.EF_MCHPPLMN, err = p.parseElementaryFile()
+		case "ef-kausf-derivation":
+			d.EF_KAUSF_DERIVATION, err = p.parseElementaryFile()
 		default:
 			if strings.HasPrefix(fieldName.Value, "ef-") {
 				ef, efErr := p.parseElementaryFile()
@@ -2100,14 +2321,26 @@ func (p *Parser) parseAKAParameter() (*AKAParameter, error) {
 		case "aka-header":
 			aka.Header, err = p.parseElementHeader()
 		case "algoConfiguration":
-			// Skip "algoParameter :" if present
-			if p.peek().Type == TokenIdent && p.peek().Value == "algoParameter" {
+			// CHOICE: mappingParameter OR algoParameter
+			if p.peek().Type == TokenIdent && p.peek().Value == "mappingParameter" {
 				p.advance()
 				if p.peek().Type == TokenColon {
 					p.advance()
 				}
+				if aka.AlgoConfig == nil {
+					aka.AlgoConfig = &AlgoConfiguration{}
+				}
+				aka.AlgoConfig.MappingParameter, err = p.parseMappingParameter()
+			} else if p.peek().Type == TokenIdent && p.peek().Value == "algoParameter" {
+				p.advance()
+				if p.peek().Type == TokenColon {
+					p.advance()
+				}
+				aka.AlgoConfig, err = p.parseAlgoConfiguration()
+			} else {
+				// Default to algoParameter if no choice label
+				aka.AlgoConfig, err = p.parseAlgoConfiguration()
 			}
-			aka.AlgoConfig, err = p.parseAlgoConfiguration()
 		case "sqnOptions":
 			hexVal, hexErr := p.parseHexValue()
 			if hexErr != nil {
@@ -2174,6 +2407,8 @@ func (p *Parser) parseAlgoConfiguration() (*AlgoConfiguration, error) {
 			ac.RotationConstants, err = p.parseHexValue()
 		case "xoringConstants":
 			ac.XoringConstants, err = p.parseHexValue()
+		case "authCounterMax":
+			ac.AuthCounterMax, err = p.parseHexValue()
 		case "numberOfKeccak":
 			ac.NumberOfKeccak, err = p.parseIntValue()
 		default:
@@ -2435,11 +2670,15 @@ func (p *Parser) parseSecurityDomain() (*SecurityDomain, error) {
 		case "sd-Header":
 			sd.Header, err = p.parseElementHeader()
 		case "instance":
-			sd.Instance, err = p.parseSDInstance()
+			sd.Instance, err = p.parseApplicationInstance()
 		case "keyList":
 			sd.KeyList, err = p.parseSDKeyList()
 		case "sdPersoData":
 			sd.SDPersoData, err = p.parseSDPersoData()
+		case "openPersoData":
+			sd.OpenPersoData, err = p.parseOpenPersoData()
+		case "catTpParameters":
+			sd.CatTpParameters, err = p.parseCatTpParameters()
 		default:
 			if err := p.skipValue(); err != nil {
 				return nil, err
@@ -2460,66 +2699,13 @@ func (p *Parser) parseSecurityDomain() (*SecurityDomain, error) {
 	return sd, nil
 }
 
-func (p *Parser) parseSDInstance() (*SDInstance, error) {
+
+func (p *Parser) parseApplicationParameters() (*UICCApplicationParameters, error) {
 	if _, err := p.expect(TokenLBrace); err != nil {
 		return nil, err
 	}
 
-	inst := &SDInstance{}
-
-	for p.peek().Type != TokenRBrace {
-		fieldName, err := p.expect(TokenIdent)
-		if err != nil {
-			return nil, err
-		}
-
-		switch fieldName.Value {
-		case "applicationLoadPackageAID":
-			inst.ApplicationLoadPackageAID, err = p.parseHexValue()
-		case "classAID":
-			inst.ClassAID, err = p.parseHexValue()
-		case "instanceAID":
-			inst.InstanceAID, err = p.parseHexValue()
-		case "applicationPrivileges":
-			inst.ApplicationPrivileges, err = p.parseHexValue()
-		case "lifeCycleState":
-			hexVal, hexErr := p.parseHexValue()
-			if hexErr != nil {
-				return nil, hexErr
-			}
-			if len(hexVal) > 0 {
-				inst.LifeCycleState = hexVal[0]
-			}
-		case "applicationSpecificParametersC9":
-			inst.ApplicationSpecificParamsC9, err = p.parseHexValue()
-		case "applicationParameters":
-			inst.ApplicationParameters, err = p.parseApplicationParameters()
-		default:
-			if err := p.skipValue(); err != nil {
-				return nil, err
-			}
-		}
-
-		if err != nil {
-			return nil, fmt.Errorf("field %s: %w", fieldName.Value, err)
-		}
-
-		p.skipComma()
-	}
-
-	if _, err := p.expect(TokenRBrace); err != nil {
-		return nil, err
-	}
-
-	return inst, nil
-}
-
-func (p *Parser) parseApplicationParameters() (*ApplicationParameters, error) {
-	if _, err := p.expect(TokenLBrace); err != nil {
-		return nil, err
-	}
-
-	ap := &ApplicationParameters{}
+	ap := &UICCApplicationParameters{}
 
 	for p.peek().Type != TokenRBrace {
 		fieldName, err := p.expect(TokenIdent)
@@ -2529,7 +2715,11 @@ func (p *Parser) parseApplicationParameters() (*ApplicationParameters, error) {
 
 		switch fieldName.Value {
 		case "uiccToolkitApplicationSpecificParametersField":
-			ap.UIICToolkitApplicationSpecificParametersField, err = p.parseHexValue()
+			ap.UiccToolkitApplicationSpecificParametersField, err = p.parseHexValue()
+		case "uiccAccessApplicationSpecificParametersField":
+			ap.UiccAccessApplicationSpecificParametersField, err = p.parseHexValue()
+		case "uiccAdministrativeAccessApplicationSpecificParametersField":
+			ap.UiccAdministrativeAccessApplicationSpecificParametersField, err = p.parseHexValue()
 		default:
 			if err := p.skipValue(); err != nil {
 				return nil, err
@@ -2619,8 +2809,10 @@ func (p *Parser) parseSDKey() (*SDKey, error) {
 			if len(hexVal) > 0 {
 				key.KeyVersionNumber = hexVal[0]
 			}
-		case "keyCompontents":
-			key.KeyCompontents, err = p.parseKeyComponents()
+		case "keyCounterValue":
+			key.KeyCounterValue, err = p.parseHexValue()
+		case "keyComponents", "keyCompontents": // Support both correct and typo variant
+			key.KeyComponents, err = p.parseKeyComponents()
 		default:
 			if err := p.skipValue(); err != nil {
 				return nil, err
@@ -3119,12 +3311,12 @@ func (p *Parser) parseApplicationInstance() (*ApplicationInstance, error) {
 			if len(hexVal) > 0 {
 				inst.LifeCycleState = hexVal[0]
 			}
-		case "applicationSpecificParamsC9":
+		case "applicationSpecificParamsC9", "applicationSpecificParametersC9": // Support both variants
 			inst.ApplicationSpecificParamsC9, err = p.parseHexValue()
-		case "systemSpecificParams":
-			inst.SystemSpecificParams, err = p.parseHexValue()
+		case "systemSpecificParameters":
+			inst.SystemSpecificParams, err = p.parseApplicationSystemParameters()
 		case "applicationParameters":
-			inst.ApplicationParameters, err = p.parseApplicationParameters()
+			inst.ApplicationParameters, err = p.parseUICCApplicationParameters()
 		case "processData":
 			if _, err := p.expect(TokenLBrace); err != nil {
 				return nil, err
@@ -3141,7 +3333,7 @@ func (p *Parser) parseApplicationInstance() (*ApplicationInstance, error) {
 				return nil, err
 			}
 		case "controlReferenceTemplate":
-			inst.ControlReferenceTemplate, err = p.parseHexValue()
+			inst.ControlReferenceTemplate, err = p.parseControlReferenceTemplate()
 		default:
 			if err := p.skipValue(); err != nil {
 				return nil, err
@@ -3160,5 +3352,722 @@ func (p *Parser) parseApplicationInstance() (*ApplicationInstance, error) {
 	}
 
 	return inst, nil
+}
+
+func (p *Parser) parseCD() (*CDDF, error) {
+	if _, err := p.expect(TokenLBrace); err != nil {
+		return nil, err
+	}
+	cd := &CDDF{}
+	for p.peek().Type != TokenRBrace {
+		fieldName, err := p.expect(TokenIdent)
+		if err != nil {
+			return nil, err
+		}
+		switch fieldName.Value {
+		case "cd-header":
+			cd.Header, err = p.parseElementHeader()
+		case "templateID":
+			cd.TemplateID, err = p.parseOID()
+		case "df-cd":
+			cd.DFCD, err = p.parseFileDescriptorWrapper()
+		case "ef-launchpad":
+			cd.EF_LaunchPad, err = p.parseElementaryFile()
+		case "ef-icon":
+			cd.EF_Icon, err = p.parseElementaryFile()
+		default:
+			if err := p.skipValue(); err != nil {
+				return nil, err
+			}
+		}
+		if err != nil {
+			return nil, fmt.Errorf("field %s: %w", fieldName.Value, err)
+		}
+		p.skipComma()
+	}
+	if _, err := p.expect(TokenRBrace); err != nil {
+		return nil, err
+	}
+	return cd, nil
+}
+
+func (p *Parser) parsePhonebook() (*PhonebookDF, error) {
+	if _, err := p.expect(TokenLBrace); err != nil {
+		return nil, err
+	}
+	pb := &PhonebookDF{}
+	for p.peek().Type != TokenRBrace {
+		fieldName, err := p.expect(TokenIdent)
+		if err != nil {
+			return nil, err
+		}
+		switch fieldName.Value {
+		case "phonebook-header":
+			pb.Header, err = p.parseElementHeader()
+		case "templateID":
+			pb.TemplateID, err = p.parseOID()
+		case "df-phonebook":
+			pb.DFPhonebook, err = p.parseFileDescriptorWrapper()
+		case "ef-pbr":
+			pb.EF_PBR, err = p.parseElementaryFile()
+		case "ef-ext1":
+			pb.EF_EXT1, err = p.parseElementaryFile()
+		case "ef-aas":
+			pb.EF_AAS, err = p.parseElementaryFile()
+		case "ef-gas":
+			pb.EF_GAS, err = p.parseElementaryFile()
+		case "ef-psc":
+			pb.EF_PSC, err = p.parseElementaryFile()
+		case "ef-cc":
+			pb.EF_CC, err = p.parseElementaryFile()
+		case "ef-puid":
+			pb.EF_PUID, err = p.parseElementaryFile()
+		case "ef-iap":
+			pb.EF_IAP, err = p.parseElementaryFile()
+		case "ef-adn":
+			pb.EF_ADN, err = p.parseElementaryFile()
+		case "ef-pbc":
+			pb.EF_PBC, err = p.parseElementaryFile()
+		case "ef-anr":
+			pb.EF_ANR, err = p.parseElementaryFile()
+		case "ef-puri":
+			pb.EF_PURI, err = p.parseElementaryFile()
+		case "ef-email":
+			pb.EF_EMAIL, err = p.parseElementaryFile()
+		case "ef-sne":
+			pb.EF_SNE, err = p.parseElementaryFile()
+		case "ef-uid":
+			pb.EF_UID, err = p.parseElementaryFile()
+		case "ef-grp":
+			pb.EF_GRP, err = p.parseElementaryFile()
+		case "ef-ccp1":
+			pb.EF_CCP1, err = p.parseElementaryFile()
+		default:
+			if err := p.skipValue(); err != nil {
+				return nil, err
+			}
+		}
+		if err != nil {
+			return nil, fmt.Errorf("field %s: %w", fieldName.Value, err)
+		}
+		p.skipComma()
+	}
+	if _, err := p.expect(TokenRBrace); err != nil {
+		return nil, err
+	}
+	return pb, nil
+}
+
+func (p *Parser) parseEAP() (*EAPDF, error) {
+	if _, err := p.expect(TokenLBrace); err != nil {
+		return nil, err
+	}
+	eap := &EAPDF{}
+	for p.peek().Type != TokenRBrace {
+		fieldName, err := p.expect(TokenIdent)
+		if err != nil {
+			return nil, err
+		}
+		switch fieldName.Value {
+		case "eap-header":
+			eap.Header, err = p.parseElementHeader()
+		case "templateID":
+			eap.TemplateID, err = p.parseOID()
+		case "df-eap":
+			eap.DFEAP, err = p.parseFileDescriptorWrapper()
+		case "ef-eapkeys":
+			eap.EF_EAPKeys, err = p.parseElementaryFile()
+		case "ef-eapstatus":
+			eap.EF_EAPStatus, err = p.parseElementaryFile()
+		case "ef-puid":
+			eap.EF_PUID, err = p.parseElementaryFile()
+		case "ef-ps":
+			eap.EF_PS, err = p.parseElementaryFile()
+		case "ef-curid":
+			eap.EF_CURID, err = p.parseElementaryFile()
+		case "ef-reid":
+			eap.EF_REID, err = p.parseElementaryFile()
+		case "ef-realm":
+			eap.EF_Realm, err = p.parseElementaryFile()
+		default:
+			if err := p.skipValue(); err != nil {
+				return nil, err
+			}
+		}
+		if err != nil {
+			return nil, fmt.Errorf("field %s: %w", fieldName.Value, err)
+		}
+		p.skipComma()
+	}
+	if _, err := p.expect(TokenRBrace); err != nil {
+		return nil, err
+	}
+	return eap, nil
+}
+
+func (p *Parser) parseDFSNPN() (*DFSNPN, error) {
+	if _, err := p.expect(TokenLBrace); err != nil {
+		return nil, err
+	}
+	snpn := &DFSNPN{}
+	for p.peek().Type != TokenRBrace {
+		fieldName, err := p.expect(TokenIdent)
+		if err != nil {
+			return nil, err
+		}
+		switch fieldName.Value {
+		case "df-snpn-header":
+			snpn.Header, err = p.parseElementHeader()
+		case "templateID":
+			snpn.TemplateID, err = p.parseOID()
+		case "df-df-snpn":
+			snpn.DFDFSNPN, err = p.parseFileDescriptorWrapper()
+		case "ef-pws-snpn":
+			snpn.EF_PWS_SNPN, err = p.parseElementaryFile()
+		default:
+			if err := p.skipValue(); err != nil {
+				return nil, err
+			}
+		}
+		if err != nil {
+			return nil, fmt.Errorf("field %s: %w", fieldName.Value, err)
+		}
+		p.skipComma()
+	}
+	if _, err := p.expect(TokenRBrace); err != nil {
+		return nil, err
+	}
+	return snpn, nil
+}
+
+func (p *Parser) parseDF5GPROSE() (*DF5GPROSE, error) {
+	if _, err := p.expect(TokenLBrace); err != nil {
+		return nil, err
+	}
+	prose := &DF5GPROSE{}
+	for p.peek().Type != TokenRBrace {
+		fieldName, err := p.expect(TokenIdent)
+		if err != nil {
+			return nil, err
+		}
+		switch fieldName.Value {
+		case "df-5g-prose-header":
+			prose.Header, err = p.parseElementHeader()
+		case "templateID":
+			prose.TemplateID, err = p.parseOID()
+		case "df-df-5g-prose":
+			prose.DFDF5GProSe, err = p.parseFileDescriptorWrapper()
+		case "ef-5g-prose-st":
+			prose.EF_5G_ProSe_ST, err = p.parseElementaryFile()
+		case "ef-5g-prose-dd":
+			prose.EF_5G_ProSe_DD, err = p.parseElementaryFile()
+		case "ef-5g-prose-dc":
+			prose.EF_5G_ProSe_DC, err = p.parseElementaryFile()
+		case "ef-5g-prose-u2nru":
+			prose.EF_5G_ProSe_U2NRU, err = p.parseElementaryFile()
+		case "ef-5g-prose-ru":
+			prose.EF_5G_ProSe_RU, err = p.parseElementaryFile()
+		case "ef-5g-prose-uir":
+			prose.EF_5G_ProSe_UIR, err = p.parseElementaryFile()
+		default:
+			if err := p.skipValue(); err != nil {
+				return nil, err
+			}
+		}
+		if err != nil {
+			return nil, fmt.Errorf("field %s: %w", fieldName.Value, err)
+		}
+		p.skipComma()
+	}
+	if _, err := p.expect(TokenRBrace); err != nil {
+		return nil, err
+	}
+	return prose, nil
+}
+
+func (p *Parser) parseIoT() (*IoTPE, error) {
+	if _, err := p.expect(TokenLBrace); err != nil {
+		return nil, err
+	}
+	iot := &IoTPE{}
+	for p.peek().Type != TokenRBrace {
+		fieldName, err := p.expect(TokenIdent)
+		if err != nil {
+			return nil, err
+		}
+		switch fieldName.Value {
+		case "iot-header":
+			iot.Header, err = p.parseElementHeader()
+		case "templateID":
+			iot.TemplateID, err = p.parseOID()
+		case "mf":
+			iot.MF, err = p.parseIoTFile()
+		case "ef-pl":
+			iot.EF_PL, err = p.parseIoTFile()
+		case "ef-iccid":
+			iot.EF_ICCID, err = p.parseIoTFile()
+		case "ef-dir":
+			iot.EF_DIR, err = p.parseIoTFile()
+		case "ef-arr":
+			iot.EF_ARR, err = p.parseIoTFile()
+		case "ef-umpc":
+			iot.EF_UMPC, err = p.parseIoTFile()
+		case "adf-usim":
+			iot.ADF_USIM, err = p.parseIoTFile()
+		case "ef-imsi":
+			iot.EF_IMSI, err = p.parseIoTFile()
+		case "ef-arr-usim":
+			iot.EF_ARR_USIM, err = p.parseIoTFile()
+		case "ef-keys":
+			iot.EF_Keys, err = p.parseIoTFile()
+		case "ef-keysPS":
+			iot.EF_KeysPS, err = p.parseIoTFile()
+		case "ef-hpplmn":
+			iot.EF_HPPLMN, err = p.parseIoTFile()
+		case "ef-ust":
+			iot.EF_UST, err = p.parseIoTFile()
+		case "ef-start-hfn":
+			iot.EF_StartHFN, err = p.parseIoTFile()
+		case "ef-threshold":
+			iot.EF_Threshold, err = p.parseIoTFile()
+		case "ef-psloci":
+			iot.EF_PSLOCI, err = p.parseIoTFile()
+		case "ef-acc":
+			iot.EF_ACC, err = p.parseIoTFile()
+		case "ef-fplmn":
+			iot.EF_FPLMN, err = p.parseIoTFile()
+		case "ef-loci":
+			iot.EF_LOCI, err = p.parseIoTFile()
+		case "ef-ad":
+			iot.EF_AD, err = p.parseIoTFile()
+		case "ef-ecc":
+			iot.EF_ECC, err = p.parseIoTFile()
+		case "ef-netpar":
+			iot.EF_NETPAR, err = p.parseIoTFile()
+		default:
+			if err := p.skipValue(); err != nil {
+				return nil, err
+			}
+		}
+		if err != nil {
+			return nil, fmt.Errorf("field %s: %w", fieldName.Value, err)
+		}
+		p.skipComma()
+	}
+	if _, err := p.expect(TokenRBrace); err != nil {
+		return nil, err
+	}
+	return iot, nil
+}
+
+func (p *Parser) parseOptIoT() (*OptionalIoT, error) {
+	if _, err := p.expect(TokenLBrace); err != nil {
+		return nil, err
+	}
+	iot := &OptionalIoT{}
+	for p.peek().Type != TokenRBrace {
+		fieldName, err := p.expect(TokenIdent)
+		if err != nil {
+			return nil, err
+		}
+		switch fieldName.Value {
+		case "optiot-header":
+			iot.Header, err = p.parseElementHeader()
+		case "templateID":
+			iot.TemplateID, err = p.parseOID()
+		case "ef-fdn":
+			iot.EF_FDN, err = p.parseIoTFile()
+		case "ef-sms":
+			iot.EF_SMS, err = p.parseIoTFile()
+		case "ef-smsp":
+			iot.EF_SMSP, err = p.parseIoTFile()
+		case "ef-smss":
+			iot.EF_SMSS, err = p.parseIoTFile()
+		case "ef-spn":
+			iot.EF_SPN, err = p.parseIoTFile()
+		case "ef-est":
+			iot.EF_EST, err = p.parseIoTFile()
+		case "ef-oplmnwact":
+			iot.EF_OPLMNWACT, err = p.parseIoTFile()
+		case "ef-hplmnwact":
+			iot.EF_HPLMNWACT, err = p.parseIoTFile()
+		case "ef-ehplmn":
+			iot.EF_EHPLMN, err = p.parseIoTFile()
+		case "ef-epsloci":
+			iot.EF_EPSLOCI, err = p.parseIoTFile()
+		case "ef-epsnsc":
+			iot.EF_EPSNSC, err = p.parseIoTFile()
+		case "df-df-5gs":
+			iot.DF_DF_5GS, err = p.parseIoTFile()
+		case "ef-5gs3gpploci":
+			iot.EF_5GS3GPPLOCI, err = p.parseIoTFile()
+		case "ef-5gsn3gpploci":
+			iot.EF_5GSN3GPPLOCI, err = p.parseIoTFile()
+		case "ef-5gs3gppnsc":
+			iot.EF_5GS3GPPNSC, err = p.parseIoTFile()
+		case "ef-5gsn3gppnsc":
+			iot.EF_5GSN3GPPNSC, err = p.parseIoTFile()
+		case "ef-5gauthkeys":
+			iot.EF_5GAUTHKEYS, err = p.parseIoTFile()
+		case "ef-uac-aic":
+			iot.EF_UAC_AIC, err = p.parseIoTFile()
+		case "ef-suci-calc-info":
+			iot.EF_SUCI_CALC_INFO, err = p.parseIoTFile()
+		case "ef-opl5g":
+			iot.EF_OPL5G, err = p.parseIoTFile()
+		case "ef-supi-nai":
+			iot.EF_SUPI_NAI, err = p.parseIoTFile()
+		case "ef-routing-indicator":
+			iot.EF_ROUTING_INDICATOR, err = p.parseIoTFile()
+		case "ef-ursp":
+			iot.EF_URSP, err = p.parseIoTFile()
+		case "ef-tn3gppsnn":
+			iot.EF_TN3GPPSNN, err = p.parseIoTFile()
+		case "df-df-saip":
+			iot.DF_DF_SAIP, err = p.parseIoTFile()
+		case "ef-suci-calc-info-usim":
+			iot.EF_SUCI_CALC_INFO_USIM, err = p.parseIoTFile()
+		default:
+			if err := p.skipValue(); err != nil {
+				return nil, err
+			}
+		}
+		if err != nil {
+			return nil, fmt.Errorf("field %s: %w", fieldName.Value, err)
+		}
+		p.skipComma()
+	}
+	if _, err := p.expect(TokenRBrace); err != nil {
+		return nil, err
+	}
+	return iot, nil
+}
+
+func (p *Parser) parseIoTFile() (*File, error) {
+	if _, err := p.expect(TokenLBrace); err != nil {
+		return nil, err
+	}
+	var f File
+	var currentOffset int
+	for p.peek().Type != TokenRBrace {
+		fieldName, err := p.expect(TokenIdent)
+		if err != nil {
+			return nil, err
+		}
+		if p.peek().Type == TokenColon {
+			p.advance()
+		}
+		switch fieldName.Value {
+		case "fileDescriptor":
+			fd, err := p.parseFileDescriptor()
+			if err != nil {
+				return nil, err
+			}
+			f = append(f, FileElement{Type: FileElementDescriptor, Descriptor: fd})
+		case "fillFileOffset":
+			currentOffset, err = p.parseIntValue()
+			if err != nil {
+				return nil, err
+			}
+			f = append(f, FileElement{Type: FileElementOffset, Offset: currentOffset})
+		case "fillFileContent":
+			content, err := p.parseHexValue()
+			if err != nil {
+				return nil, err
+			}
+			f = append(f, FileElement{Type: FileElementContent, Content: content})
+			currentOffset = 0
+		case "doNotCreate":
+			if p.peek().Type == TokenNull {
+				p.advance()
+			}
+			f = append(f, FileElement{Type: FileElementDoNotCreate})
+		default:
+			if err := p.skipValue(); err != nil {
+				return nil, err
+			}
+		}
+		p.skipComma()
+	}
+	if _, err := p.expect(TokenRBrace); err != nil {
+		return nil, err
+	}
+	return &f, nil
+}
+
+func (p *Parser) parseMappingParameter() (*MappingParameter, error) {
+	if _, err := p.expect(TokenLBrace); err != nil {
+		return nil, err
+	}
+	mp := &MappingParameter{}
+	for p.peek().Type != TokenRBrace {
+		fieldName, err := p.expect(TokenIdent)
+		if err != nil {
+			return nil, err
+		}
+		switch fieldName.Value {
+		case "mappingOptions":
+			hexVal, err := p.parseHexValue()
+			if err != nil {
+				return nil, err
+			}
+			if len(hexVal) > 0 {
+				mp.MappingOptions = hexVal[0]
+			}
+		case "mappingSource":
+			mp.MappingSource, err = p.parseHexValue()
+		default:
+			if err := p.skipValue(); err != nil {
+				return nil, err
+			}
+		}
+		p.skipComma()
+	}
+	if _, err := p.expect(TokenRBrace); err != nil {
+		return nil, err
+	}
+	return mp, nil
+}
+
+func (p *Parser) parseOpenPersoData() (*OpenPersoData, error) {
+	if _, err := p.expect(TokenLBrace); err != nil {
+		return nil, err
+	}
+	opd := &OpenPersoData{}
+	for p.peek().Type != TokenRBrace {
+		fieldName, err := p.expect(TokenIdent)
+		if err != nil {
+			return nil, err
+		}
+		switch fieldName.Value {
+		case "restrictParameter":
+			opd.RestrictParameter, err = p.parseHexValue()
+		case "contactlessProtocolParameters":
+			opd.ContactlessProtocolParameters, err = p.parseHexValue()
+		default:
+			if err := p.skipValue(); err != nil {
+				return nil, err
+			}
+		}
+		p.skipComma()
+	}
+	if _, err := p.expect(TokenRBrace); err != nil {
+		return nil, err
+	}
+	return opd, nil
+}
+
+func (p *Parser) parseCatTpParameters() (*CatTpParameters, error) {
+	if _, err := p.expect(TokenLBrace); err != nil {
+		return nil, err
+	}
+	ctp := &CatTpParameters{}
+	for p.peek().Type != TokenRBrace {
+		fieldName, err := p.expect(TokenIdent)
+		if err != nil {
+			return nil, err
+		}
+		switch fieldName.Value {
+		case "catTpMaxSduSize":
+			ctp.CatTpMaxSduSize, err = p.parseIntValue()
+		case "catTpMaxPduSize":
+			ctp.CatTpMaxPduSize, err = p.parseIntValue()
+		default:
+			if err := p.skipValue(); err != nil {
+				return nil, err
+			}
+		}
+		p.skipComma()
+	}
+	if _, err := p.expect(TokenRBrace); err != nil {
+		return nil, err
+	}
+	return ctp, nil
+}
+
+func (p *Parser) parseApplicationSystemParameters() (*ApplicationSystemParameters, error) {
+	if _, err := p.expect(TokenLBrace); err != nil {
+		return nil, err
+	}
+	asp := &ApplicationSystemParameters{}
+	for p.peek().Type != TokenRBrace {
+		fieldName, err := p.expect(TokenIdent)
+		if err != nil {
+			return nil, err
+		}
+		switch fieldName.Value {
+		case "volatileMemoryQuotaC7":
+			asp.VolatileMemoryQuotaC7, err = p.parseHexValue()
+		case "nonVolatileMemoryQuotaC8":
+			asp.NonVolatileMemoryQuotaC8, err = p.parseHexValue()
+		case "globalServiceParameters":
+			asp.GlobalServiceParameters, err = p.parseHexValue()
+		case "implicitSelectionParameter":
+			asp.ImplicitSelectionParameter, err = p.parseHexValue()
+		case "volatileReservedMemory":
+			asp.VolatileReservedMemory, err = p.parseHexValue()
+		case "nonVolatileReservedMemory":
+			asp.NonVolatileReservedMemory, err = p.parseHexValue()
+		case "ts102226SIMFileAccessToolkitParameter":
+			asp.TS102226SIMFileAccessToolkitParameter, err = p.parseHexValue()
+		case "ts102226AdditionalContactlessParameters":
+			if _, err := p.expect(TokenLBrace); err != nil {
+				return nil, err
+			}
+			if p.peek().Type == TokenIdent && p.peek().Value == "protocolParameterData" {
+				p.advance()
+			}
+			asp.TS102226AdditionalContactlessParameters, err = p.parseHexValue()
+			if _, err := p.expect(TokenRBrace); err != nil {
+				return nil, err
+			}
+		case "contactlessProtocolParameters":
+			asp.ContactlessProtocolParameters, err = p.parseHexValue()
+		case "userInteractionContactlessParameters":
+			asp.UserInteractionContactlessParameters, err = p.parseHexValue()
+		case "cumulativeGrantedVolatileMemory":
+			asp.CumulativeGrantedVolatileMemory, err = p.parseHexValue()
+		case "cumulativeGrantedNonVolatileMemory":
+			asp.CumulativeGrantedNonVolatileMemory, err = p.parseHexValue()
+		default:
+			if err := p.skipValue(); err != nil {
+				return nil, err
+			}
+		}
+		p.skipComma()
+	}
+	if _, err := p.expect(TokenRBrace); err != nil {
+		return nil, err
+	}
+	return asp, nil
+}
+
+func (p *Parser) parseUICCApplicationParameters() (*UICCApplicationParameters, error) {
+	if _, err := p.expect(TokenLBrace); err != nil {
+		return nil, err
+	}
+	uap := &UICCApplicationParameters{}
+	for p.peek().Type != TokenRBrace {
+		fieldName, err := p.expect(TokenIdent)
+		if err != nil {
+			return nil, err
+		}
+		switch fieldName.Value {
+		case "uiccToolkitApplicationSpecificParametersField":
+			uap.UiccToolkitApplicationSpecificParametersField, err = p.parseHexValue()
+		case "uiccAccessApplicationSpecificParametersField":
+			uap.UiccAccessApplicationSpecificParametersField, err = p.parseHexValue()
+		case "uiccAdministrativeAccessApplicationSpecificParametersField":
+			uap.UiccAdministrativeAccessApplicationSpecificParametersField, err = p.parseHexValue()
+		default:
+			if err := p.skipValue(); err != nil {
+				return nil, err
+			}
+		}
+		p.skipComma()
+	}
+	if _, err := p.expect(TokenRBrace); err != nil {
+		return nil, err
+	}
+	return uap, nil
+}
+
+func (p *Parser) parseControlReferenceTemplate() (*ControlReferenceTemplate, error) {
+	if _, err := p.expect(TokenLBrace); err != nil {
+		return nil, err
+	}
+	crt := &ControlReferenceTemplate{}
+	for p.peek().Type != TokenRBrace {
+		fieldName, err := p.expect(TokenIdent)
+		if err != nil {
+			return nil, err
+		}
+		switch fieldName.Value {
+		case "applicationProviderIdentifier":
+			crt.ApplicationProviderIdentifier, err = p.parseHexValue()
+		default:
+			if err := p.skipValue(); err != nil {
+				return nil, err
+			}
+		}
+		p.skipComma()
+	}
+	if _, err := p.expect(TokenRBrace); err != nil {
+		return nil, err
+	}
+	return crt, nil
+}
+
+func (p *Parser) parseIOTOptions() (*IOTOptions, error) {
+	if _, err := p.expect(TokenLBrace); err != nil {
+		return nil, err
+	}
+	opts := &IOTOptions{}
+	for p.peek().Type != TokenRBrace {
+		fieldName, err := p.expect(TokenIdent)
+		if err != nil {
+			return nil, err
+		}
+		switch fieldName.Value {
+		case "pix":
+			opts.PIX, err = p.parseHexValue()
+		default:
+			if err := p.skipValue(); err != nil {
+				return nil, err
+			}
+		}
+		p.skipComma()
+	}
+	if _, err := p.expect(TokenRBrace); err != nil {
+		return nil, err
+	}
+	return opts, nil
+}
+
+func (p *Parser) parseMandatoryAIDList() ([]MandatoryAID, error) {
+	if _, err := p.expect(TokenLBrace); err != nil {
+		return nil, err
+	}
+	var aids []MandatoryAID
+	for p.peek().Type != TokenRBrace {
+		aid, err := p.parseMandatoryAID()
+		if err != nil {
+			return nil, err
+		}
+		aids = append(aids, *aid)
+		p.skipComma()
+	}
+	if _, err := p.expect(TokenRBrace); err != nil {
+		return nil, err
+	}
+	return aids, nil
+}
+
+func (p *Parser) parseMandatoryAID() (*MandatoryAID, error) {
+	if _, err := p.expect(TokenLBrace); err != nil {
+		return nil, err
+	}
+	aid := &MandatoryAID{}
+	for p.peek().Type != TokenRBrace {
+		fieldName, err := p.expect(TokenIdent)
+		if err != nil {
+			return nil, err
+		}
+		switch fieldName.Value {
+		case "aid":
+			aid.AID, err = p.parseHexValue()
+		case "version":
+			aid.Version, err = p.parseHexValue()
+		default:
+			if err := p.skipValue(); err != nil {
+				return nil, err
+			}
+		}
+		p.skipComma()
+	}
+	if _, err := p.expect(TokenRBrace); err != nil {
+		return nil, err
+	}
+	return aid, nil
 }
 

@@ -19,29 +19,44 @@ The `esim` package provides comprehensive tools for working with eSIM profiles i
 
 ### Supported Profile Elements
 
+The library supports all Profile Elements defined in **SAIP 3.3.1.2** (eUICC Interop Profile Test Specification v3.3.1.2). Full bidirectional conversion (DER ↔ ASN.1 Value Notation) is supported for all elements.
+
 | Tag | Element Name | Description |
 |-----|--------------|-------------|
-| 0 | ProfileHeader | Profile header (version, ICCID, services) |
-| 1 | MF | Master File (root file system) |
-| 2 | PukCodes | PUK codes |
-| 3 | PinCodes | PIN codes |
-| 4 | Telecom | Telecom directory |
-| 8 | **Application** | **Java Card applets (PE-Application)** |
-| 9 | USIM | USIM application |
-| 10 | OptUSIM | Optional USIM files |
-| 12 | ISIM | ISIM application |
-| 13 | OptISIM | Optional ISIM files |
-| 14 | CSIM | CSIM application |
-| 15 | OptCSIM | Optional CSIM files |
-| 20 | GSMAccess | GSM Access files |
-| 22 | AKAParameter | Authentication parameters (Ki, OPc, algorithm) |
-| 23 | CDMAParameter | CDMA parameters |
-| 24 | DF5GS | 5G files |
-| 25 | DFSAIP | SAIP files |
-| 26 | GenericFileManagement | File management |
-| 55 | SecurityDomain | GlobalPlatform Security Domain |
-| 56 | RFM | Remote File Management |
-| 63 | End | Profile end marker |
+| **Non-File-System Related PEs** |
+| 0 | ProfileHeader | Profile header (version, ICCID, services, IoT options) |
+| 1 | GenericFileManagement | File creation and management commands |
+| 2 | PinCodes | PIN configurations and values |
+| 3 | PukCodes | PUK values and retry counters |
+| 4 | AKAParameter | Authentication parameters (Ki, OPc, algorithm: Milenage/TUAK/USIM Test) |
+| 5 | CDMAParameter | CDMA authentication keys (A-Key, SSD, HRPD, SimpleIP, MobileIP) |
+| 6 | SecurityDomain | GlobalPlatform Security Domain with keys and instances |
+| 7 | RFM | Remote File Management configuration |
+| 8 | Application | Java Card applets (PE-Application) with LoadBlock and InstanceList |
+| 9 | NonStandard | Non-standard profile elements (issuer-specific) |
+| 10 | End | Profile end marker |
+| 11-15 | RFU1-5 | Reserved for future use (PE-Dummy) |
+| **File System Related PEs (Template-Based)** |
+| 16 | MF | Master File (root file system) |
+| 17 | CD | Card Directory |
+| 18 | Telecom | Telecom directory (phonebook, graphics, multimedia, V2X) |
+| 19 | USIM | USIM application (IMSI, keys, UST, EST, SPN, PLMN lists) |
+| 20 | OptUSIM | Optional USIM files (MSISDN, GID, PLMNwAcT, IMS config, etc.) |
+| 21 | ISIM | ISIM application (IMPI, IMPU, Domain, IST) |
+| 22 | OptISIM | Optional ISIM files (PCSCF, SMS, GBA, IMS config, WebRTC) |
+| 23 | Phonebook | Phonebook directory (standalone) |
+| 24 | GSMAccess | GSM Access files (Kc, KcGPRS, CPBCCH, INVSCAN) |
+| 25 | CSIM | CSIM application (CDMA SIM with IMSI-M/T, PRL, SPC) |
+| 26 | OptCSIM | Optional CSIM files (FDN, SMS, SPN, MDN, SIP/MIP config) |
+| 27 | EAP | EAP application (EAP keys, status, PUID, PS, CURID, REID, Realm) |
+| 28 | DF5GS | 5G files (5G-GUTI, SUCI calc info, UAC-AIC, URSP, CAG, SOR) |
+| 29 | DFSAIP | SAIP-specific files (SUCI calc info for USIM) |
+| 30 | DFSNPN | Standalone Non-Public Network files (PWS-SNPN) |
+| 31 | DF5GPROSE | 5G Proximity Services files (ST, DD, DC, U2NRU, RU, UIR) |
+| 32 | IoT | IoT Minimal Profile (MF, USIM subset) |
+| 33 | OptIoT | Optional IoT files (FDN, SMS, 5GS, SAIP) |
+
+**Note:** All Profile Elements support full round-trip conversion (DER → ASN.1 Text → DER) with byte-exact fidelity. The library implements complete parsing, decoding, encoding, and generation for all fields defined in the SAIP 3.3.1.2 specification.
 
 ---
 

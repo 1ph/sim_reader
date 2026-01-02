@@ -35,7 +35,28 @@ func TestASN1RoundTrip(t *testing.T) {
 
 	if normOriginal != normGenerated {
 		t.Errorf("ASN.1 Round-trip mismatch after normalization")
-		// Optional: write to files for debugging if needed, but here we just fail
+		// Show first difference
+		minLen := len(normOriginal)
+		if len(normGenerated) < minLen {
+			minLen = len(normGenerated)
+		}
+		for i := 0; i < minLen; i++ {
+			if normOriginal[i] != normGenerated[i] {
+				start := i - 50
+				if start < 0 {
+					start = 0
+				}
+				end := i + 50
+				if end > minLen {
+					end = minLen
+				}
+				t.Errorf("First difference at position %d:\nOriginal: ...%s...\nGenerated: ...%s...", i, normOriginal[start:end], normGenerated[start:end])
+				break
+			}
+		}
+		if len(normOriginal) != len(normGenerated) {
+			t.Errorf("Length mismatch: original=%d, generated=%d", len(normOriginal), len(normGenerated))
+		}
 	}
 }
 
@@ -96,6 +117,28 @@ func TestFullRoundTrip(t *testing.T) {
 
 	if normOriginal != normFinal {
 		t.Errorf("Full Round-trip mismatch")
+		// Show first difference
+		minLen := len(normOriginal)
+		if len(normFinal) < minLen {
+			minLen = len(normFinal)
+		}
+		for i := 0; i < minLen; i++ {
+			if normOriginal[i] != normFinal[i] {
+				start := i - 50
+				if start < 0 {
+					start = 0
+				}
+				end := i + 50
+				if end > minLen {
+					end = minLen
+				}
+				t.Errorf("First difference at position %d:\nOriginal: ...%s...\nFinal: ...%s...", i, normOriginal[start:end], normFinal[start:end])
+				break
+			}
+		}
+		if len(normOriginal) != len(normFinal) {
+			t.Errorf("Length mismatch: original=%d, final=%d", len(normOriginal), len(normFinal))
+		}
 	}
 }
 
@@ -122,7 +165,7 @@ func TestProfileModification(t *testing.T) {
 		t.Fatalf("Failed to parse profile: %v", err)
 	}
 
-	newICCID := "89012345678901234567"
+	newICCID := "89012345678901234563"
 	newIMSI := "001010123456789"
 
 	if err := profile.SetICCID(newICCID); err != nil {
@@ -133,8 +176,8 @@ func TestProfileModification(t *testing.T) {
 	}
 
 	// Verify header ICCID
-	// ICCID in header is BCD encoded. 89012345678901234567 -> 89 01 23 45 67 89 01 23 45 67
-	expectedICCIDHeader := "89012345678901234567"
+	// ICCID in header is BCD encoded. 89012345678901234563 -> 89 01 23 45 67 89 01 23 45 63
+	expectedICCIDHeader := "89012345678901234563"
 	actualICCIDHeader := hex.EncodeToString(profile.Header.ICCID)
 	if actualICCIDHeader != expectedICCIDHeader {
 		t.Errorf("ICCID Header mismatch: expected %s, got %s", expectedICCIDHeader, actualICCIDHeader)
@@ -147,7 +190,7 @@ func TestProfileModification(t *testing.T) {
 	// Wait, let's just check if it generates valid ASN.1 and can be re-parsed
 	
 	gen := GenerateValueNotation(profile)
-	if !strings.Contains(gen, "iccid '89012345678901234567'H") {
+	if !strings.Contains(gen, "iccid '89012345678901234563'H") {
 		t.Errorf("Generated ASN.1 does not contain new ICCID")
 	}
 	
