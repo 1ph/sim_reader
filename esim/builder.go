@@ -220,6 +220,20 @@ func ApplyConfigToProfile(profile *Profile, config *sim.SIMConfig) error {
 		}
 	}
 
+	// MANDATORY: Renumber all elements sequentially and invalidate template cache
+	// This ensures SAIP compliance (sequential identification) and that all
+	// changes (keys, IMSI, applets) are actually written to the DER file.
+	nextID := 1
+	for i := range profile.Elements {
+		hdr := getElementHeader(profile.Elements[i])
+		if hdr != nil {
+			hdr.Identification = nextID
+			nextID++
+		}
+		// Invalidate template cache for THIS element
+		profile.Elements[i].RawBytes = nil
+	}
+
 	return nil
 }
 
@@ -531,19 +545,6 @@ func addAppletFromGPConfig(profile *Profile, cfg *sim.GPAppletLoadConfig) error 
 			append([]ProfileElement{appElem}, profile.Elements[endIdx:]...)...)
 	} else {
 		profile.Elements = append(profile.Elements, appElem)
-	}
-
-	// RE-ASSIGN ALL IDENTIFICATION NUMBERS SEQUENTIALLY
-	// This is the only way to ensure SAIP compliance after insertion
-	currentID := 1
-	for i := range profile.Elements {
-		hdr := getElementHeader(profile.Elements[i])
-		if hdr != nil {
-			hdr.Identification = currentID
-			currentID++
-			// Invalidate cached data for this element
-			profile.invalidate(profile.Elements[i].Tag)
-		}
 	}
 
 	// Add to profile.Applications list as well
