@@ -1401,7 +1401,7 @@ func encodeAKAParameter(aka *AKAParameter) ([]byte, error) {
 	}
 
 	// [5] sqnInit
-	if len(aka.SQNInit) > 0 {
+	if len(aka.SQNInit) > 0 && !isAllZeros(aka.SQNInit) {
 		var sqnData []byte
 		for _, sqn := range aka.SQNInit {
 			sqnData = append(sqnData, asn1.Marshal(0x04, nil, sqn...)...)
@@ -1410,6 +1410,17 @@ func encodeAKAParameter(aka *AKAParameter) ([]byte, error) {
 	}
 
 	return data, nil
+}
+
+func isAllZeros(sqns [][]byte) bool {
+	for _, sqn := range sqns {
+		for _, b := range sqn {
+			if b != 0 {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 func encodeMappingParameter(mp *MappingParameter) []byte {
@@ -1447,7 +1458,8 @@ func encodeAlgoParameter(ac *AlgoConfiguration) []byte {
 	}
 
 	// [5] xoringConstants - DEFAULT 80 bytes
-	if len(ac.XoringConstants) > 0 {
+	xorDefault, _ := hex.DecodeString("0000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000020000000000000000000000000000000400000000000000000000000000000008")
+	if len(ac.XoringConstants) > 0 && !bytes.Equal(ac.XoringConstants, xorDefault) {
 		data = append(data, asn1.Marshal(0x85, nil, ac.XoringConstants...)...)
 	}
 
@@ -1881,8 +1893,10 @@ func encodeApplicationInstance(inst *ApplicationInstance) []byte {
 		data = append(data, asn1.Marshal(0x82, nil, inst.ApplicationPrivileges...)...)
 	}
 
-	// [3] lifeCycleState (0x83)
-	data = append(data, asn1.Marshal(0x83, nil, inst.LifeCycleState)...)
+	// [3] lifeCycleState (0x83) - DEFAULT 0x07
+	if inst.LifeCycleState != 0x07 {
+		data = append(data, asn1.Marshal(0x83, nil, inst.LifeCycleState)...)
+	}
 
 	// [PRIVATE 9] applicationSpecificParametersC9 (0xC9)
 	if len(inst.ApplicationSpecificParamsC9) > 0 {
@@ -1901,13 +1915,13 @@ func encodeApplicationInstance(inst *ApplicationInstance) []byte {
 		data = append(data, asn1.Marshal(0xEA, nil, apData...)...)
 	}
 
-	// processData - SEQUENCE OF OCTET STRING
+	// processData - [PRIVATE 2] SEQUENCE OF OCTET STRING
 	if len(inst.ProcessData) > 0 {
 		var pdData []byte
 		for _, apdu := range inst.ProcessData {
 			pdData = append(pdData, asn1.Marshal(0x04, nil, apdu...)...) // OCTET STRING
 		}
-		data = append(data, asn1.Marshal(0x30, nil, pdData...)...) // SEQUENCE
+		data = append(data, asn1.Marshal(0xE2, nil, pdData...)...) // [PRIVATE 2] Constructed
 	}
 
 	// [16] controlReferenceTemplate (0xB0 = context-specific constructed 16)

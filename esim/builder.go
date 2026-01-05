@@ -116,30 +116,20 @@ func ApplyConfigToProfile(profile *Profile, config *sim.SIMConfig) error {
 	}
 
 	// Set algorithm ID and update MandatoryServices accordingly
-	if config.UseAppletAuth {
-		// Delegate authentication to applet (algorithmID=3)
+	if config.AlgorithmID > 0 || config.UseAppletAuth {
+		algoID := AlgorithmID(config.AlgorithmID)
+		if algoID == 0 {
+			algoID = AlgoMilenage // Default to Milenage
+		}
+
 		for _, aka := range profile.AKAParams {
 			if aka.AlgoConfig != nil {
-				aka.AlgoConfig.AlgorithmID = AlgoUSIMTestAlgorithm
-			}
-		}
-		profile.invalidate(TagAKAParameter)
-		// Update MandatoryServices
-		if profile.Header != nil && profile.Header.MandatoryServices != nil {
-			profile.Header.MandatoryServices.USIMTestAlgorithm = true
-			profile.Header.MandatoryServices.Milenage = false
-			profile.Header.MandatoryServices.TUAK128 = false
-			profile.Header.MandatoryServices.TUAK256 = false
-			profile.invalidate(TagProfileHeader)
-		}
-	} else if config.AlgorithmID > 0 {
-		// Use specified algorithm ID
-		for _, aka := range profile.AKAParams {
-			if aka.AlgoConfig != nil {
-				aka.AlgoConfig.AlgorithmID = AlgorithmID(config.AlgorithmID)
+				aka.AlgoConfig.AlgorithmID = algoID
+				// Match reference profile usim-applet.txt options ('00'H)
+				aka.AlgoConfig.AlgorithmOptions = byte(0x00)
 
 				// If switching to pure Milenage, clear TUAK-specific parameters
-				if AlgorithmID(config.AlgorithmID) == AlgoMilenage {
+				if algoID == AlgoMilenage {
 					// For Milenage, use standard rotation constants (r1-r5)
 					// Default: r1=64, r2=0, r3=32, r4=64, r5=96 bits
 					aka.AlgoConfig.RotationConstants = []byte{0x40, 0x00, 0x20, 0x40, 0x60}
@@ -160,14 +150,21 @@ func ApplyConfigToProfile(profile *Profile, config *sim.SIMConfig) error {
 			ms.TUAK128 = false
 			ms.TUAK256 = false
 			ms.USIMTestAlgorithm = false
-			// Set the appropriate one
-			switch AlgorithmID(config.AlgorithmID) {
-			case AlgoMilenage:
-				ms.Milenage = true
-			case AlgoTUAK:
-				ms.TUAK128 = true // TUAK with 128-bit key
-			case AlgoUSIMTestAlgorithm:
+
+			if config.UseAppletAuth {
+				// If applet auth is used, GSMA recommends setting USIMTestAlgorithm=true
+				// while actual algorithm in akaParameter can still be milenage
 				ms.USIMTestAlgorithm = true
+			} else {
+				// Set the appropriate flag for native algorithm
+				switch algoID {
+				case AlgoMilenage:
+					ms.Milenage = true
+				case AlgoTUAK:
+					ms.TUAK128 = true // TUAK with 128-bit key
+				case AlgoUSIMTestAlgorithm:
+					ms.USIMTestAlgorithm = true
+				}
 			}
 			profile.invalidate(TagProfileHeader)
 		}
@@ -196,6 +193,25 @@ func ApplyConfigToProfile(profile *Profile, config *sim.SIMConfig) error {
 		if err := removeUSIMElements(profile); err != nil {
 			return fmt.Errorf("remove USIM elements: %w", err)
 		}
+	} else {
+		// Mandatory cleanup for Variant 2 (USIM + Applet):
+		// Reference profile usim-applet.txt only has ONE akaParameter element (ID 20).
+		// Our template TS48v5 has TWO akaParameter elements (ID 10 and ID 21).
+		// We must remove the first one to match the reference structure and IDs.
+		newElements := make([]ProfileElement, 0, len(profile.Elements))
+		akaCount := 0
+		for _, elem := range profile.Elements {
+			if elem.Tag == TagAKAParameter {
+				akaCount++
+				if akaCount == 1 {
+					// Skip the first akaParameter
+					continue
+				}
+			}
+			newElements = append(newElements, elem)
+		}
+		profile.Elements = newElements
+		profile.UpdateReferences()
 	}
 
 	// Add applets from GlobalPlatform config
@@ -230,7 +246,7 @@ func ApplyConfigToProfile(profile *Profile, config *sim.SIMConfig) error {
 			hdr.Identification = nextID
 			nextID++
 		}
-		// Invalidate template cache for THIS element
+		// CRITICAL: Invalidate template cache for THIS element to force re-encoding
 		profile.Elements[i].RawBytes = nil
 	}
 
@@ -497,16 +513,31 @@ func addAppletFromGPConfig(profile *Profile, cfg *sim.GPAppletLoadConfig) error 
 		}
 	}
 
-	// Find End element index
-	endIdx := -1
-	for i, elem := range profile.Elements {
-		if elem.Tag == TagEnd {
-			endIdx = i
-			break
+	// Find insertion point for Application (after SecurityDomain or USIM)
+	insertIdx := -1
+	for i, el := range profile.Elements {
+		if el.Tag == TagSecurityDomain {
+			insertIdx = i + 1
+		}
+	}
+	if insertIdx == -1 {
+		for i, el := range profile.Elements {
+			if el.Tag == TagUSIM {
+				insertIdx = i + 1
+			}
+		}
+	}
+	if insertIdx == -1 {
+		// Fallback to before End
+		for i, el := range profile.Elements {
+			if el.Tag == TagEnd {
+				insertIdx = i
+				break
+			}
 		}
 	}
 
-	// Create Application element with placeholder header
+	// Create Application element
 	app := &Application{
 		Header: &ElementHeader{
 			Mandated: true,
@@ -527,9 +558,7 @@ func addAppletFromGPConfig(profile *Profile, cfg *sim.GPAppletLoadConfig) error 
 				ApplicationPrivileges:       []byte{0x00},       // 1 byte, no privileges
 				LifeCycleState:              0x07,               // Selectable
 				ApplicationSpecificParamsC9: []byte{0xC9, 0x00}, // Matches working profile 'C900'H
-				// ProcessData is intentionally omitted as it often contains malformed APDUs
-				// Personalization should be done via standard profile elements if needed
-				ProcessData: nil,
+				ProcessData:                 processData,
 			},
 		},
 	}
@@ -539,10 +568,10 @@ func addAppletFromGPConfig(profile *Profile, cfg *sim.GPAppletLoadConfig) error 
 		Value: app,
 	}
 
-	// Insert before End element if found, otherwise append
-	if endIdx >= 0 {
-		profile.Elements = append(profile.Elements[:endIdx],
-			append([]ProfileElement{appElem}, profile.Elements[endIdx:]...)...)
+	// Insert at calculated position
+	if insertIdx >= 0 {
+		profile.Elements = append(profile.Elements[:insertIdx],
+			append([]ProfileElement{appElem}, profile.Elements[insertIdx:]...)...)
 	} else {
 		profile.Elements = append(profile.Elements, appElem)
 	}
@@ -880,46 +909,90 @@ func BuildProfile(template *Profile, config *BuildConfig) (*Profile, error) {
 
 // getElementHeader extracts ElementHeader from different profile element types
 func getElementHeader(elem ProfileElement) *ElementHeader {
+	if elem.Value == nil {
+		return nil
+	}
+
 	switch v := elem.Value.(type) {
 	case *MasterFile:
 		return v.MFHeader
+	case MasterFile:
+		return v.MFHeader
 	case *PUKCodes:
+		return v.Header
+	case PUKCodes:
 		return v.Header
 	case *PINCodes:
 		return v.Header
+	case PINCodes:
+		return v.Header
 	case *TelecomDF:
+		return v.Header
+	case TelecomDF:
 		return v.Header
 	case *USIMApplication:
 		return v.Header
+	case USIMApplication:
+		return v.Header
 	case *OptionalUSIM:
+		return v.Header
+	case OptionalUSIM:
 		return v.Header
 	case *ISIMApplication:
 		return v.Header
+	case ISIMApplication:
+		return v.Header
 	case *OptionalISIM:
+		return v.Header
+	case OptionalISIM:
 		return v.Header
 	case *CSIMApplication:
 		return v.Header
+	case CSIMApplication:
+		return v.Header
 	case *OptionalCSIM:
+		return v.Header
+	case OptionalCSIM:
 		return v.Header
 	case *GSMAccessDF:
 		return v.Header
+	case GSMAccessDF:
+		return v.Header
 	case *DF5GS:
+		return v.Header
+	case DF5GS:
 		return v.Header
 	case *DFSAIP:
 		return v.Header
+	case DFSAIP:
+		return v.Header
 	case *AKAParameter:
+		return v.Header
+	case AKAParameter:
 		return v.Header
 	case *CDMAParameter:
 		return v.Header
+	case CDMAParameter:
+		return v.Header
 	case *SecurityDomain:
+		return v.Header
+	case SecurityDomain:
 		return v.Header
 	case *RFMConfig:
 		return v.Header
+	case RFMConfig:
+		return v.Header
 	case *Application:
+		return v.Header
+	case Application:
 		return v.Header
 	case *GenericFileManagement:
 		return v.Header
+	case GenericFileManagement:
+		return v.Header
 	case *EndElement:
+		return v.Header
+	case EndElement:
 		return v.Header
 	default:
 		return nil

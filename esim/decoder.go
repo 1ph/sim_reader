@@ -324,9 +324,7 @@ func decodeElementHeader(a *asn1.ASN1) *ElementHeader {
 }
 
 func decodeFileDescriptor(a *asn1.ASN1) *FileDescriptor {
-	fd := &FileDescriptor{
-		LCSI: []byte{0x05}, // Default value
-	}
+	fd := &FileDescriptor{}
 
 	for a.Unmarshal() {
 		tagNum := getContextTag(a)
@@ -368,9 +366,7 @@ func decodeFileDescriptor(a *asn1.ASN1) *FileDescriptor {
 }
 
 func decodeProprietaryEFInfo(a *asn1.ASN1) *ProprietaryEFInfo {
-	pei := &ProprietaryEFInfo{
-		SpecialFileInformation: []byte{0x00}, // Default value
-	}
+	pei := &ProprietaryEFInfo{}
 
 	for a.Unmarshal() {
 		tagNum := getContextTag(a)
@@ -1977,21 +1973,19 @@ func decodeApplicationInstance(a *asn1.ASN1) *ApplicationInstance {
 		case a.Class == asn1.ClassPrivate:
 			tagNum := getTagNumber(a)
 			switch tagNum {
+			case 2: // processData (SEQUENCE OF OCTET STRING)
+				inner := asn1.Init(a.Data)
+				for inner.Unmarshal() {
+					if inner.Tag == 0x04 { // OCTET STRING
+						inst.ProcessData = append(inst.ProcessData, copyBytes(inner.Data))
+					}
+				}
 			case 9: // applicationSpecificParametersC9
 				inst.ApplicationSpecificParamsC9 = copyBytes(a.Data)
 			case 10: // applicationParameters (UICCApplicationParameters)
 				inst.ApplicationParameters = decodeUICCApplicationParameters(asn1.Init(a.Data))
 			case 15: // systemSpecificParameters
 				inst.SystemSpecificParams = decodeApplicationSystemParameters(asn1.Init(a.Data))
-			}
-
-		case a.Class == asn1.ClassUniversal && a.Tag == 0x30:
-			// SEQUENCE - this is processData (SEQUENCE OF OCTET STRING)
-			inner := asn1.Init(a.Data)
-			for inner.Unmarshal() {
-				if inner.Tag == 0x04 { // OCTET STRING
-					inst.ProcessData = append(inst.ProcessData, copyBytes(inner.Data))
-				}
 			}
 		}
 	}

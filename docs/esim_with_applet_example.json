@@ -1,8 +1,13 @@
 {
   "_comment": "eSIM profile configuration with Java Card applet for authentication",
+  "_important": "For applet-based authentication, set 'use_applet_auth: true'. This will:",
+  "_important_1": "  1. Set algorithmID=3 (usim-test-algorithm) in AKA Parameter",
+  "_important_2": "  2. Enable 'usim-test-algorithm' flag in MandatoryServices",
+  "_important_3": "  3. Disable Milenage/TUAK flags in MandatoryServices",
+  "_important_4": "  4. The applet must be included in 'global_platform.applets.loads' with 'use_for_esim: true'",
   
-  "iccid": "89701510780000006814",
-  "imsi": "250880000000001",
+  "iccid": "89701510780000006830",
+  "imsi": "250880000000003",
   "spn": "eSIM Operator",
   "mcc": "250",
   "mnc": "88",
@@ -16,8 +21,12 @@
   "profile_type": "operational",
   "operation_mode": "normal",
 
+  "_comment_ki_opc": "Ki and OPc are still required - they will be loaded into the applet via ProcessData APDUs",
+  "ki": "00112233445566778899AABBCCDDEEFF",
+  "opc": "FFEEDDCCBBAA99887766554433221100",
+
+  "_comment_use_applet_auth": "CRITICAL: Set to true to delegate authentication to applet (algorithmID=3)",
   "use_applet_auth": true,
-  "algorithm_id": 3,
 
   "hplmn": [
     {"mcc": "250", "mnc": "88", "act": ["eutran", "utran", "gsm", "nr"]}
@@ -28,9 +37,9 @@
   ],
 
   "isim": {
-    "impi": "250880000000001@ims.mnc088.mcc250.3gppnetwork.org",
+    "impi": "250880000000003@ims.mnc088.mcc250.3gppnetwork.org",
     "impu": [
-      "sip:250880000000001@ims.mnc088.mcc250.3gppnetwork.org",
+      "sip:250880000000003@ims.mnc088.mcc250.3gppnetwork.org",
       "tel:+79001234567"
     ],
     "domain": "ims.mnc088.mcc250.3gppnetwork.org",
@@ -68,41 +77,38 @@
     ],
     "default_keyset": "default",
 
+    "_comment_applets": "Applet configuration for authentication delegation",
+    "_comment_applets_1": "When 'use_applet_auth: true', the applet will handle AUTHENTICATE commands",
+    "_comment_applets_2": "The applet must support Milenage/TUAK authentication internally",
     "applets": {
       "loads": [
         {
+          "_comment_cap": "Path to CAP file (will be converted to IJC format automatically)",
           "cap_path": "milenage_usim_standalone.cap",
+          
+          "_comment_aids": "AIDs must match the applet's package, class, and instance",
           "package_aid": "A00000008710020001",
           "applet_aid": "A000000087100201",
           "instance_aid": "A00000008710020101",
           "sd_aid": "A000000151000000",
+          
+          "_comment_use_for_esim": "CRITICAL: Must be true for applet to be included in eSIM profile",
           "use_for_esim": true,
           
+          "_comment_personalization": "Keys will be loaded into applet via ProcessData APDUs during profile installation",
           "personalization": {
             "milenage_usim": {
-              "ki": "00112233445566778899AABBCCDDEEFF",
-              "opc": "FFEEDDCCBBAA99887766554433221100",
+              "_comment_keys": "These keys MUST match the Ki/OPc in root config (used for AKA Parameter)",
+              "ki": "AA112233445566778899AABBCCDDEEFF",
+              "opc": "BBEEDDCCBBAA99887766554433221100",
               "amf": "8000",
               "sqn": "000000000000",
-              "imsi": "250880000000001"
+              "imsi": "250880000000003"
             }
           }
         }
       ]
-    },
-
-    "aram": {
-      "aid": "A00000015141434C00",
-      "rules": [
-        {
-          "target_aid": "A00000008710020101",
-          "cert_hash": "0000000000000000000000000000000000000000",
-          "apdu_rule": "01"
-        }
-      ]
     }
-  },
-
-  "clear_fplmn": true
+  }
 }
 
