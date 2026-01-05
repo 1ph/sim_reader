@@ -82,6 +82,14 @@ type SIMConfig struct {
 	// When true, the applet's Ki/OPc are used instead of profile-level keys
 	UseAppletAuth bool `json:"use_applet_auth,omitempty"`
 
+	// SkipUSIM creates eSIM profile without PE-USIM element (Variant 1: applet-only)
+	// When true, only PE-Application is created - the applet must handle all USIM functions
+	SkipUSIM bool `json:"skip_usim,omitempty"`
+
+	// OverrideUSIMDfName replaces PE-USIM.adf-usim.dfName with applet's instance AID
+	// This allows the applet to intercept SELECT commands for the USIM AID
+	OverrideUSIMDfName bool `json:"override_usim_dfname,omitempty"`
+
 	// Deprecated: use top-level fields instead
 	// Kept for backward compatibility with old config files
 	Programmable *ProgrammableConfig `json:"programmable,omitempty"`
@@ -172,6 +180,10 @@ type GPAppletLoadConfig struct {
 	// UseForESIM marks this applet for inclusion in eSIM profile builds.
 	// When true, the applet will be added as PE-Application element.
 	UseForESIM bool `json:"use_for_esim,omitempty"`
+
+	// OverrideUSIMDfName sets PE-USIM.adf-usim.dfName to this applet's InstanceAID.
+	// This makes the UICC route SELECT(USIM AID) to this applet.
+	OverrideUSIMDfName bool `json:"override_usim_dfname,omitempty"`
 }
 
 // AppletPersonalizationConfig contains applet personalization settings.

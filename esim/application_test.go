@@ -219,27 +219,32 @@ func TestBuildMilenageAPDUs(t *testing.T) {
 		t.Fatalf("buildMilenageAPDUs failed: %v", err)
 	}
 
-	// Should have at least Ki, OPc, and AMF APDUs
-	if len(apdus) < 3 {
-		t.Errorf("Expected at least 3 APDUs, got %d", len(apdus))
+	// With OPc (P1=00): should have 1 APDU for K+OPc
+	if len(apdus) < 1 {
+		t.Errorf("Expected at least 1 APDU, got %d", len(apdus))
 	}
 
-	// Check each APDU has valid format
-	for i, apdu := range apdus {
-		if len(apdu) < 5 {
-			t.Errorf("APDU[%d] too short: %d bytes", i, len(apdu))
-		}
-		// Check CLA=80, INS=E2 (STORE DATA)
-		if apdu[0] != 0x80 || apdu[1] != 0xE2 {
-			t.Errorf("APDU[%d] unexpected CLA/INS: %02X %02X", i, apdu[0], apdu[1])
-		}
+	// Check first APDU format: CLA=80, INS=10 (LOAD_KEYS), P1=00, P2=00, Lc=32
+	apdu := apdus[0]
+	if len(apdu) < 5 {
+		t.Fatalf("APDU too short: %d bytes", len(apdu))
+	}
+	if apdu[0] != 0x80 || apdu[1] != 0x10 {
+		t.Errorf("Expected CLA=80 INS=10, got %02X %02X", apdu[0], apdu[1])
+	}
+	if apdu[2] != 0x00 { // P1=00 for K+OPc
+		t.Errorf("Expected P1=00, got %02X", apdu[2])
+	}
+	if apdu[4] != 32 { // Lc = 16 (Ki) + 16 (OPc) = 32
+		t.Errorf("Expected Lc=32, got %d", apdu[4])
 	}
 }
 
 func TestBuildMilenageAPDUs_WithOP(t *testing.T) {
 	cfg := &sim.MilenageUSIMPersonalization{
-		Ki: "00112233445566778899AABBCCDDEEFF",
-		OP: "11111111111111111111111111111111", // OP instead of OPc
+		Ki:  "00112233445566778899AABBCCDDEEFF",
+		OP:  "11111111111111111111111111111111", // OP instead of OPc
+		AMF: "8000",
 	}
 
 	apdus, err := buildMilenageAPDUs(cfg)
@@ -247,9 +252,77 @@ func TestBuildMilenageAPDUs_WithOP(t *testing.T) {
 		t.Fatalf("buildMilenageAPDUs failed: %v", err)
 	}
 
-	// Should have Ki and OP APDUs (tag 0x03 for OP vs 0x02 for OPc)
-	if len(apdus) < 2 {
-		t.Errorf("Expected at least 2 APDUs, got %d", len(apdus))
+	// With OP (P1=01): should have 1 APDU for K+OP+AMF
+	if len(apdus) < 1 {
+		t.Errorf("Expected at least 1 APDU, got %d", len(apdus))
+	}
+
+	// Check APDU format: CLA=80, INS=10, P1=01 (OP mode), Lc=34
+	apdu := apdus[0]
+	if apdu[0] != 0x80 || apdu[1] != 0x10 {
+		t.Errorf("Expected CLA=80 INS=10, got %02X %02X", apdu[0], apdu[1])
+	}
+	if apdu[2] != 0x01 { // P1=01 for K+OP+AMF
+		t.Errorf("Expected P1=01, got %02X", apdu[2])
+	}
+	if apdu[4] != 34 { // Lc = 16 (Ki) + 16 (OP) + 2 (AMF) = 34
+		t.Errorf("Expected Lc=34, got %d", apdu[4])
+	}
+}
+
+func TestBuildMilenageAPDUs_WithIMSI(t *testing.T) {
+	cfg := &sim.MilenageUSIMPersonalization{
+		Ki:   "00112233445566778899AABBCCDDEEFF",
+		OPc:  "FFEEDDCCBBAA99887766554433221100",
+		IMSI: "001010000000001",
+	}
+
+	apdus, err := buildMilenageAPDUs(cfg)
+	if err != nil {
+		t.Fatalf("buildMilenageAPDUs failed: %v", err)
+	}
+
+	// Should have 2 APDUs: K+OPc and IMSI
+	if len(apdus) != 2 {
+		t.Errorf("Expected 2 APDUs, got %d", len(apdus))
+	}
+
+	// Check second APDU is IMSI (P1=02)
+	if len(apdus) >= 2 {
+		imsiAPDU := apdus[1]
+		if imsiAPDU[0] != 0x80 || imsiAPDU[1] != 0x10 || imsiAPDU[2] != 0x02 {
+			t.Errorf("Expected IMSI APDU (80 10 02), got %02X %02X %02X",
+				imsiAPDU[0], imsiAPDU[1], imsiAPDU[2])
+		}
+	}
+}
+
+func TestBuildMilenageAPDUs_WithSQN(t *testing.T) {
+	cfg := &sim.MilenageUSIMPersonalization{
+		Ki:  "00112233445566778899AABBCCDDEEFF",
+		OPc: "FFEEDDCCBBAA99887766554433221100",
+		SQN: "000000000001",
+	}
+
+	apdus, err := buildMilenageAPDUs(cfg)
+	if err != nil {
+		t.Fatalf("buildMilenageAPDUs failed: %v", err)
+	}
+
+	// Should have 2 APDUs: K+OPc and SQN
+	if len(apdus) != 2 {
+		t.Errorf("Expected 2 APDUs, got %d", len(apdus))
+	}
+
+	// Check second APDU is SQN (INS=11, P1=00)
+	if len(apdus) >= 2 {
+		sqnAPDU := apdus[1]
+		if sqnAPDU[0] != 0x80 || sqnAPDU[1] != 0x11 {
+			t.Errorf("Expected SQN APDU (80 11), got %02X %02X", sqnAPDU[0], sqnAPDU[1])
+		}
+		if sqnAPDU[4] != 6 { // SQN is 6 bytes
+			t.Errorf("Expected SQN Lc=6, got %d", sqnAPDU[4])
+		}
 	}
 }
 

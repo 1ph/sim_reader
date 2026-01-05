@@ -75,7 +75,7 @@ func ApplyConfigToProfile(profile *Profile, config *sim.SIMConfig) error {
 
 	// Set Ki and OPc - check applet keys first, then fallback to root config
 	var kiSource, opcSource string
-	
+
 	if config.UseAppletAuth {
 		// Try to get keys from applet personalization config
 		appletKeys := findAppletMilenageKeys(config)
@@ -84,7 +84,7 @@ func ApplyConfigToProfile(profile *Profile, config *sim.SIMConfig) error {
 			opcSource = appletKeys.OPc
 		}
 	}
-	
+
 	// Fallback to root config keys if applet keys not found
 	if kiSource == "" && config.Ki != "" {
 		kiSource = config.Ki
@@ -92,7 +92,7 @@ func ApplyConfigToProfile(profile *Profile, config *sim.SIMConfig) error {
 	if opcSource == "" && config.OPc != "" {
 		opcSource = config.OPc
 	}
-	
+
 	// Apply Ki
 	if kiSource != "" {
 		ki, err := hex.DecodeString(kiSource)
@@ -103,7 +103,7 @@ func ApplyConfigToProfile(profile *Profile, config *sim.SIMConfig) error {
 			return fmt.Errorf("set Ki: %w", err)
 		}
 	}
-	
+
 	// Apply OPc
 	if opcSource != "" {
 		opc, err := hex.DecodeString(opcSource)
@@ -114,7 +114,7 @@ func ApplyConfigToProfile(profile *Profile, config *sim.SIMConfig) error {
 			return fmt.Errorf("set OPc: %w", err)
 		}
 	}
-	
+
 	// Set algorithm ID and update MandatoryServices accordingly
 	if config.UseAppletAuth {
 		// Delegate authentication to applet (algorithmID=3)
@@ -137,7 +137,7 @@ func ApplyConfigToProfile(profile *Profile, config *sim.SIMConfig) error {
 		for _, aka := range profile.AKAParams {
 			if aka.AlgoConfig != nil {
 				aka.AlgoConfig.AlgorithmID = AlgorithmID(config.AlgorithmID)
-				
+
 				// If switching to pure Milenage, clear TUAK-specific parameters
 				if AlgorithmID(config.AlgorithmID) == AlgoMilenage {
 					// For Milenage, use standard rotation constants (r1-r5)
@@ -151,7 +151,7 @@ func ApplyConfigToProfile(profile *Profile, config *sim.SIMConfig) error {
 			}
 		}
 		profile.invalidate(TagAKAParameter)
-		
+
 		// Update MandatoryServices to match algorithm
 		if profile.Header != nil && profile.Header.MandatoryServices != nil {
 			ms := profile.Header.MandatoryServices
@@ -191,6 +191,13 @@ func ApplyConfigToProfile(profile *Profile, config *sim.SIMConfig) error {
 		profile.invalidate(TagProfileHeader)
 	}
 
+	// Handle SkipUSIM - remove PE-USIM and related elements for applet-only profile
+	if config.SkipUSIM {
+		if err := removeUSIMElements(profile); err != nil {
+			return fmt.Errorf("remove USIM elements: %w", err)
+		}
+	}
+
 	// Add applets from GlobalPlatform config
 	if config.GlobalPlatform != nil && config.GlobalPlatform.Applets != nil {
 		for _, appletCfg := range config.GlobalPlatform.Applets.Loads {
@@ -198,8 +205,70 @@ func ApplyConfigToProfile(profile *Profile, config *sim.SIMConfig) error {
 				if err := addAppletFromGPConfig(profile, &appletCfg); err != nil {
 					return fmt.Errorf("add applet %s: %w", appletCfg.PackageAID, err)
 				}
+
+				// Override USIM dfName with applet's instance AID if requested
+				if appletCfg.OverrideUSIMDfName && !config.SkipUSIM {
+					instanceAID, err := hex.DecodeString(appletCfg.InstanceAID)
+					if err != nil {
+						return fmt.Errorf("parse instance AID for dfName override: %w", err)
+					}
+					if err := overrideUSIMDfName(profile, instanceAID); err != nil {
+						return fmt.Errorf("override USIM dfName: %w", err)
+					}
+				}
 			}
 		}
+	}
+
+	return nil
+}
+
+// removeUSIMElements removes PE-USIM, PE-OptUSIM, PE-AKAParameter from profile
+// for Variant 1 (applet-only) profiles
+func removeUSIMElements(profile *Profile) error {
+	// Tags to remove
+	tagsToRemove := map[int]bool{
+		TagUSIM:         true,
+		TagOptUSIM:      true,
+		TagAKAParameter: true,
+	}
+
+	// Filter out USIM-related elements
+	newElements := make([]ProfileElement, 0, len(profile.Elements))
+	for _, elem := range profile.Elements {
+		if !tagsToRemove[elem.Tag] {
+			newElements = append(newElements, elem)
+		}
+	}
+	profile.Elements = newElements
+
+	// Clear typed slices
+	profile.USIM = nil
+	profile.AKAParams = nil
+
+	// Update header mandatory services - no USIM-related flags
+	if profile.Header != nil && profile.Header.MandatoryServices != nil {
+		profile.Header.MandatoryServices.Milenage = false
+		profile.Header.MandatoryServices.TUAK128 = false
+		profile.Header.MandatoryServices.TUAK256 = false
+		profile.Header.MandatoryServices.USIMTestAlgorithm = false
+		profile.invalidate(TagProfileHeader)
+	}
+
+	return nil
+}
+
+// overrideUSIMDfName sets PE-USIM.adf-usim.dfName to the applet's instance AID
+// This makes SELECT(USIM AID) route to the applet instead of native USIM
+func overrideUSIMDfName(profile *Profile, instanceAID []byte) error {
+	if profile.USIM == nil {
+		return nil // No USIM to override
+	}
+
+	// Find and update DFName in USIM ADF descriptor
+	if profile.USIM.ADFUSIM != nil {
+		profile.USIM.ADFUSIM.DFName = instanceAID
+		profile.invalidate(TagUSIM)
 	}
 
 	return nil
@@ -264,7 +333,7 @@ func updateEFContent(ef *ElementaryFile, content []byte) {
 	if ef.Descriptor != nil {
 		currentSize := decodeEFFileSize(ef.Descriptor.EFFileSize)
 		newSize := len(content)
-		
+
 		if newSize > currentSize {
 			// Encode new size (round up to next 16-byte boundary for alignment)
 			alignedSize := ((newSize + 15) / 16) * 16
@@ -414,32 +483,24 @@ func addAppletFromGPConfig(profile *Profile, cfg *sim.GPAppletLoadConfig) error 
 		}
 	}
 
-	// Find max identification number in profile to assign next sequential ID
-	maxID := 0
-	for _, elem := range profile.Elements {
-		if hdr := getElementHeader(elem); hdr != nil && hdr.Identification > maxID {
-			maxID = hdr.Identification
+	// Find End element index
+	endIdx := -1
+	for i, elem := range profile.Elements {
+		if elem.Tag == TagEnd {
+			endIdx = i
+			break
 		}
 	}
-	nextID := maxID + 1
 
-	// Create Application element with correct values matching working profiles
-	// Key differences from broken profiles:
-	// - LoadBlockObject: IJC format (not raw CAP/ZIP)
-	// - Memory limits: Required for eUICC to allocate resources
-	// - ApplicationPrivileges: 1 byte (not 3)
-	// - ApplicationSpecificParamsC9: empty (C9 00) - just the length byte
-	// - SecurityDomainAID: NOT included in loadBlock (matching working profiles)
-	// - Identification: Sequential number matching profile structure
+	// Create Application element with placeholder header
 	app := &Application{
 		Header: &ElementHeader{
-			Mandated:       true,
-			Identification: nextID,
+			Mandated: true,
 		},
 		LoadBlock: &ApplicationLoadPackage{
-			LoadPackageAID:         packageAID,
+			LoadPackageAID: packageAID,
 			// SecurityDomainAID is intentionally omitted - working profiles don't have it
-			LoadBlockObject:        ijcData, // IJC format, not raw CAP
+			LoadBlockObject:        ijcData,                        // IJC format, not raw CAP
 			NonVolatileCodeLimitC6: []byte{0x00, 0x01, 0x00, 0x00}, // 64KB NV code limit
 			VolatileDataLimitC7:    []byte{0x10, 0x00},             // 4KB volatile data
 			NonVolatileDataLimitC8: []byte{0x20, 0x00},             // 8KB NV data
@@ -452,46 +513,58 @@ func addAppletFromGPConfig(profile *Profile, cfg *sim.GPAppletLoadConfig) error 
 				ApplicationPrivileges:       []byte{0x00},       // 1 byte, no privileges
 				LifeCycleState:              0x07,               // Selectable
 				ApplicationSpecificParamsC9: []byte{0xC9, 0x00}, // Matches working profile 'C900'H
-				ProcessData:                 processData,
+				// ProcessData is intentionally omitted as it often contains malformed APDUs
+				// Personalization should be done via standard profile elements if needed
+				ProcessData: nil,
 			},
 		},
 	}
 
-	// Add to profile before End element
-	profile.Applications = append(profile.Applications, app)
-
-	// Add to Elements list before End
 	appElem := ProfileElement{
 		Tag:   TagApplication,
 		Value: app,
 	}
 
-	// Find End element index and insert before it
-	endIdx := -1
-	for i, elem := range profile.Elements {
-		if elem.Tag == TagEnd {
-			endIdx = i
-			break
-		}
-	}
-
+	// Insert before End element if found, otherwise append
 	if endIdx >= 0 {
-		// Insert before End
 		profile.Elements = append(profile.Elements[:endIdx],
 			append([]ProfileElement{appElem}, profile.Elements[endIdx:]...)...)
 	} else {
-		// Append if no End found
 		profile.Elements = append(profile.Elements, appElem)
 	}
+
+	// RE-ASSIGN ALL IDENTIFICATION NUMBERS SEQUENTIALLY
+	// This is the only way to ensure SAIP compliance after insertion
+	currentID := 1
+	for i := range profile.Elements {
+		hdr := getElementHeader(profile.Elements[i])
+		if hdr != nil {
+			hdr.Identification = currentID
+			currentID++
+			// Invalidate cached data for this element
+			profile.invalidate(profile.Elements[i].Tag)
+		}
+	}
+
+	// Add to profile.Applications list as well
+	profile.Applications = append(profile.Applications, app)
 
 	return nil
 }
 
-// buildMilenageAPDUs builds personalization APDUs for Milenage USIM applet
+// buildMilenageAPDUs builds personalization APDUs for Milenage USIM applet.
+// Uses INS_LOAD_KEYS (0x10) and INS_SET_SQN (0x11) commands compatible with
+// MilenageUSIMApplet and USIMApplet from com.operator.milenage/usim packages.
+//
+// Command format:
+//   - 80 10 00 Lc: K(16) + OPc(16) = 32 bytes (P1=00)
+//   - 80 10 01 Lc: K(16) + OP(16) + AMF(2) = 34 bytes (P1=01)
+//   - 80 10 02 09: IMSI(9) (P1=02)
+//   - 80 11 00 06: SQN(6) (INS=11, SET_SQN)
 func buildMilenageAPDUs(cfg *sim.MilenageUSIMPersonalization) ([][]byte, error) {
 	var apdus [][]byte
 
-	// Parse Ki
+	// Parse Ki (required)
 	ki, err := hex.DecodeString(cfg.Ki)
 	if err != nil {
 		return nil, fmt.Errorf("parse Ki: %w", err)
@@ -517,7 +590,7 @@ func buildMilenageAPDUs(cfg *sim.MilenageUSIMPersonalization) ([][]byte, error) 
 		useOP = true
 	}
 
-	// AMF default
+	// AMF default: 0x8000
 	amf := []byte{0x80, 0x00}
 	if cfg.AMF != "" {
 		amf, err = hex.DecodeString(cfg.AMF)
@@ -526,51 +599,95 @@ func buildMilenageAPDUs(cfg *sim.MilenageUSIMPersonalization) ([][]byte, error) 
 		}
 	}
 
-	// Build STORE DATA APDUs for Milenage USIM applet
-	// Format: CLA INS P1 P2 Lc Data
-	// CLA=80, INS=E2 (STORE DATA), P1=sequence, P2=params
+	// Build APDUs using INS_LOAD_KEYS (0x10) format expected by MilenageUSIMApplet
+	// CLA=80, INS=10, P1=command type, P2=00, Lc=data length, Data
 
-	// APDU 1: Store Ki (Tag 01)
-	kiAPDU := []byte{0x80, 0xE2, 0x00, 0x00}
-	kiData := append([]byte{0x01, byte(len(ki))}, ki...)
-	kiAPDU = append(kiAPDU, byte(len(kiData)))
-	kiAPDU = append(kiAPDU, kiData...)
-	apdus = append(apdus, kiAPDU)
-
-	// APDU 2: Store OPc or OP
-	if len(opcOrOP) > 0 {
-		opcAPDU := []byte{0x80, 0xE2, 0x00, 0x00}
-		tag := byte(0x02) // OPc
-		if useOP {
-			tag = 0x03 // OP
-		}
-		opcData := append([]byte{tag, byte(len(opcOrOP))}, opcOrOP...)
-		opcAPDU = append(opcAPDU, byte(len(opcData)))
-		opcAPDU = append(opcAPDU, opcData...)
-		apdus = append(apdus, opcAPDU)
+	if useOP && len(opcOrOP) > 0 {
+		// P1=01: K(16) + OP(16) + AMF(2) = 34 bytes
+		data := make([]byte, 0, 34)
+		data = append(data, ki...)
+		data = append(data, opcOrOP...)
+		data = append(data, amf...)
+		apdu := []byte{0x80, 0x10, 0x01, 0x00, byte(len(data))}
+		apdu = append(apdu, data...)
+		apdus = append(apdus, apdu)
+	} else if len(opcOrOP) > 0 {
+		// P1=00: K(16) + OPc(16) = 32 bytes
+		data := make([]byte, 0, 32)
+		data = append(data, ki...)
+		data = append(data, opcOrOP...)
+		apdu := []byte{0x80, 0x10, 0x00, 0x00, byte(len(data))}
+		apdu = append(apdu, data...)
+		apdus = append(apdus, apdu)
 	}
 
-	// APDU 3: Store AMF (Tag 04)
-	amfAPDU := []byte{0x80, 0xE2, 0x00, 0x00}
-	amfData := append([]byte{0x04, byte(len(amf))}, amf...)
-	amfAPDU = append(amfAPDU, byte(len(amfData)))
-	amfAPDU = append(amfAPDU, amfData...)
-	apdus = append(apdus, amfAPDU)
+	// P1=02: IMSI(9) if provided
+	if cfg.IMSI != "" {
+		imsiBytes := encodeIMSIForApplet(cfg.IMSI)
+		if len(imsiBytes) > 0 {
+			apdu := []byte{0x80, 0x10, 0x02, 0x00, byte(len(imsiBytes))}
+			apdu = append(apdu, imsiBytes...)
+			apdus = append(apdus, apdu)
+		}
+	}
 
-	// APDU 4: Store SQN if provided (Tag 05)
+	// INS_SET_SQN (0x11): SQN(6) if provided
 	if cfg.SQN != "" {
 		sqn, err := hex.DecodeString(cfg.SQN)
 		if err != nil {
 			return nil, fmt.Errorf("parse SQN: %w", err)
 		}
-		sqnAPDU := []byte{0x80, 0xE2, 0x00, 0x00}
-		sqnData := append([]byte{0x05, byte(len(sqn))}, sqn...)
-		sqnAPDU = append(sqnAPDU, byte(len(sqnData)))
-		sqnAPDU = append(sqnAPDU, sqnData...)
-		apdus = append(apdus, sqnAPDU)
+		if len(sqn) != 6 {
+			return nil, fmt.Errorf("SQN must be 6 bytes, got %d", len(sqn))
+		}
+		apdu := []byte{0x80, 0x11, 0x00, 0x00, 0x06}
+		apdu = append(apdu, sqn...)
+		apdus = append(apdus, apdu)
 	}
 
 	return apdus, nil
+}
+
+// encodeIMSIForApplet encodes IMSI string to 9-byte format for applet personalization.
+// Format: length byte + BCD-encoded IMSI (same as EF.IMSI content)
+func encodeIMSIForApplet(imsi string) []byte {
+	// Remove non-digits
+	var digits []byte
+	for _, c := range imsi {
+		if c >= '0' && c <= '9' {
+			digits = append(digits, byte(c-'0'))
+		}
+	}
+	if len(digits) == 0 || len(digits) > 15 {
+		return nil
+	}
+
+	// IMSI encoding: first byte is length, then BCD with first nibble = parity
+	result := make([]byte, 9)
+	result[0] = byte(len(digits))
+
+	// First nibble: 9 (odd parity) or 1 (even parity) based on digit count
+	if len(digits)%2 == 1 {
+		result[1] = 0x09 | (digits[0] << 4)
+	} else {
+		result[1] = 0x01 | (digits[0] << 4)
+	}
+
+	// Pack remaining digits in BCD, two per byte, swapped nibbles
+	idx := 1
+	for i := 1; i < len(digits); i += 2 {
+		idx++
+		if idx >= 9 {
+			break
+		}
+		if i+1 < len(digits) {
+			result[idx] = digits[i] | (digits[i+1] << 4)
+		} else {
+			result[idx] = digits[i] | 0xF0
+		}
+	}
+
+	return result
 }
 
 // ============================================================================

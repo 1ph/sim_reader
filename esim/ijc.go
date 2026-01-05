@@ -73,17 +73,18 @@ func ConvertCAPToIJC(capData []byte) ([]byte, error) {
 		return nil, fmt.Errorf("no .cap components found in CAP file")
 	}
 
-	// IJC component order (per Java Card specs and working profile analysis)
-	// Components are concatenated in this specific order
+	// IJC component order (per Java Card specs and GlobalPlatform)
+	// Components MUST be concatenated in this specific order for many eUICC
 	componentOrder := []string{
 		"header",
 		"directory",
-		"applet",
 		"import",
-		"constantpool",
+		"applet",
 		"class",
 		"method",
 		"staticfield",
+		"export",
+		"constantpool",
 		"reflocation",
 		"descriptor",
 	}
@@ -91,21 +92,23 @@ func ConvertCAPToIJC(capData []byte) ([]byte, error) {
 	// Build IJC output
 	var ijc bytes.Buffer
 
-	// Write IJC header: 01 00 11 DE CA FF ED 01 02 04 00 01 07 <package_aid>
-	// Simplified: just concatenate all components in order
-	// The Header.cap component already contains the proper header
-
 	for _, compName := range componentOrder {
 		if data, ok := components[compName]; ok {
 			ijc.Write(data)
 		}
 	}
 
-	// Add any optional components not in the standard order
-	// (export, debug, etc.)
-	optionalComponents := []string{"export", "debug"}
-	for _, compName := range optionalComponents {
-		if data, ok := components[compName]; ok {
+	// Add any other components that might be present (e.g. debug)
+	for name, data := range components {
+		// Check if name is already in componentOrder
+		found := false
+		for _, stdName := range componentOrder {
+			if name == stdName {
+				found = true
+				break
+			}
+		}
+		if !found {
 			ijc.Write(data)
 		}
 	}

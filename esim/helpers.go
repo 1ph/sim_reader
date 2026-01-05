@@ -344,6 +344,43 @@ func fixLuhnChecksum(iccid string) string {
 }
 
 // assignToProfile assigns decoded element to corresponding Profile field
+// UpdateReferences populates convenience references from Elements slice
+func (p *Profile) UpdateReferences() {
+	// Clear existing references
+	p.Header = nil
+	p.MF = nil
+	p.CD = nil
+	p.PukCodes = nil
+	p.PinCodes = nil
+	p.Telecom = nil
+	p.USIM = nil
+	p.OptUSIM = nil
+	p.ISIM = nil
+	p.OptISIM = nil
+	p.Phonebook = nil
+	p.CSIM = nil
+	p.OptCSIM = nil
+	p.EAP = nil
+	p.GSMAccess = nil
+	p.DF5GS = nil
+	p.DFSAIP = nil
+	p.DFSNPN = nil
+	p.DF5GPROSE = nil
+	p.IoT = nil
+	p.OptIoT = nil
+	p.AKAParams = nil
+	p.CDMAParams = nil
+	p.GFM = nil
+	p.SecurityDomains = nil
+	p.RFM = nil
+	p.Applications = nil
+	p.End = nil
+
+	for i := range p.Elements {
+		assignToProfile(p, &p.Elements[i])
+	}
+}
+
 func assignToProfile(profile *Profile, elem *ProfileElement) {
 	switch elem.Tag {
 	case TagProfileHeader:

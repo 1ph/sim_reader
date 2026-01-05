@@ -36,6 +36,9 @@ func ParseValueNotation(input string) (*Profile, error) {
 	// Post-processing: set UseNewMMSSTags for Telecom elements based on profile version
 	parser.postProcess()
 
+	// Update convenience references
+	parser.profile.UpdateReferences()
+
 	return parser.profile, nil
 }
 
@@ -2699,7 +2702,6 @@ func (p *Parser) parseSecurityDomain() (*SecurityDomain, error) {
 	return sd, nil
 }
 
-
 func (p *Parser) parseApplicationParameters() (*UICCApplicationParameters, error) {
 	if _, err := p.expect(TokenLBrace); err != nil {
 		return nil, err
@@ -4070,4 +4072,3 @@ func (p *Parser) parseMandatoryAID() (*MandatoryAID, error) {
 	}
 	return aid, nil
 }
-
