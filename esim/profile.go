@@ -360,6 +360,17 @@ func (p *Profile) SetOPC(opc []byte) error {
 
 // SetICCID sets new ICCID with automatic Luhn checksum correction
 func (p *Profile) SetICCID(iccid string) error {
+	return p.setICCIDInternal(iccid, true)
+}
+
+// SetICCIDRaw sets new ICCID without Luhn checksum correction
+// Use this when you need exact ICCID match with a reference profile
+func (p *Profile) SetICCIDRaw(iccid string) error {
+	return p.setICCIDInternal(iccid, false)
+}
+
+// setICCIDInternal is the internal implementation for setting ICCID
+func (p *Profile) setICCIDInternal(iccid string, fixLuhn bool) error {
 	if p.Header == nil {
 		return fmt.Errorf("profile header not found")
 	}
@@ -373,8 +384,10 @@ func (p *Profile) SetICCID(iccid string) error {
 	}
 	s := digits.String()
 
-	// Fix Luhn checksum automatically
-	s = fixLuhnChecksum(s)
+	// Fix Luhn checksum automatically if requested
+	if fixLuhn {
+		s = fixLuhnChecksum(s)
+	}
 
 	// Header uses normal BCD
 	p.Header.ICCID = encodeBCD(s)

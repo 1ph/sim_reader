@@ -1672,7 +1672,7 @@ value10 ProfileElement ::= pinCodes : {
   pinCodes pinconfig : {
     {
       keyReference secondPINAppl1,
-      pinValue 'FFFFFFFFFFFFFFFF'H,
+      pinValue '35363738FFFFFFFF'H,
       unblockingPINReference secondPUKAppl1,
       pinAttributes 3,
       maxNumOfAttemps-retryNumLeft 51
@@ -2899,7 +2899,7 @@ value16 ProfileElement ::= pinCodes : {
   pinCodes pinconfig : {
     {
       keyReference secondPINAppl1,
-      pinValue 'FFFFFFFFFFFFFFFF'H,
+      pinValue '35363738FFFFFFFF'H,
       unblockingPINReference secondPUKAppl1,
       pinAttributes 3,
       maxNumOfAttemps-retryNumLeft 51
@@ -3066,7 +3066,7 @@ value20 ProfileElement ::= pinCodes : {
   pinCodes pinconfig : {
     {
       keyReference secondPINAppl1,
-      pinValue 'FFFFFFFFFFFFFFFF'H,
+      pinValue '35363738FFFFFFFF'H,
       unblockingPINReference secondPUKAppl1,
       pinAttributes 3,
       maxNumOfAttemps-retryNumLeft 51

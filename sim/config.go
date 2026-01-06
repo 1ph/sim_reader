@@ -69,10 +69,15 @@ type SIMConfig struct {
 	PIN2 string `json:"pin2,omitempty"` // PIN2 code (4-8 digits)
 	PUK2 string `json:"puk2,omitempty"` // PUK2 code (8 digits)
 	ADM1 string `json:"adm1,omitempty"` // ADM1 code (8 hex chars or digits)
+	ADM2 string `json:"adm2,omitempty"` // ADM2 code (8 hex chars or digits)
 
 	// eSIM profile build parameters
 	// ProfileType is the eSIM profile type identifier (e.g., "test", "operational")
 	ProfileType string `json:"profile_type,omitempty"`
+
+	// ICCIDPreserveChecksum when true, preserves the ICCID as-is without recalculating Luhn checksum
+	// Useful when you need exact ICCID match with a reference profile
+	ICCIDPreserveChecksum bool `json:"iccid_preserve_checksum,omitempty"`
 
 	// AlgorithmID specifies the authentication algorithm for eSIM profiles:
 	// 1=Milenage, 2=TUAK, 3=USIM Test Algorithm (delegate to applet)

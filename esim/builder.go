@@ -61,7 +61,15 @@ func BuildProfileFromSIMConfig(template *Profile, config *sim.SIMConfig) (*Profi
 func ApplyConfigToProfile(profile *Profile, config *sim.SIMConfig) error {
 	// Set ICCID
 	if config.ICCID != "" {
-		if err := profile.SetICCID(config.ICCID); err != nil {
+		var err error
+		if config.ICCIDPreserveChecksum {
+			// Use raw ICCID without Luhn recalculation
+			err = profile.SetICCIDRaw(config.ICCID)
+		} else {
+			// Automatically fix Luhn checksum
+			err = profile.SetICCID(config.ICCID)
+		}
+		if err != nil {
 			return fmt.Errorf("set ICCID: %w", err)
 		}
 	}
@@ -194,24 +202,34 @@ func ApplyConfigToProfile(profile *Profile, config *sim.SIMConfig) error {
 			return fmt.Errorf("remove USIM elements: %w", err)
 		}
 	} else {
-		// Mandatory cleanup for Variant 2 (USIM + Applet):
-		// Reference profile usim-applet.txt only has ONE akaParameter element (ID 20).
-		// Our template TS48v5 has TWO akaParameter elements (ID 10 and ID 21).
-		// We must remove the first one to match the reference structure and IDs.
-		newElements := make([]ProfileElement, 0, len(profile.Elements))
-		akaCount := 0
+		// Count akaParameter elements first
+		akaTotal := 0
 		for _, elem := range profile.Elements {
 			if elem.Tag == TagAKAParameter {
-				akaCount++
-				if akaCount == 1 {
-					// Skip the first akaParameter
-					continue
-				}
+				akaTotal++
 			}
-			newElements = append(newElements, elem)
 		}
-		profile.Elements = newElements
-		profile.UpdateReferences()
+
+		// Cleanup for Variant 2 (USIM + Applet):
+		// Some templates (like TS48v5) have TWO akaParameter elements.
+		// Reference profile usim-applet.txt has only ONE.
+		// Remove the first akaParameter only if there are multiple.
+		if akaTotal > 1 {
+			newElements := make([]ProfileElement, 0, len(profile.Elements))
+			akaCount := 0
+			for _, elem := range profile.Elements {
+				if elem.Tag == TagAKAParameter {
+					akaCount++
+					if akaCount == 1 {
+						// Skip the first akaParameter
+						continue
+					}
+				}
+				newElements = append(newElements, elem)
+			}
+			profile.Elements = newElements
+			profile.UpdateReferences()
+		}
 	}
 
 	// Add applets from GlobalPlatform config
@@ -430,6 +448,14 @@ func applySecurityCodes(profile *Profile, config *sim.SIMConfig) error {
 	if config.ADM1 != "" {
 		if err := setPIN(profile, 0x0A, config.ADM1); err != nil {
 			return fmt.Errorf("set ADM1: %w", err)
+		}
+		modified = true
+	}
+
+	// Set ADM2
+	if config.ADM2 != "" {
+		if err := setPIN(profile, 0x0B, config.ADM2); err != nil {
+			return fmt.Errorf("set ADM2: %w", err)
 		}
 		modified = true
 	}
@@ -713,17 +739,22 @@ func encodeIMSIForApplet(imsi string) []byte {
 
 func setPIN(profile *Profile, keyRef byte, value string) error {
 	encoded := encodePINValue(value)
+	found := false
 
+	// Update PIN value in ALL PinCodes elements (there may be multiple: MF, USIM, ISIM, etc.)
 	for _, pc := range profile.PinCodes {
 		for i := range pc.Configs {
 			if pc.Configs[i].KeyReference == keyRef {
 				pc.Configs[i].PINValue = encoded
-				return nil
+				found = true
 			}
 		}
 	}
 
-	return fmt.Errorf("PIN with KeyReference 0x%02X not found", keyRef)
+	if !found {
+		return fmt.Errorf("PIN with KeyReference 0x%02X not found", keyRef)
+	}
+	return nil
 }
 
 func setPUK(profile *Profile, keyRef byte, value string) error {
