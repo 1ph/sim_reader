@@ -558,10 +558,34 @@ func overrideUSIMDfName(profile *Profile, instanceAID []byte) error {
 		return nil // No USIM to override
 	}
 
-	// Find and update DFName in USIM ADF descriptor
-	if profile.USIM.ADFUSIM != nil {
-		profile.USIM.ADFUSIM.DFName = instanceAID
-		profile.invalidate(TagUSIM)
+	// Note: We don't override the USIM ADF DFName anymore as per user request,
+	// only the entry in the Application Directory (EF_DIR).
+
+	// Update the entry in Application Directory (EF_DIR) in Master File
+	if profile.MF != nil && profile.MF.EF_DIR != nil {
+		for i, fill := range profile.MF.EF_DIR.FillContents {
+			// Look for Application Template (tag 61) containing USIM AID prefix
+			// Standard USIM AID prefix: A0 00 00 00 87 10 02
+			usimPrefix := []byte{0xA0, 0x00, 0x00, 0x00, 0x87, 0x10, 0x02}
+			if len(fill.Content) > 10 && fill.Content[0] == 0x61 && bytes.Contains(fill.Content, usimPrefix) {
+				// Reconstruct the TLV with the new instance AID and specific label
+				// Tag 4F = AID
+				newAIDTLV := append([]byte{0x4F, byte(len(instanceAID))}, instanceAID...)
+
+				// User requested specific format: ... 05 04 55 53 49 44 (USID)
+				labelData := []byte{0x05, 0x04, 0x55, 0x53, 0x49, 0x44}
+
+				// Template (61) = AID TLV + Label part
+				newContent := make([]byte, 0, 2+len(newAIDTLV)+len(labelData))
+				newContent = append(newContent, 0x61, byte(len(newAIDTLV)+len(labelData)))
+				newContent = append(newContent, newAIDTLV...)
+				newContent = append(newContent, labelData...)
+
+				profile.MF.EF_DIR.FillContents[i].Content = newContent
+				profile.MF.EF_DIR.Raw = nil
+				profile.invalidate(TagMF)
+			}
+		}
 	}
 
 	return nil
