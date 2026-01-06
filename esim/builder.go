@@ -467,7 +467,8 @@ func applySecurityCodes(profile *Profile, config *sim.SIMConfig) error {
 	return nil
 }
 
-// addAppletFromGPConfig adds an applet to profile from GPAppletLoadConfig
+// addAppletFromGPConfig adds or replaces an applet in profile from GPAppletLoadConfig
+// If the template already has a PE-Application, it will be replaced with the one from config
 func addAppletFromGPConfig(profile *Profile, cfg *sim.GPAppletLoadConfig) error {
 	if cfg.CAPPath == "" {
 		return fmt.Errorf("cap_path is required")
@@ -531,26 +532,16 @@ func addAppletFromGPConfig(profile *Profile, cfg *sim.GPAppletLoadConfig) error 
 		}
 	}
 
-	// Find insertion point for Application (specifically after SecurityDomain to match usim-applet.txt ID 24)
-	insertIdx := -1
+	// Check if template already has a PE-Application - if so, update it instead of adding
+	existingAppIdx := -1
 	for i, el := range profile.Elements {
-		if el.Tag == TagSecurityDomain {
-			insertIdx = i + 1
+		if el.Tag == TagApplication {
+			existingAppIdx = i
 			break
 		}
 	}
 
-	if insertIdx == -1 {
-		// Fallback to before End
-		for i, el := range profile.Elements {
-			if el.Tag == TagEnd {
-				insertIdx = i
-				break
-			}
-		}
-	}
-
-	// Create Application element
+	// Create new Application element with data from config
 	app := &Application{
 		Header: &ElementHeader{
 			Mandated: true,
@@ -576,17 +567,49 @@ func addAppletFromGPConfig(profile *Profile, cfg *sim.GPAppletLoadConfig) error 
 		},
 	}
 
-	appElem := ProfileElement{
-		Tag:   TagApplication,
-		Value: app,
-	}
-
-	// Insert at calculated position
-	if insertIdx >= 0 {
-		profile.Elements = append(profile.Elements[:insertIdx],
-			append([]ProfileElement{appElem}, profile.Elements[insertIdx:]...)...)
+	// If template has existing PE-Application, preserve its header ID and replace content
+	if existingAppIdx >= 0 {
+		existingApp, ok := profile.Elements[existingAppIdx].Value.(*Application)
+		if ok && existingApp.Header != nil {
+			// Preserve original identification number
+			app.Header.Identification = existingApp.Header.Identification
+		}
+		// Replace the existing application element
+		profile.Elements[existingAppIdx].Value = app
+		profile.Elements[existingAppIdx].RawBytes = nil
 	} else {
-		profile.Elements = append(profile.Elements, appElem)
+		// No existing application - add new one
+		appElem := ProfileElement{
+			Tag:   TagApplication,
+			Value: app,
+		}
+
+		// Find insertion point (after SecurityDomain)
+		insertIdx := -1
+		for i, el := range profile.Elements {
+			if el.Tag == TagSecurityDomain {
+				insertIdx = i + 1
+				break
+			}
+		}
+
+		if insertIdx == -1 {
+			// Fallback to before End
+			for i, el := range profile.Elements {
+				if el.Tag == TagEnd {
+					insertIdx = i
+					break
+				}
+			}
+		}
+
+		// Insert at calculated position
+		if insertIdx >= 0 {
+			profile.Elements = append(profile.Elements[:insertIdx],
+				append([]ProfileElement{appElem}, profile.Elements[insertIdx:]...)...)
+		} else {
+			profile.Elements = append(profile.Elements, appElem)
+		}
 	}
 
 	// Add to profile.Applications list as well
