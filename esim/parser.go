@@ -2413,7 +2413,9 @@ func (p *Parser) parseAlgoConfiguration() (*AlgoConfiguration, error) {
 		case "authCounterMax":
 			ac.AuthCounterMax, err = p.parseHexValue()
 		case "numberOfKeccak":
-			ac.NumberOfKeccak, err = p.parseIntValue()
+			var val int
+			val, err = p.parseIntValue()
+			ac.NumberOfKeccak = &val
 		default:
 			if err := p.skipValue(); err != nil {
 				return nil, err

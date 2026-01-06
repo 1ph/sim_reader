@@ -324,7 +324,9 @@ func decodeElementHeader(a *asn1.ASN1) *ElementHeader {
 }
 
 func decodeFileDescriptor(a *asn1.ASN1) *FileDescriptor {
-	fd := &FileDescriptor{}
+	fd := &FileDescriptor{
+		LCSI: []byte{0x05}, // Default value
+	}
 
 	for a.Unmarshal() {
 		tagNum := getContextTag(a)
@@ -366,7 +368,9 @@ func decodeFileDescriptor(a *asn1.ASN1) *FileDescriptor {
 }
 
 func decodeProprietaryEFInfo(a *asn1.ASN1) *ProprietaryEFInfo {
-	pei := &ProprietaryEFInfo{}
+	pei := &ProprietaryEFInfo{
+		SpecialFileInformation: []byte{0x00}, // Default value
+	}
 
 	for a.Unmarshal() {
 		tagNum := getContextTag(a)
@@ -1436,8 +1440,9 @@ func decodeMappingParameter(a *asn1.ASN1) *MappingParameter {
 }
 
 func decodeAlgoConfiguration(a *asn1.ASN1) *AlgoConfiguration {
+	nKeccak := 1
 	ac := &AlgoConfiguration{
-		NumberOfKeccak: 1, // Default from reference
+		NumberOfKeccak: &nKeccak, // Default from reference
 	}
 
 	// AlgoConfiguration is a CHOICE: [0] mappingParameter, [1] algoParameter
@@ -1489,7 +1494,8 @@ func parseAlgoField(a *asn1.ASN1, ac *AlgoConfiguration) {
 	case 5: // xoringConstants
 		ac.XoringConstants = copyBytes(a.Data)
 	case 6: // numberOfKeccak
-		ac.NumberOfKeccak = decodeInteger(a.Data)
+		n := decodeInteger(a.Data)
+		ac.NumberOfKeccak = &n
 	case 7: // authCounterMax
 		ac.AuthCounterMax = copyBytes(a.Data)
 	}

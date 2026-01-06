@@ -1679,57 +1679,7 @@ value10 ProfileElement ::= pinCodes : {
     }
   }
 }
-value11 ProfileElement ::= akaParameter : {
-  aka-header {
-    mandated NULL,
-    identification 11
-  },
-  algoConfiguration algoParameter : {
-    algorithmID milenage,
-    algorithmOptions '02'H,
-    key '00112233445566778899AABBCCDDEEFF'H,
-    opc 'FFEEDDCCBBAA99887766554433221100'H,
-    rotationConstants '4000204060'H,
-    xoringConstants '0000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000020000000000000000000000000000000400000000000000000000000000000008'H,
-    numberOfKeccak 1
-  },
-  sqnOptions '02'H,
-  sqnInit {
-    '000000000000'H,
-    '000000000000'H,
-    '000000000000'H,
-    '000000000000'H,
-    '000000000000'H,
-    '000000000000'H,
-    '000000000000'H,
-    '000000000000'H,
-    '000000000000'H,
-    '000000000000'H,
-    '000000000000'H,
-    '000000000000'H,
-    '000000000000'H,
-    '000000000000'H,
-    '000000000000'H,
-    '000000000000'H,
-    '000000000000'H,
-    '000000000000'H,
-    '000000000000'H,
-    '000000000000'H,
-    '000000000000'H,
-    '000000000000'H,
-    '000000000000'H,
-    '000000000000'H,
-    '000000000000'H,
-    '000000000000'H,
-    '000000000000'H,
-    '000000000000'H,
-    '000000000000'H,
-    '000000000000'H,
-    '000000000000'H,
-    '000000000000'H
-  }
-}
-value12 ProfileElement ::= gsm-access : {
+value11 ProfileElement ::= gsm-access : {
   gsm-access-header {
     mandated NULL,
     identification 12
@@ -1794,7 +1744,7 @@ value12 ProfileElement ::= gsm-access : {
     fillFileContent : '00'H
   }
 }
-value13 ProfileElement ::= df-5gs : {
+value12 ProfileElement ::= df-5gs : {
   df-5gs-header {
     mandated NULL,
     identification 13
@@ -1920,7 +1870,7 @@ value13 ProfileElement ::= df-5gs : {
     }
   }
 }
-value14 ProfileElement ::= df-saip : {
+value13 ProfileElement ::= df-saip : {
   df-saip-header {
     mandated NULL,
     identification 14
@@ -1948,7 +1898,7 @@ value14 ProfileElement ::= df-saip : {
     }
   }
 }
-value15 ProfileElement ::= csim : {
+value14 ProfileElement ::= csim : {
   csim-header {
     mandated NULL,
     identification 15
@@ -2442,7 +2392,7 @@ value15 ProfileElement ::= csim : {
     }
   }
 }
-value16 ProfileElement ::= opt-csim : {
+value15 ProfileElement ::= opt-csim : {
   optcsim-header {
     mandated NULL,
     identification 16
@@ -2941,7 +2891,7 @@ value16 ProfileElement ::= opt-csim : {
     }
   }
 }
-value17 ProfileElement ::= pinCodes : {
+value16 ProfileElement ::= pinCodes : {
   pin-Header {
     mandated NULL,
     identification 17
@@ -2956,7 +2906,7 @@ value17 ProfileElement ::= pinCodes : {
     }
   }
 }
-value18 ProfileElement ::= cdmaParameter : {
+value17 ProfileElement ::= cdmaParameter : {
   cdma-header {
     mandated NULL,
     identification 18
@@ -2967,7 +2917,7 @@ value18 ProfileElement ::= cdmaParameter : {
   simpleIPAuthenticationData '108008101820283038404880889098A0A8B0'H,
   mobileIPAuthenticationData '108008101820283038404880889098A0A8B4004080C1014181C20244044484C5054580'H
 }
-value19 ProfileElement ::= isim : {
+value18 ProfileElement ::= isim : {
   isim-header {
     mandated NULL,
     identification 19
@@ -3064,7 +3014,7 @@ value19 ProfileElement ::= isim : {
     fillFileContent : '800101A40683010195010880015AA40683010A9501088401D4A40683010A950108FFFF800103A4068301019501088401D4A40683010A950108800158A40683010A950108FFFF800101900080015AA40683010A9501088401D4A40683010A950108'H
   }
 }
-value20 ProfileElement ::= opt-isim : {
+value19 ProfileElement ::= opt-isim : {
   optisim-header {
     mandated NULL,
     identification 20
@@ -3108,7 +3058,7 @@ value20 ProfileElement ::= opt-isim : {
     }
   }
 }
-value21 ProfileElement ::= pinCodes : {
+value20 ProfileElement ::= pinCodes : {
   pin-Header {
     mandated NULL,
     identification 21
@@ -3123,57 +3073,23 @@ value21 ProfileElement ::= pinCodes : {
     }
   }
 }
-value22 ProfileElement ::= akaParameter : {
+value21 ProfileElement ::= akaParameter : {
   aka-header {
     mandated NULL,
     identification 22
   },
   algoConfiguration algoParameter : {
     algorithmID milenage,
-    algorithmOptions '02'H,
+    algorithmOptions '00'H,
     key '00112233445566778899AABBCCDDEEFF'H,
     opc 'FFEEDDCCBBAA99887766554433221100'H,
     rotationConstants '4000204060'H,
     xoringConstants '0000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000020000000000000000000000000000000400000000000000000000000000000008'H,
     numberOfKeccak 1
   },
-  sqnOptions '02'H,
-  sqnInit {
-    '000000000000'H,
-    '000000000000'H,
-    '000000000000'H,
-    '000000000000'H,
-    '000000000000'H,
-    '000000000000'H,
-    '000000000000'H,
-    '000000000000'H,
-    '000000000000'H,
-    '000000000000'H,
-    '000000000000'H,
-    '000000000000'H,
-    '000000000000'H,
-    '000000000000'H,
-    '000000000000'H,
-    '000000000000'H,
-    '000000000000'H,
-    '000000000000'H,
-    '000000000000'H,
-    '000000000000'H,
-    '000000000000'H,
-    '000000000000'H,
-    '000000000000'H,
-    '000000000000'H,
-    '000000000000'H,
-    '000000000000'H,
-    '000000000000'H,
-    '000000000000'H,
-    '000000000000'H,
-    '000000000000'H,
-    '000000000000'H,
-    '000000000000'H
-  }
+  sqnOptions '02'H
 }
-value23 ProfileElement ::= genericFileManagement : {
+value22 ProfileElement ::= genericFileManagement : {
   gfm-header {
     mandated NULL,
     identification 24
@@ -3268,7 +3184,7 @@ value23 ProfileElement ::= genericFileManagement : {
     }
   }
 }
-value24 ProfileElement ::= genericFileManagement : {
+value23 ProfileElement ::= genericFileManagement : {
   gfm-header {
     mandated NULL,
     identification 25
@@ -3408,7 +3324,7 @@ value24 ProfileElement ::= genericFileManagement : {
     }
   }
 }
-value25 ProfileElement ::= securityDomain : {
+value24 ProfileElement ::= securityDomain : {
   sd-Header {
     mandated NULL,
     identification 26
@@ -3508,7 +3424,7 @@ value25 ProfileElement ::= securityDomain : {
     '0070326630732E06072A864886FC6B01600B06092A864886FC6B020202630906072A864886FC6B03640B06092A864886FC6B048000'H
   }
 }
-value26 ProfileElement ::= rfm : {
+value25 ProfileElement ::= rfm : {
   rfm-header {
     mandated NULL,
     identification 27
@@ -3521,7 +3437,7 @@ value26 ProfileElement ::= rfm : {
   uiccAccessDomain '00'H,
   uiccAdminAccessDomain '00'H
 }
-value27 ProfileElement ::= rfm : {
+value26 ProfileElement ::= rfm : {
   rfm-header {
     mandated NULL,
     identification 28
@@ -3539,7 +3455,7 @@ value27 ProfileElement ::= rfm : {
     adfAdminAccessDomain '00'H
   }
 }
-value28 ProfileElement ::= rfm : {
+value27 ProfileElement ::= rfm : {
   rfm-header {
     mandated NULL,
     identification 29
@@ -3557,7 +3473,7 @@ value28 ProfileElement ::= rfm : {
     adfAdminAccessDomain '00'H
   }
 }
-value29 ProfileElement ::= rfm : {
+value28 ProfileElement ::= rfm : {
   rfm-header {
     mandated NULL,
     identification 30
@@ -3575,7 +3491,7 @@ value29 ProfileElement ::= rfm : {
     adfAdminAccessDomain '00'H
   }
 }
-value30 ProfileElement ::= end : {
+value29 ProfileElement ::= end : {
   end-header {
     mandated NULL,
     identification 31

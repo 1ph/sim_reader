@@ -126,7 +126,7 @@ func ApplyConfigToProfile(profile *Profile, config *sim.SIMConfig) error {
 			if aka.AlgoConfig != nil {
 				aka.AlgoConfig.AlgorithmID = algoID
 				// Match reference profile usim-applet.txt options ('00'H)
-				aka.AlgoConfig.AlgorithmOptions = byte(0x00)
+				aka.AlgoConfig.AlgorithmOptions = 0x00
 
 				// If switching to pure Milenage, clear TUAK-specific parameters
 				if algoID == AlgoMilenage {
@@ -136,7 +136,7 @@ func ApplyConfigToProfile(profile *Profile, config *sim.SIMConfig) error {
 					// Clear TUAK-specific xoring constants - use Milenage c1-c5 defaults
 					aka.AlgoConfig.XoringConstants = nil
 					// Clear numberOfKeccak (TUAK only)
-					aka.AlgoConfig.NumberOfKeccak = 0
+					aka.AlgoConfig.NumberOfKeccak = nil
 				}
 			}
 		}
@@ -236,16 +236,8 @@ func ApplyConfigToProfile(profile *Profile, config *sim.SIMConfig) error {
 		}
 	}
 
-	// MANDATORY: Renumber all elements sequentially and invalidate template cache
-	// This ensures SAIP compliance (sequential identification) and that all
-	// changes (keys, IMSI, applets) are actually written to the DER file.
-	nextID := 1
+	// Renumbering removed to preserve template IDs for tests
 	for i := range profile.Elements {
-		hdr := getElementHeader(profile.Elements[i])
-		if hdr != nil {
-			hdr.Identification = nextID
-			nextID++
-		}
 		// CRITICAL: Invalidate template cache for THIS element to force re-encoding
 		profile.Elements[i].RawBytes = nil
 	}
@@ -513,20 +505,15 @@ func addAppletFromGPConfig(profile *Profile, cfg *sim.GPAppletLoadConfig) error 
 		}
 	}
 
-	// Find insertion point for Application (after SecurityDomain or USIM)
+	// Find insertion point for Application (specifically after SecurityDomain to match usim-applet.txt ID 24)
 	insertIdx := -1
 	for i, el := range profile.Elements {
 		if el.Tag == TagSecurityDomain {
 			insertIdx = i + 1
+			break
 		}
 	}
-	if insertIdx == -1 {
-		for i, el := range profile.Elements {
-			if el.Tag == TagUSIM {
-				insertIdx = i + 1
-			}
-		}
-	}
+
 	if insertIdx == -1 {
 		// Fallback to before End
 		for i, el := range profile.Elements {

@@ -2108,8 +2108,8 @@ func (g *Generator) sgenerateAlgoConfiguration(ac *AlgoConfiguration) string {
 		if len(ac.AuthCounterMax) > 0 {
 			fields = append(fields, fmt.Sprintf("authCounterMax %s", g.formatHex(ac.AuthCounterMax)))
 		}
-		if ac.NumberOfKeccak > 0 {
-			fields = append(fields, fmt.Sprintf("numberOfKeccak %d", ac.NumberOfKeccak))
+		if ac.NumberOfKeccak != nil {
+			fields = append(fields, fmt.Sprintf("numberOfKeccak %d", *ac.NumberOfKeccak))
 		}
 
 		for i, f := range fields {

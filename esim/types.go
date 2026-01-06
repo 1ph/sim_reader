@@ -865,7 +865,7 @@ type AlgoConfiguration struct {
 	RotationConstants []byte // r1-r5
 	XoringConstants   []byte // c1-c5
 	AuthCounterMax    []byte // [3] OPTIONAL
-	NumberOfKeccak    int    // for TUAK
+	NumberOfKeccak    *int   // for TUAK
 	MappingParameter  *MappingParameter
 }
 

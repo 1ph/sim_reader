@@ -77,17 +77,17 @@ func TestApplicationInstanceProcessData(t *testing.T) {
 		t.Fatal("Encoded instance is empty")
 	}
 
-	// Check that ProcessData is present (look for SEQUENCE tag 0x30)
-	hasSequence := false
+	// Check that ProcessData is present (look for [PRIVATE 2] tag 0xE2)
+	hasPrivate2 := false
 	for i := 0; i < len(encoded)-1; i++ {
-		if encoded[i] == 0x30 {
-			hasSequence = true
+		if encoded[i] == 0xE2 {
+			hasPrivate2 = true
 			break
 		}
 	}
 
-	if !hasSequence {
-		t.Error("Expected SEQUENCE tag for ProcessData not found")
+	if !hasPrivate2 {
+		t.Error("Expected [PRIVATE 2] tag for ProcessData not found")
 	}
 }
 

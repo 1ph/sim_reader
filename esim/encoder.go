@@ -1469,8 +1469,8 @@ func encodeAlgoParameter(ac *AlgoConfiguration) []byte {
 	}
 
 	// [7] numberOfKeccak - DEFAULT 1
-	if ac.NumberOfKeccak > 0 && ac.NumberOfKeccak != 1 {
-		data = append(data, asn1.Marshal(0x87, nil, byte(ac.NumberOfKeccak))...)
+	if ac.NumberOfKeccak != nil && *ac.NumberOfKeccak != 1 {
+		data = append(data, asn1.Marshal(0x87, nil, byte(*ac.NumberOfKeccak))...)
 	}
 
 	return data
@@ -1623,7 +1623,6 @@ func encodeCatTpParameters(ctp *CatTpParameters) []byte {
 	data = append(data, asn1.Marshal(0x81, nil, encodeInteger(ctp.CatTpMaxPduSize)...)...)
 	return data
 }
-
 
 func encodeUICCApplicationParameters(uap *UICCApplicationParameters) []byte {
 	var data []byte
