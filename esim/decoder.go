@@ -1962,6 +1962,17 @@ func decodeApplicationInstance(a *asn1.ASN1) *ApplicationInstance {
 			}
 			appTagCount++
 
+		case a.Class == 0: // ClassUniversal
+			// Tag 16 (0x10) is SEQUENCE. In raw bytes with constructed bit it's 0x30 (48)
+			if a.Tag == 16 || a.Tag == 48 {
+				inner := asn1.Init(a.Data)
+				for inner.Unmarshal() {
+					if inner.Tag == 4 { // OCTET STRING
+						inst.ProcessData = append(inst.ProcessData, copyBytes(inner.Data))
+					}
+				}
+			}
+
 		case a.Class == asn1.ClassContextSpecific:
 			tagNum := getContextTag(a)
 			switch tagNum {

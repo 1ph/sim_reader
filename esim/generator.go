@@ -2459,7 +2459,7 @@ func (g *Generator) sgenerateApplicationInstance(name string, inst *ApplicationI
 		fields = append(fields, fmt.Sprintf("applicationPrivileges %s", g.formatHex(inst.ApplicationPrivileges)))
 	}
 	fields = append(fields, fmt.Sprintf("lifeCycleState '%02X'H", inst.LifeCycleState))
-	if len(inst.ApplicationSpecificParamsC9) > 0 {
+	if inst.ApplicationSpecificParamsC9 != nil {
 		fields = append(fields, fmt.Sprintf("applicationSpecificParametersC9 %s", g.formatHex(inst.ApplicationSpecificParamsC9)))
 	}
 	if inst.SystemSpecificParams != nil {

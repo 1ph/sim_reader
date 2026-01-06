@@ -1898,14 +1898,14 @@ func encodeApplicationInstance(inst *ApplicationInstance) []byte {
 	}
 
 	// [PRIVATE 9] applicationSpecificParametersC9 (0xC9)
-	if len(inst.ApplicationSpecificParamsC9) > 0 {
+	if inst.ApplicationSpecificParamsC9 != nil {
 		data = append(data, asn1.Marshal(0xC9, nil, inst.ApplicationSpecificParamsC9...)...)
 	}
 
-	// [PRIVATE 15] systemSpecificParameters (0xCF)
+	// [PRIVATE 15] systemSpecificParameters (0xEF)
 	if inst.SystemSpecificParams != nil {
 		aspData := encodeApplicationSystemParameters(inst.SystemSpecificParams)
-		data = append(data, asn1.Marshal(0xCF, nil, aspData...)...)
+		data = append(data, asn1.Marshal(0xEF, nil, aspData...)...)
 	}
 
 	// [PRIVATE 10] applicationParameters (0xEA)
@@ -1914,13 +1914,13 @@ func encodeApplicationInstance(inst *ApplicationInstance) []byte {
 		data = append(data, asn1.Marshal(0xEA, nil, apData...)...)
 	}
 
-	// processData - [PRIVATE 2] SEQUENCE OF OCTET STRING
+	// processData - [PRIVATE 2] SEQUENCE OF OCTET STRING (0xE2)
 	if len(inst.ProcessData) > 0 {
 		var pdData []byte
 		for _, apdu := range inst.ProcessData {
 			pdData = append(pdData, asn1.Marshal(0x04, nil, apdu...)...) // OCTET STRING
 		}
-		data = append(data, asn1.Marshal(0xE2, nil, pdData...)...) // [PRIVATE 2] Constructed
+		data = append(data, asn1.Marshal(0xE2, nil, pdData...)...)
 	}
 
 	// [16] controlReferenceTemplate (0xB0 = context-specific constructed 16)
