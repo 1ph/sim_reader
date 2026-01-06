@@ -4,6 +4,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"sim_reader/dictionaries"
+	"sort"
 	"strings"
 )
 
@@ -321,6 +322,195 @@ func DecodeACC(data []byte) []int {
 		}
 	}
 	return classes
+}
+
+// DecodeFCP decodes File Control Parameters (FCP) template
+func DecodeFCP(data []byte) string {
+	if len(data) == 0 {
+		return "Empty"
+	}
+
+	// FCP template tag is 0x62
+	idx := 0
+	if data[0] == 0x62 {
+		_, lenBytes := parseLength(data, 1)
+		if lenBytes > 0 {
+			idx = 1 + lenBytes
+		} else {
+			idx = 2
+		}
+	}
+
+	var results []string
+	for idx < len(data)-1 {
+		tag := data[idx]
+		length, lenBytes := parseLength(data, idx+1)
+		if lenBytes == 0 || idx+1+lenBytes+length > len(data) {
+			break
+		}
+		val := data[idx+1+lenBytes : idx+1+lenBytes+length]
+
+		switch tag {
+		case 0x82: // File Descriptor
+			if len(val) >= 2 {
+				ftype := ""
+				switch val[0] & 0x07 {
+				case 0x01:
+					ftype = "Transparent"
+				case 0x02:
+					ftype = "Linear Fixed"
+				case 0x04:
+					ftype = "Cyclic"
+				case 0x07:
+					ftype = "DF/ADF"
+				default:
+					ftype = fmt.Sprintf("Unknown(0x%02X)", val[0])
+				}
+				results = append(results, ftype)
+				if len(val) >= 5 && (val[0]&0x02 != 0 || val[0]&0x04 != 0) {
+					recLen := int(val[2])<<8 | int(val[3])
+					numRec := int(val[4])
+					results = append(results, fmt.Sprintf("RecLen: %d, NumRec: %d", recLen, numRec))
+				} else if len(val) >= 4 && (val[0]&0x02 != 0 || val[0]&0x04 != 0) {
+					recLen := int(val[2])<<8 | int(val[3])
+					results = append(results, fmt.Sprintf("RecLen: %d", recLen))
+				}
+			}
+		case 0x80, 0x81: // File size
+			size := 0
+			for _, b := range val {
+				size = (size << 8) | int(b)
+			}
+			results = append(results, fmt.Sprintf("Size: %d", size))
+		case 0x83: // File ID
+			results = append(results, fmt.Sprintf("ID: %04X", val))
+		case 0x88: // SFI
+			if len(val) > 0 {
+				results = append(results, fmt.Sprintf("SFI: %02X", val[0]))
+			}
+		case 0x8A: // LCSI
+			if len(val) > 0 {
+				lcsi := ""
+				switch val[0] {
+				case 0x01:
+					lcsi = "Creation"
+				case 0x03:
+					lcsi = "Initialization"
+				case 0x05:
+					lcsi = "Operational (Activated)"
+				case 0x04, 0x06:
+					lcsi = "Operational (Deactivated)"
+				case 0x0C, 0x0D, 0x0E, 0x0F:
+					lcsi = "Termination"
+				default:
+					lcsi = fmt.Sprintf("0x%02X", val[0])
+				}
+				results = append(results, "Status: "+lcsi)
+			}
+		}
+		idx += 1 + lenBytes + length
+	}
+
+	if len(results) == 0 {
+		return hex.EncodeToString(data)
+	}
+	return strings.Join(results, ", ")
+}
+
+// DecodeDIR decodes EF_DIR record (Application Directory)
+func DecodeDIR(data []byte) string {
+	// data is one record of EF_DIR
+	// Format: 61 [Len] [4F [Len] AID] [50 [Len] Label] ...
+	if len(data) == 0 || data[0] == 0xFF {
+		return ""
+	}
+
+	idx := 0
+	if data[idx] == 0x61 {
+		_, lenBytes := parseLength(data, idx+1)
+		idx += 1 + lenBytes
+	}
+
+	var aid, label string
+	for idx < len(data)-1 {
+		tag := data[idx]
+		length, lenBytes := parseLength(data, idx+1)
+		if lenBytes == 0 || idx+1+lenBytes+length > len(data) {
+			break
+		}
+		val := data[idx+1+lenBytes : idx+1+lenBytes+length]
+
+		switch tag {
+		case 0x4F: // AID
+			aid = strings.ToUpper(hex.EncodeToString(val))
+			// Try to identify application
+			if strings.HasPrefix(aid, "A0000000871002") {
+				aid += " (USIM)"
+			} else if strings.HasPrefix(aid, "A0000000871004") {
+				aid += " (ISIM)"
+			} else if strings.HasPrefix(aid, "A0000003431002") {
+				aid += " (CSIM)"
+			}
+		case 0x50: // Application Label
+			label = string(val)
+		}
+		idx += 1 + lenBytes + length
+	}
+
+	if aid == "" {
+		return ""
+	}
+	if label != "" {
+		return fmt.Sprintf("AID: %s, Label: %s", aid, label)
+	}
+	return "AID: " + aid
+}
+
+// DecodeServiceTableNames returns names of enabled services from UST/IST
+func DecodeServiceTableNames(data []byte, isISIM bool) []string {
+	enabled := DecodeUST(data)
+	var result []string
+	
+	serviceMap := USTServices
+	if isISIM {
+		serviceMap = ISTServices
+	}
+
+	// Sort keys for deterministic output
+	var keys []int
+	for k := range enabled {
+		keys = append(keys, k)
+	}
+	sort.Ints(keys)
+
+	for _, k := range keys {
+		if name, ok := serviceMap[k]; ok {
+			result = append(result, fmt.Sprintf("#%d: %s", k, name))
+		} else {
+			result = append(result, fmt.Sprintf("#%d: Unknown", k))
+		}
+	}
+	return result
+}
+
+// parseLength decodes ASN.1/TLV length
+func parseLength(data []byte, offset int) (int, int) {
+	if offset >= len(data) {
+		return 0, 0
+	}
+	b := data[offset]
+	if b < 0x80 {
+		return int(b), 1
+	}
+	lenBytes := int(b & 0x7F)
+	if lenBytes == 0 || offset+1+lenBytes > len(data) {
+		return 0, 0
+	}
+	res := 0
+	for i := 0; i < lenBytes; i++ {
+		res = (res << 8) | int(data[offset+1+i])
+	}
+	return res, 1 + lenBytes
 }
 
 // Helper functions

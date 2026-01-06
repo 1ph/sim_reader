@@ -383,72 +383,10 @@ func runEsimExport(cmd *cobra.Command, args []string) {
 }
 
 func printProfileSummary(p *esim.Profile, verbose bool) {
-	fmt.Println(p.Summary())
-
 	if verbose {
-		fmt.Println("\n=== Detailed Information ===")
-
-		// Show applications/applets
-		if len(p.Applications) > 0 {
-			fmt.Println("\n--- Java Card Applications (PE-Application) ---")
-			for i, app := range p.Applications {
-				fmt.Printf("\nApplication[%d]:\n", i)
-				if app.LoadBlock != nil {
-					fmt.Printf("  LoadBlock:\n")
-					fmt.Printf("    PackageAID: %s\n", hex.EncodeToString(app.LoadBlock.LoadPackageAID))
-					if len(app.LoadBlock.SecurityDomainAID) > 0 {
-						fmt.Printf("    SecurityDomainAID: %s\n", hex.EncodeToString(app.LoadBlock.SecurityDomainAID))
-					}
-					fmt.Printf("    LoadBlockObject: %d bytes\n", len(app.LoadBlock.LoadBlockObject))
-				}
-				for j, inst := range app.InstanceList {
-					fmt.Printf("  Instance[%d]:\n", j)
-					fmt.Printf("    PackageAID: %s\n", hex.EncodeToString(inst.ApplicationLoadPackageAID))
-					fmt.Printf("    ClassAID:   %s\n", hex.EncodeToString(inst.ClassAID))
-					fmt.Printf("    InstanceAID: %s\n", hex.EncodeToString(inst.InstanceAID))
-					fmt.Printf("    LifeCycle: 0x%02X\n", inst.LifeCycleState)
-					if len(inst.ProcessData) > 0 {
-						fmt.Printf("    ProcessData (%d APDUs):\n", len(inst.ProcessData))
-						for k, apdu := range inst.ProcessData {
-							apduHex := hex.EncodeToString(apdu)
-							if len(apduHex) > 60 {
-								apduHex = apduHex[:60] + "..."
-							}
-							fmt.Printf("      [%d] %s\n", k, apduHex)
-						}
-					}
-				}
-			}
-		}
-
-		// Show AKA params
-		if len(p.AKAParams) > 0 {
-			fmt.Println("\n--- AKA Parameters ---")
-			for i, aka := range p.AKAParams {
-				fmt.Printf("AKA[%d]:\n", i)
-				if aka.AlgoConfig != nil {
-					fmt.Printf("  Algorithm: %s (ID=%d)\n", p.GetAlgorithmName(), aka.AlgoConfig.AlgorithmID)
-					if len(aka.AlgoConfig.Key) > 0 {
-						fmt.Printf("  Ki:  %s\n", hex.EncodeToString(aka.AlgoConfig.Key))
-					}
-					if len(aka.AlgoConfig.OPC) > 0 {
-						fmt.Printf("  OPc: %s\n", hex.EncodeToString(aka.AlgoConfig.OPC))
-					}
-				}
-			}
-		}
-
-		// Show PIN/PUK
-		fmt.Println("\n--- Security Codes ---")
-		if pin1 := p.GetPIN1(); pin1 != "" {
-			fmt.Printf("  PIN1: %s\n", pin1)
-		}
-		if puk1 := p.GetPUK1(); puk1 != "" {
-			fmt.Printf("  PUK1: %s\n", puk1)
-		}
-		if adm1 := p.GetADM1(); adm1 != "" {
-			fmt.Printf("  ADM1: %s\n", adm1)
-		}
+		fmt.Println(esim.DetailedReport(p))
+	} else {
+		fmt.Println(p.Summary())
 	}
 }
 
