@@ -1,6 +1,7 @@
 package esim
 
 import (
+	"bytes"
 	"encoding/hex"
 	"fmt"
 	"os"
@@ -75,7 +76,7 @@ func ApplyConfigToProfile(profile *Profile, config *sim.SIMConfig) error {
 	}
 
 	// Set IMSI
-	if config.IMSI != "" {
+	if config.IMSI != "" && profile.USIM != nil {
 		if err := profile.SetIMSI(config.IMSI); err != nil {
 			return fmt.Errorf("set IMSI: %w", err)
 		}
@@ -102,7 +103,7 @@ func ApplyConfigToProfile(profile *Profile, config *sim.SIMConfig) error {
 	}
 
 	// Apply Ki
-	if kiSource != "" {
+	if kiSource != "" && len(profile.AKAParams) > 0 {
 		ki, err := hex.DecodeString(kiSource)
 		if err != nil {
 			return fmt.Errorf("parse Ki: %w", err)
@@ -113,7 +114,7 @@ func ApplyConfigToProfile(profile *Profile, config *sim.SIMConfig) error {
 	}
 
 	// Apply OPc
-	if opcSource != "" {
+	if opcSource != "" && len(profile.AKAParams) > 0 {
 		opc, err := hex.DecodeString(opcSource)
 		if err != nil {
 			return fmt.Errorf("parse OPc: %w", err)
@@ -201,35 +202,6 @@ func ApplyConfigToProfile(profile *Profile, config *sim.SIMConfig) error {
 		if err := removeUSIMElements(profile); err != nil {
 			return fmt.Errorf("remove USIM elements: %w", err)
 		}
-	} else {
-		// Count akaParameter elements first
-		akaTotal := 0
-		for _, elem := range profile.Elements {
-			if elem.Tag == TagAKAParameter {
-				akaTotal++
-			}
-		}
-
-		// Cleanup for Variant 2 (USIM + Applet):
-		// Some templates (like TS48v5) have TWO akaParameter elements.
-		// Reference profile usim-applet.txt has only ONE.
-		// Remove the first akaParameter only if there are multiple.
-		if akaTotal > 1 {
-			newElements := make([]ProfileElement, 0, len(profile.Elements))
-			akaCount := 0
-			for _, elem := range profile.Elements {
-				if elem.Tag == TagAKAParameter {
-					akaCount++
-					if akaCount == 1 {
-						// Skip the first akaParameter
-						continue
-					}
-				}
-				newElements = append(newElements, elem)
-			}
-			profile.Elements = newElements
-			profile.UpdateReferences()
-		}
 	}
 
 	// Add applets from GlobalPlatform config
@@ -266,19 +238,172 @@ func ApplyConfigToProfile(profile *Profile, config *sim.SIMConfig) error {
 // removeUSIMElements removes PE-USIM, PE-OptUSIM, PE-AKAParameter from profile
 // for Variant 1 (applet-only) profiles
 func removeUSIMElements(profile *Profile) error {
-	// Tags to remove
-	tagsToRemove := map[int]bool{
-		TagUSIM:         true,
-		TagOptUSIM:      true,
-		TagAKAParameter: true,
+	// Identify fileIDs and AIDs to remove
+	removedPaths := [][]byte{{0x7F, 0xD0}} // ADF.USIM
+	removedAIDs := make(map[string]bool)
+	if profile.USIM != nil && profile.USIM.ADFUSIM != nil {
+		if len(profile.USIM.ADFUSIM.DFName) > 0 {
+			removedAIDs[hex.EncodeToString(profile.USIM.ADFUSIM.DFName)] = true
+		}
 	}
 
-	// Filter out USIM-related elements
+	// USIM related OIDs to remove from MandatoryGFSTEList
+	// 2.23.143.1.2.4 = usim
+	// 2.23.143.1.2.5 = opt-usim
+	// 2.23.143.1.2.7 = gsm-access
+	// 2.23.143.1.2.13 = df-5gs
+	// 2.23.143.1.2.14 = df-saip
+	usimOIDs := []OID{
+		{2, 23, 143, 1, 2, 4},
+		{2, 23, 143, 1, 2, 5},
+		{2, 23, 143, 1, 2, 7},
+		{2, 23, 143, 1, 2, 13},
+		{2, 23, 143, 1, 2, 14},
+	}
+
+	// Tags to remove entirely
+	tagsToRemove := map[int]bool{
+		TagUSIM:      true,
+		TagOptUSIM:   true,
+		TagGSMAccess: true, // Depends on USIM
+		TagDF5GS:     true, // Depends on USIM
+		TagDFSAIP:    true, // Depends on USIM
+	}
+
+	// Filter out USIM-related elements and clean up GFM/RFM/PINs
 	newElements := make([]ProfileElement, 0, len(profile.Elements))
+	akaCount := 0
 	for _, elem := range profile.Elements {
-		if !tagsToRemove[elem.Tag] {
-			newElements = append(newElements, elem)
+		if tagsToRemove[elem.Tag] {
+			continue
 		}
+
+		// Keep akaParameter if it's not the first one (usually USIM) or if ISIM/CSIM are present
+		if elem.Tag == TagAKAParameter {
+			akaCount++
+			// If we have multiple AKA params, let's assume the first one is USIM
+			// and others are for ISIM/CSIM. If we only have one, we MUST keep it
+			// if ISIM or CSIM are still in the profile.
+			hasOtherApps := profile.ISIM != nil || profile.CSIM != nil
+			if akaCount == 1 && !hasOtherApps {
+				continue
+			}
+		}
+
+		// Clean GFM from references to removed paths (like 7FD0)
+		if elem.Tag == TagGenericFileManagement {
+			gfm, ok := elem.Value.(*GenericFileManagement)
+			if !ok {
+				newElements = append(newElements, elem)
+				continue
+			}
+
+			newCmds := make([]FileManagementCMD, 0)
+			for _, cmdBlock := range gfm.FileManagementCMDs {
+				isOrphaned := false
+				// Check each item in the command block for orphaned paths
+				for _, item := range cmdBlock {
+					if item.ItemType == 0 && len(item.FilePath) > 0 { // filePath
+						for _, root := range removedPaths {
+							if bytes.HasPrefix(item.FilePath, root) {
+								isOrphaned = true
+								break
+							}
+						}
+					}
+					if isOrphaned {
+						break
+					}
+				}
+
+				if !isOrphaned {
+					newCmds = append(newCmds, cmdBlock)
+				}
+			}
+
+			if len(newCmds) == 0 {
+				continue // Remove empty GFM
+			}
+			gfm.FileManagementCMDs = newCmds
+			elem.RawBytes = nil // Force re-encoding
+		}
+
+		// Clean RFM from references to removed AIDs
+		if elem.Tag == TagRFM {
+			rfm, ok := elem.Value.(*RFMConfig)
+			if ok && rfm.ADFRFMAccess != nil {
+				aidHex := hex.EncodeToString(rfm.ADFRFMAccess.ADFAID)
+				if removedAIDs[aidHex] {
+					continue // Remove RFM for deleted application
+				}
+			}
+		}
+
+		// Clean up PINs/PUKs related to USIM (pinAppl1/pukAppl1)
+		if elem.Tag == TagPinCodes {
+			pc, ok := elem.Value.(*PINCodes)
+			if ok {
+				newConfigs := make([]PINConfig, 0)
+				for _, cfg := range pc.Configs {
+					// 0x01 = pinAppl1, 0x81 = secondPINAppl1
+					if cfg.KeyReference != 0x01 && cfg.KeyReference != 0x81 {
+						newConfigs = append(newConfigs, cfg)
+					}
+				}
+				if len(newConfigs) == 0 {
+					continue // Remove empty PIN codes block
+				}
+				pc.Configs = newConfigs
+				elem.RawBytes = nil
+			}
+		}
+
+		if elem.Tag == TagPukCodes {
+			pc, ok := elem.Value.(*PUKCodes)
+			if ok {
+				newCodes := make([]PUKCode, 0)
+				for _, c := range pc.Codes {
+					// 0x01 = pukAppl1, 0x81 = secondPUKAppl1
+					if c.KeyReference != 0x01 && c.KeyReference != 0x81 {
+						newCodes = append(newCodes, c)
+					}
+				}
+				if len(newCodes) == 0 {
+					continue // Remove empty PUK codes block
+				}
+				pc.Codes = newCodes
+				elem.RawBytes = nil
+			}
+		}
+
+		// Deep clean any element that might have links to removed paths
+		cleanLinksInElement(&elem, removedPaths)
+
+		// Clean EF_DIR in MF if USIM is removed
+		if elem.Tag == TagMF {
+			mf, ok := elem.Value.(*MasterFile)
+			if ok && mf.EF_DIR != nil {
+				newFill := make([]FillContent, 0)
+				for _, fill := range mf.EF_DIR.FillContents {
+					isRemovedAID := false
+					for aidHex := range removedAIDs {
+						aidBytes, _ := hex.DecodeString(aidHex)
+						if bytes.Contains(fill.Content, aidBytes) {
+							isRemovedAID = true
+							break
+						}
+					}
+					if !isRemovedAID {
+						newFill = append(newFill, fill)
+					}
+				}
+				mf.EF_DIR.FillContents = newFill
+				mf.EF_DIR.Raw = nil
+				elem.RawBytes = nil
+			}
+		}
+
+		newElements = append(newElements, elem)
 	}
 	profile.Elements = newElements
 
@@ -286,16 +411,144 @@ func removeUSIMElements(profile *Profile) error {
 	profile.USIM = nil
 	profile.AKAParams = nil
 
-	// Update header mandatory services - no USIM-related flags
-	if profile.Header != nil && profile.Header.MandatoryServices != nil {
-		profile.Header.MandatoryServices.Milenage = false
-		profile.Header.MandatoryServices.TUAK128 = false
-		profile.Header.MandatoryServices.TUAK256 = false
-		profile.Header.MandatoryServices.USIMTestAlgorithm = false
+	// Update header
+	if profile.Header != nil {
+		// Update mandatory services - no USIM-related flags
+		if profile.Header.MandatoryServices != nil {
+			ms := profile.Header.MandatoryServices
+			ms.USIM = false
+			ms.MultipleUSIM = false
+			// Milenage must remain TRUE if ISIM/CSIM are present
+			if profile.ISIM == nil && profile.CSIM == nil {
+				ms.Milenage = false
+				ms.TUAK128 = false
+				ms.TUAK256 = false
+				ms.USIMTestAlgorithm = false
+			}
+		}
+
+		// Update GFSTEList - remove USIM templates
+		newGFSTE := make([]OID, 0)
+		for _, oid := range profile.Header.MandatoryGFSTEList {
+			shouldRemove := false
+			for _, target := range usimOIDs {
+				if oidEqual(oid, target) {
+					shouldRemove = true
+					break
+				}
+			}
+			if !shouldRemove {
+				newGFSTE = append(newGFSTE, oid)
+			}
+		}
+		profile.Header.MandatoryGFSTEList = newGFSTE
+
 		profile.invalidate(TagProfileHeader)
 	}
 
+	profile.UpdateReferences()
 	return nil
+}
+
+func oidEqual(a, b OID) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func cleanLinksInElement(elem *ProfileElement, removedPaths [][]byte) {
+	// This is a bit of a hack since we don't have a generic "visitor" pattern
+	// for all profile elements, but we can handle the most common ones.
+	switch v := elem.Value.(type) {
+	case *OptionalISIM:
+		cleanEF(v.EF_PCSCF, removedPaths)
+		cleanEF(v.EF_GBABP, removedPaths)
+		cleanEF(v.EF_GBANL, removedPaths)
+		for _, ef := range v.AdditionalEFs {
+			cleanEF(ef, removedPaths)
+		}
+	case *OptionalCSIM:
+		cleanEF(v.EF_SSCI, removedPaths)
+		cleanEF(v.EF_FDN, removedPaths)
+		cleanEF(v.EF_SMS, removedPaths)
+		cleanEF(v.EF_SMSP, removedPaths)
+		cleanEF(v.EF_SMSS, removedPaths)
+		cleanEF(v.EF_SSFC, removedPaths)
+		cleanEF(v.EF_SPN, removedPaths)
+		cleanEF(v.EF_MDN, removedPaths)
+		cleanEF(v.EF_ECC, removedPaths)
+		cleanEF(v.EF_ME3GPDOPC, removedPaths)
+		cleanEF(v.EF_3GPDOPM, removedPaths)
+		cleanEF(v.EF_SIPCAP, removedPaths)
+		cleanEF(v.EF_MIPCAP, removedPaths)
+		cleanEF(v.EF_SIPUPP, removedPaths)
+		cleanEF(v.EF_MIPUPP, removedPaths)
+		cleanEF(v.EF_SIPSP, removedPaths)
+		cleanEF(v.EF_MIPSP, removedPaths)
+		cleanEF(v.EF_SIPPAPSS, removedPaths)
+		cleanEF(v.EF_HRPDCAP, removedPaths)
+		cleanEF(v.EF_HRPDUPP, removedPaths)
+		cleanEF(v.EF_CSSPR, removedPaths)
+		cleanEF(v.EF_ATC, removedPaths)
+		cleanEF(v.EF_EPRL, removedPaths)
+		cleanEF(v.EF_BCSMSP, removedPaths)
+		cleanEF(v.EF_MMSN, removedPaths)
+		cleanEF(v.EF_EXT8, removedPaths)
+		cleanEF(v.EF_MMSICP, removedPaths)
+		cleanEF(v.EF_MMSUP, removedPaths)
+		cleanEF(v.EF_MMSUCP, removedPaths)
+		cleanEF(v.EF_3GCIK, removedPaths)
+		cleanEF(v.EF_GID1, removedPaths)
+		cleanEF(v.EF_GID2, removedPaths)
+		cleanEF(v.EF_SF_EUIMID, removedPaths)
+		cleanEF(v.EF_EST, removedPaths)
+		cleanEF(v.EF_HIDDEN_KEY, removedPaths)
+		cleanEF(v.EF_SDN, removedPaths)
+		cleanEF(v.EF_EXT2, removedPaths)
+		cleanEF(v.EF_EXT3, removedPaths)
+		cleanEF(v.EF_ICI, removedPaths)
+		cleanEF(v.EF_OCI, removedPaths)
+		cleanEF(v.EF_EXT5, removedPaths)
+		cleanEF(v.EF_CCP2, removedPaths)
+		cleanEF(v.EF_MODEL, removedPaths)
+		for _, ef := range v.AdditionalEFs {
+			cleanEF(ef, removedPaths)
+		}
+	case *GenericFileManagement:
+		for i := range v.FileManagementCMDs {
+			for j := range v.FileManagementCMDs[i] {
+				item := &v.FileManagementCMDs[i][j]
+				if item.ItemType == 1 && item.CreateFCP != nil { // createFCP
+					if len(item.CreateFCP.LinkPath) > 0 {
+						for _, root := range removedPaths {
+							if bytes.HasPrefix(item.CreateFCP.LinkPath, root) {
+								item.CreateFCP.LinkPath = nil
+								elem.RawBytes = nil
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+}
+
+func cleanEF(ef *ElementaryFile, removedPaths [][]byte) {
+	if ef == nil || ef.Descriptor == nil || len(ef.Descriptor.LinkPath) == 0 {
+		return
+	}
+	for _, root := range removedPaths {
+		if bytes.HasPrefix(ef.Descriptor.LinkPath, root) {
+			ef.Descriptor.LinkPath = nil
+			ef.Raw = nil
+		}
+	}
 }
 
 // overrideUSIMDfName sets PE-USIM.adf-usim.dfName to the applet's instance AID
@@ -414,49 +667,39 @@ func applySecurityCodes(profile *Profile, config *sim.SIMConfig) error {
 
 	// Set PIN1
 	if config.PIN1 != "" {
-		if err := setPIN(profile, 0x01, config.PIN1); err != nil {
-			return fmt.Errorf("set PIN1: %w", err)
-		}
+		_ = setPIN(profile, 0x01, config.PIN1)
 		modified = true
 	}
 
 	// Set PIN2
 	if config.PIN2 != "" {
-		if err := setPIN(profile, 0x81, config.PIN2); err != nil {
-			return fmt.Errorf("set PIN2: %w", err)
-		}
+		_ = setPIN(profile, 0x81, config.PIN2)
 		modified = true
 	}
 
 	// Set PUK1
 	if config.PUK1 != "" {
-		if err := setPUK(profile, 0x01, config.PUK1); err != nil {
-			return fmt.Errorf("set PUK1: %w", err)
+		if err := setPUK(profile, 0x01, config.PUK1); err == nil {
+			profile.invalidate(TagPukCodes)
 		}
-		profile.invalidate(TagPukCodes)
 	}
 
 	// Set PUK2
 	if config.PUK2 != "" {
-		if err := setPUK(profile, 0x81, config.PUK2); err != nil {
-			return fmt.Errorf("set PUK2: %w", err)
+		if err := setPUK(profile, 0x81, config.PUK2); err == nil {
+			profile.invalidate(TagPukCodes)
 		}
-		profile.invalidate(TagPukCodes)
 	}
 
 	// Set ADM1
 	if config.ADM1 != "" {
-		if err := setPIN(profile, 0x0A, config.ADM1); err != nil {
-			return fmt.Errorf("set ADM1: %w", err)
-		}
+		_ = setPIN(profile, 0x0A, config.ADM1)
 		modified = true
 	}
 
 	// Set ADM2
 	if config.ADM2 != "" {
-		if err := setPIN(profile, 0x0B, config.ADM2); err != nil {
-			return fmt.Errorf("set ADM2: %w", err)
-		}
+		_ = setPIN(profile, 0x0B, config.ADM2)
 		modified = true
 	}
 
