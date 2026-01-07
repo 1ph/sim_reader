@@ -863,7 +863,7 @@ func (r *Reader) AuthenticateWithData(rand, autn, nafId []byte, context byte) (*
 	case resp.SW1 == 0x98 && resp.SW2 == 0x64:
 		// Authentication error, sync failure - response contains AUTS
 		result.Success = false
-		// AUTS is in the response data (if any) or need GET RESPONSE
+		// AUTS is in the response data (standard behavior for sync failure)
 		if len(resp.Data) > 0 {
 			result.AUTS = parseAUTS(resp.Data)
 		}
