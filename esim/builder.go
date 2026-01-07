@@ -776,34 +776,18 @@ func addAppletFromGPConfig(profile *Profile, cfg *sim.GPAppletLoadConfig) error 
 	// Note: SecurityDomainAID is intentionally not used in loadBlock
 	// Working eSIM profiles don't include it in PE-Application
 
-	// Build ProcessData APDUs ONLY if personalization is required
-	var processData [][]byte
+	// Build Install Parameters (C9) for personalization
+	var c9Params []byte
 
-	if cfg.Personalization != nil && (len(cfg.Personalization.APDUs) > 0 || cfg.Personalization.MilenageUSIM != nil) {
-		// 1. Add SELECT command first for custom applets only if we have data to follow
-		// Format: 00 A4 04 00 [Lc] [AID]
-		selectAPDU := make([]byte, 0, 5+len(instanceAID))
-		selectAPDU = append(selectAPDU, 0x00, 0xA4, 0x04, 0x00, byte(len(instanceAID)))
-		selectAPDU = append(selectAPDU, instanceAID...)
-		processData = append(processData, selectAPDU)
-
-		// 2. Add explicit APDUs if provided
-		for _, apduHex := range cfg.Personalization.APDUs {
-			apdu, err := hex.DecodeString(strings.ReplaceAll(apduHex, " ", ""))
-			if err != nil {
-				return fmt.Errorf("parse APDU: %w", err)
-			}
-			processData = append(processData, apdu)
+	if cfg.Personalization != nil && cfg.Personalization.MilenageUSIM != nil {
+		// Build C9 TLV parameters for Milenage USIM applet
+		c9Params, err = buildMilenageC9Params(cfg.Personalization.MilenageUSIM)
+		if err != nil {
+			return fmt.Errorf("build Milenage C9 params: %w", err)
 		}
-
-		// 3. Or build from structured Milenage config
-		if cfg.Personalization.MilenageUSIM != nil {
-			apdus, err := buildMilenageAPDUs(cfg.Personalization.MilenageUSIM)
-			if err != nil {
-				return fmt.Errorf("build Milenage APDUs: %w", err)
-			}
-			processData = append(processData, apdus...)
-		}
+	} else {
+		// Default: empty C9 params (single 0x00 byte)
+		c9Params = []byte{0x00}
 	}
 
 	// Check if template already has a PE-Application with same loadPackageAID
@@ -838,8 +822,7 @@ func addAppletFromGPConfig(profile *Profile, cfg *sim.GPAppletLoadConfig) error 
 				InstanceAID:                 instanceAID,
 				ApplicationPrivileges:       []byte{0x00}, // 1 byte, no privileges
 				LifeCycleState:              0x07,         // Selectable
-				ApplicationSpecificParamsC9: []byte{0x00}, // Correct content, encoder will add C9 tag -> C9 01 00
-				ProcessData:                 processData,
+				ApplicationSpecificParamsC9: c9Params,     // Install Parameters (TLV format)
 			},
 		},
 	}
@@ -895,43 +878,130 @@ func addAppletFromGPConfig(profile *Profile, cfg *sim.GPAppletLoadConfig) error 
 	return nil
 }
 
-// buildMilenageAPDUs builds personalization APDUs for Milenage USIM applet.
+// buildMilenageC9Params builds Install Parameters (C9) for Milenage USIM applet.
 //
-// Command format requested by user:
-//   - SELECT AID: 00 A4 04 00 09 AID
-//   - LOAD KEYS (0x10): 80 10 00 00 Lc [Tag 80 Ki] [Tag 81 OPc + 00]
-//   - LOAD IMSI (0x10): 80 10 02 00 08 [IMSI BCD]
-//   - SET SQN (0x11): 80 11 00 00 06 [SQN]
+// C9 Parameters format (TLV):
+//
+//	Tag 0x80: Ki (16 bytes)
+//	Tag 0x81: OPc (16 bytes)
+//	Tag 0x82: SQN (6 bytes)
+//	Tag 0x83: IMSI (9 bytes: length + 8 bytes BCD)
+//	Tag 0x85: AMF (2 bytes) - optional
+//
+// Example: 80 10 [Ki] 81 10 [OPc] 82 06 [SQN] 83 09 [IMSI]
+func buildMilenageC9Params(cfg *sim.MilenageUSIMPersonalization) ([]byte, error) {
+	var params []byte
+
+	// 1. Ki (Tag 0x80, Len 0x10)
+	ki, err := hex.DecodeString(cfg.Ki)
+	if err != nil {
+		return nil, fmt.Errorf("parse Ki: %w", err)
+	}
+	if len(ki) != 16 {
+		return nil, fmt.Errorf("Ki must be 16 bytes, got %d", len(ki))
+	}
+	params = append(params, 0x80, 0x10)
+	params = append(params, ki...)
+
+	// 2. OPc (Tag 0x81, Len 0x10)
+	opc, err := hex.DecodeString(cfg.OPc)
+	if err != nil {
+		return nil, fmt.Errorf("parse OPc: %w", err)
+	}
+	if len(opc) != 16 {
+		return nil, fmt.Errorf("OPc must be 16 bytes, got %d", len(opc))
+	}
+	params = append(params, 0x81, 0x10)
+	params = append(params, opc...)
+
+	// 3. SQN (Tag 0x82, Len 0x06)
+	sqn, err := hex.DecodeString(cfg.SQN)
+	if err != nil {
+		return nil, fmt.Errorf("parse SQN: %w", err)
+	}
+	if len(sqn) != 6 {
+		return nil, fmt.Errorf("SQN must be 6 bytes, got %d", len(sqn))
+	}
+	params = append(params, 0x82, 0x06)
+	params = append(params, sqn...)
+
+	// 4. IMSI (Tag 0x83, Len 0x09)
+	if cfg.IMSI != "" {
+		imsiBCD := encodeIMSIForApplet(cfg.IMSI)
+		if len(imsiBCD) != 9 {
+			return nil, fmt.Errorf("encoded IMSI must be 9 bytes, got %d", len(imsiBCD))
+		}
+		params = append(params, 0x83, 0x09)
+		params = append(params, imsiBCD...)
+	}
+
+	// 5. AMF (Tag 0x85, Len 0x02) - optional
+	if cfg.AMF != "" {
+		amf, err := hex.DecodeString(cfg.AMF)
+		if err != nil {
+			return nil, fmt.Errorf("parse AMF: %w", err)
+		}
+		if len(amf) != 2 {
+			return nil, fmt.Errorf("AMF must be 2 bytes, got %d", len(amf))
+		}
+		params = append(params, 0x85, 0x02)
+		params = append(params, amf...)
+	}
+
+	return params, nil
+}
+
+// buildMilenageAPDUs builds personalization APDUs for Milenage USIM applet.
+// DEPRECATED: Use buildMilenageC9Params instead for SGP.22 profiles.
+//
+// Commands for milenage_usim_standalone.cap applet:
+//   - LOAD K+OPc (INS=10, P1=00): 80 10 00 00 20 K(16) OPc(16)
+//   - LOAD IMSI (INS=10, P1=02):  80 10 02 00 09 IMSI(9 bytes BCD)
+//   - SET SQN (INS=11, P1=00):    80 11 00 00 06 SQN(6)
+//
+// Note: AMF is loaded together with K+OP via P1=01 (not supported here, use APDUs for that)
 func buildMilenageAPDUs(cfg *sim.MilenageUSIMPersonalization) ([][]byte, error) {
 	var apdus [][]byte
 
-	// 1. LOAD KEYS (CLA=80, INS=10, P1=00, P2=00)
-	// Ki Data: Tag 80, Len 10, Data (16 bytes)
-	ki, _ := hex.DecodeString(cfg.Ki)
-	kiPart := append([]byte{0x80, 0x10}, ki...)
+	// 1. LOAD K+OPc (CLA=80, INS=10, P1=00, P2=00, Lc=20)
+	// Format: K(16 bytes) + OPc(16 bytes) - NO TAGS!
+	ki, err := hex.DecodeString(cfg.Ki)
+	if err != nil || len(ki) != 16 {
+		return nil, fmt.Errorf("Ki must be 32 hex digits (16 bytes)")
+	}
 
-	// OPc Data: Tag 81, Data (16 bytes)
-	opc, _ := hex.DecodeString(cfg.OPc)
-	opcPart := append([]byte{0x81, byte(len(opc))}, opc...)
+	opc, err := hex.DecodeString(cfg.OPc)
+	if err != nil || len(opc) != 16 {
+		return nil, fmt.Errorf("OPc must be 32 hex digits (16 bytes)")
+	}
 
-	keysData := append(kiPart, opcPart...)
-	loadKeysAPDU := []byte{0x80, 0x10, 0x00, 0x00, byte(len(keysData))}
+	// K + OPc directly, no TLV
+	keysData := append(ki, opc...)
+	loadKeysAPDU := []byte{0x80, 0x10, 0x00, 0x00, 0x20} // Lc=32 (0x20)
 	loadKeysAPDU = append(loadKeysAPDU, keysData...)
 	apdus = append(apdus, loadKeysAPDU)
 
-	// 2. LOAD IMSI (CLA=80, INS=10, P1=02, P2=00)
-	// User requested specific BCD: 82 29 05 88 00 00 00 10
-	imsiBCD := []byte{0x82, 0x29, 0x05, 0x88, 0x00, 0x00, 0x00, 0x10}
-	loadImsiAPDU := []byte{0x80, 0x10, 0x02, 0x00, 0x08}
-	loadImsiAPDU = append(loadImsiAPDU, imsiBCD...)
-	apdus = append(apdus, loadImsiAPDU)
-
-	// 3. SET SQN (CLA=80, INS=11, P1=00, P2=00)
-	// User requested specific SQN format: 80 11 00 00 06 ...
-	sqn, _ := hex.DecodeString(cfg.SQN)
+	// 2. SET SQN (CLA=80, INS=11, P1=00, P2=00, Lc=06)
+	// IMPORTANT: INS=11 for SQN, not INS=10!
+	sqn, err := hex.DecodeString(cfg.SQN)
+	if err != nil || len(sqn) != 6 {
+		return nil, fmt.Errorf("SQN must be 12 hex digits (6 bytes)")
+	}
 	setSqnAPDU := []byte{0x80, 0x11, 0x00, 0x00, 0x06}
 	setSqnAPDU = append(setSqnAPDU, sqn...)
 	apdus = append(apdus, setSqnAPDU)
+
+	// 3. LOAD IMSI (CLA=80, INS=10, P1=02, P2=00, Lc=09)
+	// Format: 9 bytes BCD (length byte + 8 bytes data)
+	if cfg.IMSI != "" {
+		imsiBCD := encodeIMSIForApplet(cfg.IMSI)
+		if len(imsiBCD) != 9 {
+			return nil, fmt.Errorf("encoded IMSI must be 9 bytes, got %d", len(imsiBCD))
+		}
+		loadImsiAPDU := []byte{0x80, 0x10, 0x02, 0x00, 0x09}
+		loadImsiAPDU = append(loadImsiAPDU, imsiBCD...)
+		apdus = append(apdus, loadImsiAPDU)
+	}
 
 	return apdus, nil
 }
@@ -950,29 +1020,26 @@ func encodeIMSIForApplet(imsi string) []byte {
 		return nil
 	}
 
-	// IMSI encoding: first byte is number of digits (e.g. 15 = 0x0F)
+	// IMSI encoding for applet:
+	// Byte 0: Number of BCD bytes (always 8 for standard IMSI)
+	// Bytes 1-8: IMSI in BCD format (two digits per byte, low nibble first)
 	result := make([]byte, 9)
-	result[0] = byte(len(digits))
+	result[0] = 0x08 // Always 8 BCD bytes
 
-	// First nibble: 9 (odd parity) or 1 (even parity) based on digit count
+	// Pad with F if odd number of digits
 	if len(digits)%2 == 1 {
-		result[1] = 0x09 | (digits[0] << 4)
-	} else {
-		result[1] = 0x01 | (digits[0] << 4)
+		digits = append(digits, 0xF)
 	}
 
-	// Pack remaining digits in BCD, two per byte, swapped nibbles
-	idx := 1
-	for i := 1; i < len(digits); i += 2 {
-		idx++
+	// Pack digits into BCD: first digit in high nibble, second digit in low nibble
+	for i := 0; i < len(digits) && i < 16; i += 2 {
+		idx := 1 + (i / 2)
 		if idx >= 9 {
 			break
 		}
-		if i+1 < len(digits) {
-			result[idx] = digits[i] | (digits[i+1] << 4)
-		} else {
-			result[idx] = digits[i] | 0xF0
-		}
+		first := digits[i]
+		second := digits[i+1]
+		result[idx] = (first << 4) | second
 	}
 
 	return result
