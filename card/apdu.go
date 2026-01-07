@@ -922,9 +922,16 @@ func parseAuthResponse(data []byte, context byte, result *AuthenticateResult) er
 		copy(result.RES, data[idx:idx+resLen])
 		idx += resLen
 
-		// CK
+		// CK - may have optional tag 0xDC before length
 		if idx >= len(data) {
 			return fmt.Errorf("missing CK length")
+		}
+		// Skip optional tag 0xDC (some applets use tagged format)
+		if data[idx] == 0xDC {
+			idx++
+			if idx >= len(data) {
+				return fmt.Errorf("missing CK length after tag")
+			}
 		}
 		ckLen := int(data[idx])
 		idx++
@@ -935,9 +942,16 @@ func parseAuthResponse(data []byte, context byte, result *AuthenticateResult) er
 		copy(result.CK, data[idx:idx+ckLen])
 		idx += ckLen
 
-		// IK
+		// IK - may have optional tag 0xDD before length
 		if idx >= len(data) {
 			return fmt.Errorf("missing IK length")
+		}
+		// Skip optional tag 0xDD (some applets use tagged format)
+		if data[idx] == 0xDD {
+			idx++
+			if idx >= len(data) {
+				return fmt.Errorf("missing IK length after tag")
+			}
 		}
 		ikLen := int(data[idx])
 		idx++
