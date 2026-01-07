@@ -35,6 +35,13 @@ var (
 
 	// esim export flags
 	esimExportOutput string
+
+	// esim card flags
+	esimCardICCID string
+
+	// esim download flags
+	esimSMDPURL   string
+	esimMatchingID string
 )
 
 var esimCmd = &cobra.Command{
@@ -139,42 +146,66 @@ Examples:
 	Run:  runEsimExport,
 }
 
+var esimCardCmd = &cobra.Command{
+	Use:   "card",
+	Short: "eUICC card management operations",
+}
+
+var esimCardListCmd = &cobra.Command{
+	Use:   "list",
+	Short: "List profiles on eUICC",
+	Run:   runEsimCardList,
+}
+
+var esimCardEnableCmd = &cobra.Command{
+	Use:   "enable <iccid>",
+	Short: "Enable profile on eUICC",
+	Args:  cobra.ExactArgs(1),
+	Run:   runEsimCardEnable,
+}
+
+var esimCardDisableCmd = &cobra.Command{
+	Use:   "disable <iccid>",
+	Short: "Disable profile on eUICC",
+	Args:  cobra.ExactArgs(1),
+	Run:   runEsimCardDisable,
+}
+
+var esimCardDeleteCmd = &cobra.Command{
+	Use:   "delete <iccid>",
+	Short: "Delete profile from eUICC",
+	Args:  cobra.ExactArgs(1),
+	Run:   runEsimCardDelete,
+}
+
+var esimDownloadCmd = &cobra.Command{
+	Use:   "download",
+	Short: "Download profile from SM-DP+",
+	Run:   runEsimDownload,
+}
+
+var esimInstallCmd = &cobra.Command{
+	Use:   "install <file.bpp>",
+	Short: "Install profile from BPP file",
+	Args:  cobra.ExactArgs(1),
+	Run:   runEsimInstall,
+}
+
 func init() {
-	// esim decode flags
-	esimDecodeCmd.Flags().BoolVarP(&esimVerbose, "verbose", "v", false,
-		"Show detailed information including raw hex data")
+	// ... (existing init code)
+	
+	// esim card flags
+	esimCardCmd.AddCommand(esimCardListCmd)
+	esimCardCmd.AddCommand(esimCardEnableCmd)
+	esimCardCmd.AddCommand(esimCardDisableCmd)
+	esimCardCmd.AddCommand(esimCardDeleteCmd)
 
-	// esim validate flags
-	esimValidateCmd.Flags().StringVarP(&esimTemplate, "template", "t", "",
-		"Template profile to compare against (DER or ASN.1 text)")
-	esimValidateCmd.Flags().BoolVar(&esimValidateStrict, "strict", false,
-		"Require exact match with template (errors instead of warnings)")
-	esimValidateCmd.Flags().BoolVar(&esimCheckLengths, "check-lengths", false,
-		"Check EF file sizes match template")
-
-	// esim build flags
-	esimBuildCmd.Flags().StringVarP(&esimConfig, "config", "c", "",
-		"JSON configuration file (required)")
-	esimBuildCmd.Flags().StringVarP(&esimBuildTpl, "template", "t", "",
-		"Template profile file - DER (.der) or ASN.1 text (.txt, .asn1) (required)")
-	esimBuildCmd.Flags().StringVarP(&esimOutput, "output", "o", "profile.der",
-		"Output profile DER file")
-	esimBuildCmd.Flags().StringVar(&esimAppletCAP, "applet", "",
-		"CAP file to include as PE-Application (requires AID config in JSON)")
-	esimBuildCmd.Flags().BoolVar(&esimAppletAuth, "use-applet-auth", false,
-		"Delegate authentication to applet (algorithmID=3)")
-
-	_ = esimBuildCmd.MarkFlagRequired("config")
-	_ = esimBuildCmd.MarkFlagRequired("template")
-
-	// esim compile flags
-	esimCompileCmd.Flags().StringVarP(&esimCompileOutput, "output", "o", "",
-		"Output DER file (required)")
-	_ = esimCompileCmd.MarkFlagRequired("output")
-
-	// esim export flags
-	esimExportCmd.Flags().StringVarP(&esimExportOutput, "output", "o", "",
-		"Output TXT file (prints to stdout if not specified)")
+	// esim download flags
+	esimDownloadCmd.Flags().StringVar(&esimSMDPURL, "smdp", "", "SM-DP+ server URL (required)")
+	esimDownloadCmd.Flags().StringVar(&esimMatchingID, "matching-id", "", "Matching ID / Activation Code (required)")
+	esimDownloadCmd.Flags().StringVarP(&esimOutput, "output", "o", "", "Output BPP file (if specified, profile will not be installed)")
+	_ = esimDownloadCmd.MarkFlagRequired("smdp")
+	_ = esimDownloadCmd.MarkFlagRequired("matching-id")
 
 	// Register subcommands
 	esimCmd.AddCommand(esimDecodeCmd)
@@ -182,9 +213,172 @@ func init() {
 	esimCmd.AddCommand(esimBuildCmd)
 	esimCmd.AddCommand(esimCompileCmd)
 	esimCmd.AddCommand(esimExportCmd)
+	esimCmd.AddCommand(esimCardCmd)
+	esimCmd.AddCommand(esimDownloadCmd)
+	esimCmd.AddCommand(esimInstallCmd)
 
 	// Register esim command to root
 	rootCmd.AddCommand(esimCmd)
+}
+
+func runEsimCardList(cmd *cobra.Command, args []string) {
+	reader, err := connectAndPrepareReader()
+	if err != nil {
+		output.PrintError(err.Error())
+		os.Exit(1)
+	}
+	defer reader.Close()
+
+	euicc := esim.NewEUICC(reader)
+	if err := euicc.Init(); err != nil {
+		output.PrintError(err.Error())
+		os.Exit(1)
+	}
+	defer euicc.Close()
+
+	profiles, err := euicc.ListProfiles()
+	if err != nil {
+		output.PrintError(err.Error())
+		os.Exit(1)
+	}
+
+	if outputJSON {
+		data, _ := json.MarshalIndent(profiles, "", "  ")
+		fmt.Println(string(data))
+		return
+	}
+
+	fmt.Printf("%-20s %-10s %-20s %-20s\n", "ICCID", "State", "Nickname", "Provider")
+	fmt.Println(strings.Repeat("-", 75))
+	for _, p := range profiles {
+		fmt.Printf("%-20s %-10s %-20s %-20s\n", p.ICCID, p.State, p.Nickname, p.ServiceProvider)
+	}
+}
+
+func runEsimCardEnable(cmd *cobra.Command, args []string) {
+	iccid := args[0]
+	reader, err := connectAndPrepareReader()
+	if err != nil {
+		output.PrintError(err.Error())
+		os.Exit(1)
+	}
+	defer reader.Close()
+
+	euicc := esim.NewEUICC(reader)
+	if err := euicc.Init(); err != nil {
+		output.PrintError(err.Error())
+		os.Exit(1)
+	}
+	defer euicc.Close()
+
+	if err := euicc.EnableProfile(iccid); err != nil {
+		output.PrintError(fmt.Sprintf("Failed to enable profile: %v", err))
+		os.Exit(1)
+	}
+	output.PrintSuccess("Profile enabled successfully")
+}
+
+func runEsimCardDisable(cmd *cobra.Command, args []string) {
+	iccid := args[0]
+	reader, err := connectAndPrepareReader()
+	if err != nil {
+		output.PrintError(err.Error())
+		os.Exit(1)
+	}
+	defer reader.Close()
+
+	euicc := esim.NewEUICC(reader)
+	if err := euicc.Init(); err != nil {
+		output.PrintError(err.Error())
+		os.Exit(1)
+	}
+	defer euicc.Close()
+
+	if err := euicc.DisableProfile(iccid); err != nil {
+		output.PrintError(fmt.Sprintf("Failed to disable profile: %v", err))
+		os.Exit(1)
+	}
+	output.PrintSuccess("Profile disabled successfully")
+}
+
+func runEsimCardDelete(cmd *cobra.Command, args []string) {
+	iccid := args[0]
+	reader, err := connectAndPrepareReader()
+	if err != nil {
+		output.PrintError(err.Error())
+		os.Exit(1)
+	}
+	defer reader.Close()
+
+	euicc := esim.NewEUICC(reader)
+	if err := euicc.Init(); err != nil {
+		output.PrintError(err.Error())
+		os.Exit(1)
+	}
+	defer euicc.Close()
+
+	if err := euicc.DeleteProfile(iccid); err != nil {
+		output.PrintError(fmt.Sprintf("Failed to delete profile: %v", err))
+		os.Exit(1)
+	}
+	output.PrintSuccess("Profile deleted successfully")
+}
+
+func runEsimDownload(cmd *cobra.Command, args []string) {
+	reader, err := connectAndPrepareReader()
+	if err != nil {
+		output.PrintError(err.Error())
+		os.Exit(1)
+	}
+	defer reader.Close()
+
+	euicc := esim.NewEUICC(reader)
+	if err := euicc.Init(); err != nil {
+		output.PrintError(err.Error())
+		os.Exit(1)
+	}
+	defer euicc.Close()
+
+	smdp := esim.NewSMDPClient(esimSMDPURL)
+	lpa := esim.NewLPA(euicc, smdp)
+
+	if esimOutput != "" {
+		if err := lpa.DownloadProfileToFile(esimMatchingID, esimOutput); err != nil {
+			output.PrintError(fmt.Sprintf("Download failed: %v", err))
+			os.Exit(1)
+		}
+		output.PrintSuccess(fmt.Sprintf("Profile downloaded and saved to %s", esimOutput))
+	} else {
+		if err := lpa.DownloadProfile(esimMatchingID); err != nil {
+			output.PrintError(fmt.Sprintf("Download and installation failed: %v", err))
+			os.Exit(1)
+		}
+		output.PrintSuccess("Profile downloaded and installed successfully")
+	}
+}
+
+func runEsimInstall(cmd *cobra.Command, args []string) {
+	filename := args[0]
+	reader, err := connectAndPrepareReader()
+	if err != nil {
+		output.PrintError(err.Error())
+		os.Exit(1)
+	}
+	defer reader.Close()
+
+	euicc := esim.NewEUICC(reader)
+	if err := euicc.Init(); err != nil {
+		output.PrintError(err.Error())
+		os.Exit(1)
+	}
+	defer euicc.Close()
+
+	lpa := esim.NewLPA(euicc, nil)
+	if err := lpa.InstallProfileFromFile(filename); err != nil {
+		output.PrintError(fmt.Sprintf("Installation failed: %v", err))
+		os.Exit(1)
+	}
+	output.PrintSuccess("Profile installed successfully from file")
 }
 
 func runEsimDecode(cmd *cobra.Command, args []string) {

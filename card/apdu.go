@@ -144,6 +144,11 @@ func (r *Reader) SendAPDU(apdu []byte) (*APDUResponse, error) {
 
 // Select selects a file or application by ID
 func (r *Reader) Select(fileID []byte) (*APDUResponse, error) {
+	return r.SelectOnChannel(fileID, 0)
+}
+
+// SelectOnChannel selects a file or application on a specific logical channel
+func (r *Reader) SelectOnChannel(fileID []byte, channel byte) (*APDUResponse, error) {
 	// SELECT command: CLA=00, INS=A4, P1=00, P2=04 for AID, P2=00 for file
 	p1 := byte(0x00)
 	p2 := byte(0x04) // Return FCP template
@@ -160,7 +165,7 @@ func (r *Reader) Select(fileID []byte) (*APDUResponse, error) {
 
 	tryOnce := func(p1, p2 byte, withLe bool) (*APDUResponse, error) {
 		apdu := make([]byte, 5+len(fileID), 6+len(fileID))
-		apdu[0] = 0x00 // CLA
+		apdu[0] = channel // CLA with logical channel bits
 		apdu[1] = INS_SELECT
 		apdu[2] = p1
 		apdu[3] = p2
@@ -176,7 +181,7 @@ func (r *Reader) Select(fileID []byte) (*APDUResponse, error) {
 		}
 		// Handle GET RESPONSE if needed
 		if resp.HasMoreData() {
-			return r.GetResponse(resp.SW2)
+			return r.GetResponseOnChannel(resp.SW2, channel)
 		}
 		return resp, nil
 	}
@@ -186,32 +191,57 @@ func (r *Reader) Select(fileID []byte) (*APDUResponse, error) {
 		return nil, err
 	}
 
-	// Compatibility fallbacks: some SIM/UICC stacks reject certain "return data" options (P2) and/or
-	// require an explicit Le byte. Try common variants on 6A86 for file-id selection.
+	// Compatibility fallbacks
 	if len(fileID) == 2 && resp != nil && resp.SW() == SW_WRONG_P1P2 {
-		// Try different P2 values: 00 (FCI), 0C (no response data)
 		for _, p2cand := range []byte{0x00, 0x0C} {
 			resp2, err2 := tryOnce(p1, p2cand, false)
 			if err2 == nil && resp2 != nil && resp2.SW() != SW_WRONG_P1P2 {
-				return resp2, nil
-			}
-			if err2 == nil && resp2 != nil && resp2.IsOK() {
-				return resp2, nil
-			}
-		}
-		// Try with Le for the same P2 values (including original)
-		for _, p2cand := range []byte{p2, 0x00, 0x0C} {
-			resp2, err2 := tryOnce(p1, p2cand, true)
-			if err2 == nil && resp2 != nil && resp2.SW() != SW_WRONG_P1P2 {
-				return resp2, nil
-			}
-			if err2 == nil && resp2 != nil && resp2.IsOK() {
 				return resp2, nil
 			}
 		}
 	}
 
 	return resp, nil
+}
+
+// LogicChannelOpen opens a new logical channel
+func (r *Reader) LogicChannelOpen() (byte, error) {
+	// MANAGE CHANNEL: CLA=00, INS=70, P1=00 (open), P2=00 (next available)
+	apdu := []byte{0x00, 0x70, 0x00, 0x00, 0x01}
+	resp, err := r.SendAPDU(apdu)
+	if err != nil {
+		return 0, err
+	}
+	if !resp.IsOK() {
+		return 0, fmt.Errorf("failed to open logical channel: %s", SWToString(resp.SW()))
+	}
+	if len(resp.Data) == 0 {
+		return 0, fmt.Errorf("no channel number returned")
+	}
+	return resp.Data[0], nil
+}
+
+// LogicChannelClose closes a logical channel
+func (r *Reader) LogicChannelClose(channel byte) error {
+	if channel == 0 {
+		return nil // Channel 0 cannot be closed via MANAGE CHANNEL
+	}
+	// MANAGE CHANNEL: CLA=00, INS=70, P1=80 (close), P2=channel
+	apdu := []byte{0x00, 0x70, 0x80, channel}
+	resp, err := r.SendAPDU(apdu)
+	if err != nil {
+		return err
+	}
+	if !resp.IsOK() {
+		return fmt.Errorf("failed to close logical channel %d: %s", channel, SWToString(resp.SW()))
+	}
+	return nil
+}
+
+// GetResponseOnChannel retrieves response data from the card on a specific channel
+func (r *Reader) GetResponseOnChannel(length byte, channel byte) (*APDUResponse, error) {
+	apdu := []byte{channel, INS_GET_RESPONSE, 0x00, 0x00, length}
+	return r.SendAPDU(apdu)
 }
 
 // SelectByPath selects a file by path from MF
