@@ -1915,11 +1915,14 @@ func encodeApplicationInstance(inst *ApplicationInstance) []byte {
 	}
 
 	// processData - [PRIVATE 2] SEQUENCE OF OCTET STRING (0xE2)
+	// According to some implementations and GP, this is the expected tag for personalization data
 	if len(inst.ProcessData) > 0 {
 		var pdData []byte
 		for _, apdu := range inst.ProcessData {
-			pdData = append(pdData, asn1.Marshal(0x04, nil, apdu...)...) // OCTET STRING
+			// Each APDU is an OCTET STRING (Tag 04)
+			pdData = append(pdData, asn1.Marshal(0x04, nil, apdu...)...)
 		}
+		// Wrap in [PRIVATE 2] Constructed (0xE2)
 		data = append(data, asn1.Marshal(0xE2, nil, pdData...)...)
 	}
 

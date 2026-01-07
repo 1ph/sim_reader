@@ -910,10 +910,9 @@ func buildMilenageAPDUs(cfg *sim.MilenageUSIMPersonalization) ([][]byte, error) 
 	ki, _ := hex.DecodeString(cfg.Ki)
 	kiPart := append([]byte{0x80, 0x10}, ki...)
 
-	// OPc Data: Tag 81, Data (16 bytes) + Extra 00 byte per user request
+	// OPc Data: Tag 81, Data (16 bytes)
 	opc, _ := hex.DecodeString(cfg.OPc)
-	opcWithExtra := append(opc, 0x00)
-	opcPart := append([]byte{0x81, byte(len(opcWithExtra))}, opcWithExtra...)
+	opcPart := append([]byte{0x81, byte(len(opc))}, opc...)
 
 	keysData := append(kiPart, opcPart...)
 	loadKeysAPDU := []byte{0x80, 0x10, 0x00, 0x00, byte(len(keysData))}
