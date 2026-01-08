@@ -192,8 +192,42 @@ var esimInstallCmd = &cobra.Command{
 }
 
 func init() {
-	// ... (existing init code)
-	
+	// esim decode flags
+	esimDecodeCmd.Flags().BoolVarP(&esimVerbose, "verbose", "v", false,
+		"Show detailed information including raw hex data")
+
+	// esim validate flags
+	esimValidateCmd.Flags().StringVarP(&esimTemplate, "template", "t", "",
+		"Template profile to compare against (DER or ASN.1 text)")
+	esimValidateCmd.Flags().BoolVar(&esimValidateStrict, "strict", false,
+		"Require exact match with template (errors instead of warnings)")
+	esimValidateCmd.Flags().BoolVar(&esimCheckLengths, "check-lengths", false,
+		"Check EF file sizes match template")
+
+	// esim build flags
+	esimBuildCmd.Flags().StringVarP(&esimConfig, "config", "c", "",
+		"JSON configuration file (required)")
+	esimBuildCmd.Flags().StringVarP(&esimBuildTpl, "template", "t", "",
+		"Template profile file - DER (.der) or ASN.1 text (.txt, .asn1) (required)")
+	esimBuildCmd.Flags().StringVarP(&esimOutput, "output", "o", "profile.der",
+		"Output profile DER file")
+	esimBuildCmd.Flags().StringVar(&esimAppletCAP, "applet", "",
+		"CAP file to include as PE-Application (requires AID config in JSON)")
+	esimBuildCmd.Flags().BoolVar(&esimAppletAuth, "use-applet-auth", false,
+		"Delegate authentication to applet (algorithmID=3)")
+
+	_ = esimBuildCmd.MarkFlagRequired("config")
+	_ = esimBuildCmd.MarkFlagRequired("template")
+
+	// esim compile flags
+	esimCompileCmd.Flags().StringVarP(&esimCompileOutput, "output", "o", "",
+		"Output DER file (required)")
+	_ = esimCompileCmd.MarkFlagRequired("output")
+
+	// esim export flags
+	esimExportCmd.Flags().StringVarP(&esimExportOutput, "output", "o", "",
+		"Output TXT file (prints to stdout if not specified)")
+
 	// esim card flags
 	esimCardCmd.AddCommand(esimCardListCmd)
 	esimCardCmd.AddCommand(esimCardEnableCmd)
