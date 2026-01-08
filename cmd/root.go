@@ -15,13 +15,14 @@ var (
 	version = "3.3.0"
 
 	// Global flags
-	readerIndex int
-	admKey      string
-	admKey2     string
-	admKey3     string
-	admKey4     string
-	pin1        string
-	outputJSON  bool
+	readerIndex    int
+	admKey         string
+	admKey2        string
+	admKey3        string
+	admKey4        string
+	pin1           string
+	outputJSON     bool
+	showReaderInfo bool
 )
 
 var rootCmd = &cobra.Command{
@@ -56,6 +57,8 @@ func init() {
 		"PIN1 code if card is PIN protected")
 	rootCmd.PersistentFlags().BoolVar(&outputJSON, "json", false,
 		"Output in JSON format")
+	rootCmd.PersistentFlags().BoolVarP(&showReaderInfo, "info", "i", false,
+		"Show detailed reader and card information (ATR)")
 }
 
 // Execute runs the root command
@@ -110,7 +113,8 @@ func connectAndPrepareReader() (*card.Reader, error) {
 		}
 	}
 
-	if !outputJSON {
+	// Show reader info if requested
+	if !outputJSON && showReaderInfo {
 		output.PrintReaderInfo(reader.Name(), reader.ATRHex())
 	}
 

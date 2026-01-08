@@ -2,10 +2,12 @@ package esim
 
 import (
 	"bytes"
+	"crypto/tls"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 )
 
@@ -14,10 +16,19 @@ type SMDPClient struct {
 	HTTPClient *http.Client
 }
 
-func NewSMDPClient(smdpURL string) *SMDPClient {
+func NewSMDPClient(smdpURL string, insecure bool) *SMDPClient {
+	client := &http.Client{}
+	
+	if insecure {
+		// Skip TLS certificate verification for testing
+		client.Transport = &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+		}
+	}
+	
 	return &SMDPClient{
 		URL:        smdpURL,
-		HTTPClient: &http.Client{},
+		HTTPClient: client,
 	}
 }
 
@@ -30,12 +41,15 @@ type CommonResponse struct {
 }
 
 func (s *SMDPClient) post(api string, request interface{}, response interface{}) error {
-	url := fmt.Sprintf("https://%s/gsma/rsp2/es9plus/%s", s.URL, api)
+	url := fmt.Sprintf("%s/gsma/rsp2/es9plus/%s", s.URL, api)
 	
 	jsonData, err := json.Marshal(request)
 	if err != nil {
 		return err
 	}
+	
+	log.Printf("SM-DP+ >> POST %s", url)
+	log.Printf("SM-DP+ >> Request: %s", string(jsonData))
 	
 	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
 	if err != nil {
@@ -52,24 +66,62 @@ func (s *SMDPClient) post(api string, request interface{}, response interface{})
 	}
 	defer resp.Body.Close()
 	
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("HTTP error: %d %s", resp.StatusCode, resp.Status)
-	}
-	
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return err
 	}
 	
-	return json.Unmarshal(body, response)
+	log.Printf("SM-DP+ << Status: %d %s", resp.StatusCode, resp.Status)
+	log.Printf("SM-DP+ << Response: %s", string(body))
+	
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("HTTP error: %d %s", resp.StatusCode, resp.Status)
+	}
+	
+	err = json.Unmarshal(body, response)
+	if err != nil {
+		return err
+	}
+	
+	// Check for SM-DP+ errors in response
+	if respMap, ok := response.(*map[string]interface{}); ok {
+		if header, ok := (*respMap)["header"].(map[string]interface{}); ok {
+			if fes, ok := header["functionExecutionStatus"].(map[string]interface{}); ok {
+				if status, ok := fes["status"].(string); ok && status != "Executed-Success" {
+					// Extract error details
+					msg := "Unknown error"
+					if scd, ok := fes["statusCodeData"].(map[string]interface{}); ok {
+						if m, ok := scd["message"].(string); ok {
+							msg = m
+						}
+					}
+					return fmt.Errorf("SM-DP+ error: %s", msg)
+				}
+			}
+		}
+	}
+	
+	return nil
 }
 
-func (s *SMDPClient) AuthenticateClient(matchingID string, challenge []byte, info1 []byte) (map[string]interface{}, error) {
+func (s *SMDPClient) InitiateAuthentication(smdpAddress string, challenge []byte, info1 []byte) (map[string]interface{}, error) {
 	req := map[string]interface{}{
-		"header": map[string]interface{}{},
-		"matchingId": matchingID,
+		"header":         map[string]interface{}{},
+		"smdpAddress":    smdpAddress,
 		"euiccChallenge": base64.StdEncoding.EncodeToString(challenge),
-		"euiccInfo1": base64.StdEncoding.EncodeToString(info1),
+		"euiccInfo1":     base64.StdEncoding.EncodeToString(info1),
+	}
+	
+	var resp map[string]interface{}
+	err := s.post("initiateAuthentication", req, &resp)
+	return resp, err
+}
+
+func (s *SMDPClient) AuthenticateClient(transactionID string, authenticateServerResponse []byte) (map[string]interface{}, error) {
+	req := map[string]interface{}{
+		"header":                      map[string]interface{}{},
+		"transactionId":               transactionID,
+		"authenticateServerResponse": base64.StdEncoding.EncodeToString(authenticateServerResponse),
 	}
 	
 	var resp map[string]interface{}

@@ -7,6 +7,8 @@ import (
 	"os"
 	"strings"
 
+	"github.com/jedib0t/go-pretty/v6/table"
+	"github.com/jedib0t/go-pretty/v6/text"
 	"github.com/spf13/cobra"
 
 	"sim_reader/esim"
@@ -19,9 +21,9 @@ var (
 	esimVerbose bool
 
 	// esim validate flags
-	esimTemplate      string
+	esimTemplate       string
 	esimValidateStrict bool
-	esimCheckLengths  bool
+	esimCheckLengths   bool
 
 	// esim build flags
 	esimConfig     string
@@ -40,8 +42,10 @@ var (
 	esimCardICCID string
 
 	// esim download flags
-	esimSMDPURL   string
-	esimMatchingID string
+	esimSMDPURL        string
+	esimMatchingID     string
+	esimActivationCode string
+	esimInsecure       bool
 )
 
 var esimCmd = &cobra.Command{
@@ -181,7 +185,15 @@ var esimCardDeleteCmd = &cobra.Command{
 var esimDownloadCmd = &cobra.Command{
 	Use:   "download",
 	Short: "Download profile from SM-DP+",
-	Run:   runEsimDownload,
+	Long: `Download profile from SM-DP+ server.
+
+Using activation code:
+  sim_reader esim download -s '1$SMDP_ADDRESS$MATCHING_ID'
+  Example: sim_reader esim download -s '1$testsmdpplus1.example.com$variantnats3g'
+
+Using separate flags:
+  sim_reader esim download --smdp testsmdpplus1.example.com --matching-id variantnats3g`,
+	Run: runEsimDownload,
 }
 
 var esimInstallCmd = &cobra.Command{
@@ -235,11 +247,11 @@ func init() {
 	esimCardCmd.AddCommand(esimCardDeleteCmd)
 
 	// esim download flags
-	esimDownloadCmd.Flags().StringVar(&esimSMDPURL, "smdp", "", "SM-DP+ server URL (required)")
-	esimDownloadCmd.Flags().StringVar(&esimMatchingID, "matching-id", "", "Matching ID / Activation Code (required)")
+	esimDownloadCmd.Flags().StringVarP(&esimActivationCode, "activation-code", "s", "", "Activation code (format: 1$SMDP$MATCHING_ID)")
+	esimDownloadCmd.Flags().StringVar(&esimSMDPURL, "smdp", "", "SM-DP+ server URL")
+	esimDownloadCmd.Flags().StringVar(&esimMatchingID, "matching-id", "", "Matching ID")
 	esimDownloadCmd.Flags().StringVarP(&esimOutput, "output", "o", "", "Output BPP file (if specified, profile will not be installed)")
-	_ = esimDownloadCmd.MarkFlagRequired("smdp")
-	_ = esimDownloadCmd.MarkFlagRequired("matching-id")
+	esimDownloadCmd.Flags().BoolVarP(&esimInsecure, "insecure", "k", false, "Skip TLS certificate verification (for testing)")
 
 	// Register subcommands
 	esimCmd.AddCommand(esimDecodeCmd)
@@ -282,11 +294,47 @@ func runEsimCardList(cmd *cobra.Command, args []string) {
 		return
 	}
 
-	fmt.Printf("%-20s %-10s %-20s %-20s\n", "ICCID", "State", "Nickname", "Provider")
-	fmt.Println(strings.Repeat("-", 75))
+	// Print table using output package style
+	t := table.NewWriter()
+	t.SetOutputMirror(os.Stdout)
+	t.SetStyle(table.StyleRounded)
+	t.Style().Color.Header = text.Colors{text.FgCyan, text.Bold}
+	t.Style().Color.Row = text.Colors{text.FgWhite}
+	t.Style().Color.RowAlternate = text.Colors{text.FgHiWhite}
+	t.Style().Options.SeparateRows = false
+
+	t.SetTitle("eUICC PROFILES")
+	t.AppendHeader(table.Row{"ICCID", "State", "Nickname", "Provider", "Profile Name", "Profile Class"})
+
 	for _, p := range profiles {
-		fmt.Printf("%-20s %-10s %-20s %-20s\n", p.ICCID, p.State, p.Nickname, p.ServiceProvider)
+		nickname := p.Nickname
+		if nickname == "" {
+			nickname = "-"
+		}
+		profileName := p.ProfileName
+		if profileName == "" {
+			profileName = "-"
+		}
+
+		// Color state
+		stateColor := text.FgYellow
+		if p.State == "enabled" {
+			stateColor = text.FgGreen
+		}
+
+		t.AppendRow(table.Row{
+			p.ICCID,
+			text.Colors{stateColor}.Sprint(p.State),
+			nickname,
+			p.ServiceProvider,
+			profileName,
+			p.ProfileClass,
+		})
 	}
+
+	fmt.Println()
+	t.Render()
+	fmt.Println()
 }
 
 func runEsimCardEnable(cmd *cobra.Command, args []string) {
@@ -359,6 +407,48 @@ func runEsimCardDelete(cmd *cobra.Command, args []string) {
 }
 
 func runEsimDownload(cmd *cobra.Command, args []string) {
+	// Parse activation code or use flags
+	smdpURL := esimSMDPURL
+	matchingID := esimMatchingID
+
+	activationCode := esimActivationCode
+
+	// If no -a flag, check positional argument
+	if activationCode == "" && len(args) == 1 {
+		activationCode = args[0]
+	}
+
+	if activationCode != "" {
+		// Parse activation code: 1$SMDP_ADDRESS$MATCHING_ID[OID]
+		parts := strings.Split(activationCode, "$")
+
+		if len(parts) < 3 {
+			output.PrintError("Invalid activation code format. Expected: 1$SMDP_ADDRESS$MATCHING_ID")
+			os.Exit(1)
+		}
+
+		if parts[0] != "1" {
+			output.PrintError(fmt.Sprintf("Unsupported activation code version: %s (expected: 1)", parts[0]))
+			os.Exit(1)
+		}
+
+		smdpURL = parts[1]
+		matchingID = parts[2]
+
+		// Optional: parts[3] could be OID for IMEI check, but we ignore it for now
+	} else {
+		// Use flags
+		if smdpURL == "" || matchingID == "" {
+			output.PrintError("Either provide activation code (-s) or use --smdp and --matching-id flags")
+			os.Exit(1)
+		}
+	}
+
+	// Add https:// prefix if not present
+	if !strings.HasPrefix(smdpURL, "http://") && !strings.HasPrefix(smdpURL, "https://") {
+		smdpURL = "https://" + smdpURL
+	}
+
 	reader, err := connectAndPrepareReader()
 	if err != nil {
 		output.PrintError(err.Error())
@@ -373,17 +463,21 @@ func runEsimDownload(cmd *cobra.Command, args []string) {
 	}
 	defer euicc.Close()
 
-	smdp := esim.NewSMDPClient(esimSMDPURL)
+	smdp := esim.NewSMDPClient(smdpURL, esimInsecure)
 	lpa := esim.NewLPA(euicc, smdp)
 
+	// smdpAddress for ES9+ should be without protocol (just hostname)
+	smdpAddress := strings.TrimPrefix(smdpURL, "https://")
+	smdpAddress = strings.TrimPrefix(smdpAddress, "http://")
+
 	if esimOutput != "" {
-		if err := lpa.DownloadProfileToFile(esimMatchingID, esimOutput); err != nil {
+		if err := lpa.DownloadProfileToFile(smdpAddress, matchingID, esimOutput); err != nil {
 			output.PrintError(fmt.Sprintf("Download failed: %v", err))
 			os.Exit(1)
 		}
 		output.PrintSuccess(fmt.Sprintf("Profile downloaded and saved to %s", esimOutput))
 	} else {
-		if err := lpa.DownloadProfile(esimMatchingID); err != nil {
+		if err := lpa.DownloadProfile(smdpAddress, matchingID); err != nil {
 			output.PrintError(fmt.Sprintf("Download and installation failed: %v", err))
 			os.Exit(1)
 		}
@@ -504,7 +598,7 @@ func runEsimBuild(cmd *cobra.Command, args []string) {
 
 		// CLI --applet takes priority: override CAPPath in existing applet config
 		foundApplet := false
-		
+
 		// First, try to find an applet with UseForESIM=true
 		for i := range config.GlobalPlatform.Applets.Loads {
 			if config.GlobalPlatform.Applets.Loads[i].UseForESIM {
@@ -513,7 +607,7 @@ func runEsimBuild(cmd *cobra.Command, args []string) {
 				break
 			}
 		}
-		
+
 		// If no UseForESIM applet, use the first one available
 		if !foundApplet && len(config.GlobalPlatform.Applets.Loads) > 0 {
 			config.GlobalPlatform.Applets.Loads[0].CAPPath = esimAppletCAP

@@ -814,7 +814,7 @@ func PrintProgrammableCardInfo(cardType, atr string) {
 
 	t.AppendRow(table.Row{"Card Type", cardType})
 	t.AppendRow(table.Row{"ATR", atr})
-	
+
 	// Add file IDs based on card type
 	if cardType == "GRv2" || cardType == "Grcard v2 / open5gs (GRv2)" {
 		t.AppendRow(table.Row{"", ""})
@@ -838,7 +838,7 @@ func PrintProgrammableCardInfo(cardType, atr string) {
 		t.AppendRow(table.Row{"Status", colorWarn.Sprint("Not recognized as programmable")})
 		t.AppendRow(table.Row{"Note", "Use -prog-force to override (DANGEROUS!)"})
 	}
-	
+
 	t.Render()
 	fmt.Println()
 }
