@@ -2,7 +2,7 @@
 
 A command-line tool written in Go for reading and writing SIM/USIM/ISIM card parameters using PC/SC smart card readers, with comprehensive eSIM profile management capabilities.
 
-**Version 4.0.0**
+**Version 4.2.0**
 
 ---
 
@@ -49,12 +49,13 @@ This software is provided "AS IS", without warranty of any kind, express or impl
   - **Applet Integration**: Include Java Card applets with personalization data
 - **Advanced ATR Analysis**: Detailed breakdown of voltage, protocols, and transmission parameters (ISO 7816-3)
 - **Programmable SIM Cards**: Modular driver-based support for blank/programmable cards
-  - **Supported**: Grcard v1/v2, sysmocom (GR1, GR2, SJS1, SJA2, SJA5), RuSIM/OX24
+  - **Supported**: Grcard v1/v2, grcardsim, sysmocom (GR1, GR2, SJS1, SJA2, SJA5), RuSIM/OX24, Fairwaves-SIM, OpenCells-SIM, Wavemobile-SIM, gialersim, MagicSIM/SuperSIM/FakeMagicSIM
   - Write cryptographic keys (Ki, OPc/OP)
   - Write Milenage R/C constants
   - Write ICCID, MSISDN, ACC
   - Set PIN/PUK codes
   - Safe dry-run mode for testing
+  - Driver listing with required parameters: `sim_reader write --list-prog-drivers`
 - **Authentication**: Test 3G/4G/5G authentication with Milenage and TUAK algorithms
 - **Test Suite**: Comprehensive conformance testing (46+ tests) with JSON/HTML reports
 - **Card Analysis**: Auto-detect card type by ATR, read EF_DIR, file access conditions

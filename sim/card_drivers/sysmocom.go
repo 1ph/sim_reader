@@ -2,6 +2,7 @@ package card_drivers
 
 import (
 	"fmt"
+	"sim_reader/algorithms"
 	"sim_reader/card"
 	"sim_reader/sim"
 	"strings"
@@ -40,6 +41,16 @@ func (d *SysmocomDriver) Name() string {
 		return "sysmocom sysmoISIM-SJA5"
 	default:
 		return "sysmocom Programmable Card"
+	}
+}
+
+func (d *SysmocomDriver) DriverInfos() []sim.DriverInfo {
+	return []sim.DriverInfo{
+		{Name: "sysmocom sysmoUSIM-GR1", RequiredFields: []string{"ki", "opc", "iccid", "imsi"}},
+		{Name: "sysmocom sysmoSIM-GR2"},
+		{Name: "sysmocom sysmoUSIM-SJS1"},
+		{Name: "sysmocom sysmoISIM-SJA2"},
+		{Name: "sysmocom sysmoISIM-SJA5"},
 	}
 }
 
@@ -135,7 +146,7 @@ func (d *SysmocomDriver) WriteKi(reader *card.Reader, ki []byte) error {
 	switch d.model {
 	case SysmoUSIM_GR1:
 		// GR1 uses a special command 00 99 00 00 for Ki+OPc+ICCID+IMSI
-		return fmt.Errorf("GR1 requires combined write (not yet supported via direct Ki write)")
+		return fmt.Errorf("GR1 requires combined write (use config programming)")
 	case SysmoSIM_GR2:
 		// EF.0001 (from pySim)
 		if _, err := reader.SelectByPath([]byte{0x00, 0x01}); err != nil {
@@ -161,6 +172,52 @@ func (d *SysmocomDriver) WriteKi(reader *card.Reader, ki []byte) error {
 		return err
 	}
 	return nil
+}
+
+func (d *SysmocomDriver) ProgramConfig(reader *card.Reader, config *sim.SIMConfig) (map[string]bool, error) {
+	if d.model != SysmoUSIM_GR1 {
+		return nil, nil
+	}
+	if config.Ki == "" || config.OPc == "" || config.ICCID == "" || config.IMSI == "" {
+		return nil, fmt.Errorf("GR1 requires Ki, OPc, ICCID, and IMSI for combined write")
+	}
+	ki, err := algorithms.ValidateKi(config.Ki)
+	if err != nil {
+		return nil, err
+	}
+	opc, err := algorithms.ValidateOPc(config.OPc)
+	if err != nil {
+		return nil, err
+	}
+	iccid, err := sim.EncodeICCID(config.ICCID)
+	if err != nil {
+		return nil, err
+	}
+	imsi, err := sim.EncodeIMSI(config.IMSI)
+	if err != nil {
+		return nil, err
+	}
+
+	payload := make([]byte, 0, 0x33)
+	payload = append(payload, ki...)
+	payload = append(payload, opc...)
+	payload = append(payload, iccid...)
+	payload = append(payload, imsi...)
+
+	apdu := append([]byte{0x00, 0x99, 0x00, 0x00, 0x33}, payload...)
+	resp, err := reader.SendAPDU(apdu)
+	if err != nil {
+		return nil, err
+	}
+	if !resp.IsOK() {
+		return nil, fmt.Errorf("GR1 combined write failed: %s", card.SWToString(resp.SW()))
+	}
+	return map[string]bool{
+		"ki":    true,
+		"opc":   true,
+		"iccid": true,
+		"imsi":  true,
+	}, nil
 }
 
 func (d *SysmocomDriver) WriteOPc(reader *card.Reader, opc []byte) error {

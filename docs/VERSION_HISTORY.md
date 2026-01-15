@@ -1,5 +1,40 @@
 # Version History
 
+## v4.2.0 - Programmable Driver Expansion and Manual Selection
+
+### Programmable Driver System
+- Added manual driver override for write operations (`--prog-driver`)
+- Added `--list-prog-drivers` to show all drivers with required parameters
+- Added support for MagicSIM/SuperSIM/FakeMagicSIM programming flows
+- Added support for legacy grcardsim and Gialer SIM drivers
+- Added support for Fairwaves-SIM, OpenCells-SIM, and Wavemobile-SIM drivers
+- Implemented combined programming for sysmoUSIM-GR1 (Ki/OPc/ICCID/IMSI APDU)
+- Ensured driver registry is loaded at startup for CLI listing and autodetect
+
+### Application Identification and ARA-M
+- Added ARA-M non-SCP read/write helpers (GET ALL/CONFIG, raw STORE DATA)
+- Added parsed ARA-M access rule table output
+- Labeled ARA-M, HPSIM, and USIM-non-IMSI in EF.DIR output
+
+### Write Feedback and ADM Handling
+- Improved programmable write diagnostics (skipped fields + registered drivers)
+- Normalized single-dash long flags for ADM keys (e.g., `-adm` → `--adm`)
+
+---
+
+## v4.1.1 - ARA-M Read/Write and Expanded EF_DIR Labels
+
+### ARA-M Operations
+- Added ARA-M GET DATA support (ALL and CONFIG) without Secure Channel
+- Added ARA-M STORE DATA raw mode for cards that accept non-SCP access
+- Extended `gp aram` command with `--get-all`, `--get-config`, and `--no-scp` flags
+
+### Application Identification
+- Explicitly label ARA-M, HPSIM, and USIM-non-IMSI applications in EF_DIR analysis output
+- Added 3GPP app code detection for HPSIM (100A) and USIM-non-IMSI (100B)
+
+---
+
 ## v4.1.0 - Complete SAIP 3.3.1.2 Support: Full Field Coverage
 
 ### Comprehensive ASN.1 Structure Support

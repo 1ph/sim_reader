@@ -48,8 +48,10 @@ var (
 	changeADM4 string
 
 	// Programmable card flags
-	progDryRun bool
-	progForce  bool
+	progDryRun      bool
+	progForce       bool
+	progDriver      string
+	listProgDrivers bool
 )
 
 var writeCmd = &cobra.Command{
@@ -164,11 +166,20 @@ func init() {
 		"Simulate programmable card operations without writing (SAFE test mode)")
 	writeCmd.Flags().BoolVar(&progForce, "force", false,
 		"Force programmable operations on unrecognized cards (EXTREMELY DANGEROUS!)")
+	writeCmd.Flags().StringVar(&progDriver, "prog-driver", "",
+		"Force programmable driver by name (DANGEROUS; overrides autodetect)")
+	writeCmd.Flags().BoolVar(&listProgDrivers, "list-prog-drivers", false,
+		"List available programmable drivers and required parameters")
 
 	rootCmd.AddCommand(writeCmd)
 }
 
 func runWrite(cmd *cobra.Command, args []string) {
+	if listProgDrivers {
+		output.PrintProgrammableDrivers(sim.ListProgrammableDriverInfo())
+		return
+	}
+
 	// Check if any write operation is requested
 	isWriteMode := writeConfigFile != "" || writeIMSI != "" || writeIMPI != "" ||
 		writeIMPU != "" || writeDomain != "" || writePCSCF != "" || writeSPN != "" ||
@@ -204,6 +215,15 @@ func runWrite(cmd *cobra.Command, args []string) {
 	// Show/set proprietary USIM authentication algorithm (EF 8F90) if requested
 	if showCardAlgo || setCardAlgo != "" {
 		drv := sim.FindDriver(reader)
+		if progDriver != "" {
+			forced := sim.FindDriverByName(progDriver)
+			if forced == nil {
+				printError(fmt.Sprintf("Unknown programmable driver: %s", progDriver))
+				return
+			}
+			drv = forced
+			printWarning(fmt.Sprintf("Using forced programmable driver: %s", drv.Name()))
+		}
 		if drv == nil {
 			printWarning("This card does not support proprietary USIM algorithm selector (EF 8F90).")
 		} else {
@@ -245,7 +265,7 @@ func runWrite(cmd *cobra.Command, args []string) {
 			output.PrintProgrammableWriteWarning(progDryRun)
 		}
 
-		if err := sim.ApplyConfig(reader, config, progDryRun, progForce); err != nil {
+		if err := sim.ApplyConfig(reader, config, progDryRun, progForce, progDriver); err != nil {
 			printError(fmt.Sprintf("Config apply failed: %v", err))
 		}
 
@@ -490,4 +510,3 @@ func runWrite(cmd *cobra.Command, args []string) {
 	fmt.Println()
 	printSuccess("Write operations completed.")
 }
-

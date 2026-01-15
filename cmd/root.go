@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -63,6 +64,7 @@ func init() {
 
 // Execute runs the root command
 func Execute() {
+	os.Args = normalizeArgs(os.Args)
 	if err := rootCmd.Execute(); err != nil {
 		os.Exit(1)
 	}
@@ -71,6 +73,67 @@ func Execute() {
 // GetVersion returns the current version
 func GetVersion() string {
 	return version
+}
+
+func normalizeArgs(args []string) []string {
+	if len(args) == 0 {
+		return args
+	}
+
+	normalized := make([]string, 0, len(args))
+	normalized = append(normalized, args[0])
+
+	for i := 1; i < len(args); i++ {
+		arg := args[i]
+		if strings.HasPrefix(arg, "-adm") && !strings.HasPrefix(arg, "--adm") {
+			switch {
+			case arg == "-adm":
+				normalized = append(normalized, "--adm")
+			case strings.HasPrefix(arg, "-adm="):
+				normalized = append(normalized, "--adm"+arg[len("-adm"):])
+			default:
+				normalized = append(normalized, "--adm", arg[len("-adm"):])
+			}
+			continue
+		}
+		if strings.HasPrefix(arg, "-adm2") && !strings.HasPrefix(arg, "--adm2") {
+			switch {
+			case arg == "-adm2":
+				normalized = append(normalized, "--adm2")
+			case strings.HasPrefix(arg, "-adm2="):
+				normalized = append(normalized, "--adm2"+arg[len("-adm2"):])
+			default:
+				normalized = append(normalized, "--adm2", arg[len("-adm2"):])
+			}
+			continue
+		}
+		if strings.HasPrefix(arg, "-adm3") && !strings.HasPrefix(arg, "--adm3") {
+			switch {
+			case arg == "-adm3":
+				normalized = append(normalized, "--adm3")
+			case strings.HasPrefix(arg, "-adm3="):
+				normalized = append(normalized, "--adm3"+arg[len("-adm3"):])
+			default:
+				normalized = append(normalized, "--adm3", arg[len("-adm3"):])
+			}
+			continue
+		}
+		if strings.HasPrefix(arg, "-adm4") && !strings.HasPrefix(arg, "--adm4") {
+			switch {
+			case arg == "-adm4":
+				normalized = append(normalized, "--adm4")
+			case strings.HasPrefix(arg, "-adm4="):
+				normalized = append(normalized, "--adm4"+arg[len("-adm4"):])
+			default:
+				normalized = append(normalized, "--adm4", arg[len("-adm4"):])
+			}
+			continue
+		}
+
+		normalized = append(normalized, arg)
+	}
+
+	return normalized
 }
 
 // connectAndPrepareReader is a helper that connects to the reader,

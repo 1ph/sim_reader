@@ -47,6 +47,9 @@ var (
 	gpAramRuleAID  string
 	gpAramCertHash string
 	gpAramPerm     string
+	gpAramGetAll   bool
+	gpAramGetCfg   bool
+	gpAramNoSCP    bool
 )
 
 var gpCmd = &cobra.Command{
@@ -119,11 +122,15 @@ var gpAramCmd = &cobra.Command{
 	Use:   "aram",
 	Short: "Add ARA-M access rule",
 	Long: `Add ARA-M (Access Rule Application Manager) access rule via STORE DATA.
-Requires Secure Channel. Used for Android Secure Element access control.
+Supports Secure Channel (default) or raw mode (--no-scp) if the card allows it.
+Used for Android Secure Element access control.
 
 Examples:
   sim_reader gp aram --cert-hash AABBCC... --rule-aid FFFFFFFFFFFF \
-    --key-enc X --key-mac Y`,
+    --key-enc X --key-mac Y
+  sim_reader gp aram --get-all
+  sim_reader gp aram --get-config
+  sim_reader gp aram --cert-hash AABBCC... --rule-aid FFFFFFFFFFFF --no-scp`,
 	Run: runGPAram,
 }
 
@@ -193,6 +200,12 @@ func init() {
 		"Android app certificate hash (SHA-1=20 or SHA-256=32 bytes, hex)")
 	gpAramCmd.Flags().StringVar(&gpAramPerm, "perm", "0000000000000001",
 		"PERM-AR-DO value (hex, commonly 8 bytes)")
+	gpAramCmd.Flags().BoolVar(&gpAramGetAll, "get-all", false,
+		"Read all ARA-M rules (GET DATA ALL)")
+	gpAramCmd.Flags().BoolVar(&gpAramGetCfg, "get-config", false,
+		"Read ARA-M config (GET DATA CONFIG)")
+	gpAramCmd.Flags().BoolVar(&gpAramNoSCP, "no-scp", false,
+		"Send ARA-M commands without Secure Channel (if supported by card)")
 
 	// Add subcommands
 	gpCmd.AddCommand(gpListCmd, gpProbeCmd, gpDeleteCmd, gpLoadCmd, gpAramCmd, gpVerifyCmd)
@@ -528,11 +541,6 @@ func runGPLoad(cmd *cobra.Command, args []string) {
 }
 
 func runGPAram(cmd *cobra.Command, args []string) {
-	if gpAramCertHash == "" {
-		printError("--cert-hash is required")
-		return
-	}
-
 	reader, err := connectAndPrepareReader()
 	if err != nil {
 		printError(err.Error())
@@ -540,15 +548,40 @@ func runGPAram(cmd *cobra.Command, args []string) {
 	}
 	defer reader.Close()
 
-	cfg, err := buildGPConfig(reader)
-	if err != nil {
-		printError(err.Error())
-		return
-	}
-
 	aramAID, err := sim.ParseAIDHex(gpAramAID)
 	if err != nil {
 		printError(fmt.Sprintf("Invalid --aram-aid: %v", err))
+		return
+	}
+
+	if gpAramGetAll || gpAramGetCfg {
+		if gpAramGetAll {
+			data, err := sim.GPAramGetAll(reader, aramAID)
+			if err != nil {
+				printError(fmt.Sprintf("GP ARA-M GET ALL failed: %v", err))
+				return
+			}
+			rules, err := sim.ParseAramGetAll(data)
+			if err != nil {
+				printWarning(fmt.Sprintf("ARA-M parse failed: %v", err))
+				printSuccess(fmt.Sprintf("ARA-M GET ALL (raw): %X", data))
+			} else {
+				output.PrintAramRules(rules)
+			}
+		}
+		if gpAramGetCfg {
+			data, err := sim.GPAramGetConfig(reader, aramAID)
+			if err != nil {
+				printError(fmt.Sprintf("GP ARA-M GET CONFIG failed: %v", err))
+				return
+			}
+			printSuccess(fmt.Sprintf("ARA-M GET CONFIG: %X", data))
+		}
+		return
+	}
+
+	if gpAramCertHash == "" {
+		printError("--cert-hash is required")
 		return
 	}
 	ruleAID, err := sim.ParseHexBytes(gpAramRuleAID)
@@ -568,12 +601,22 @@ func runGPAram(cmd *cobra.Command, args []string) {
 	}
 
 	printWarning("ARA-M STORE DATA modifies access-control rules on the card.")
-	err = sim.GPAramAddRule(reader, *cfg, aramAID, sim.GPARAMRule{
+	rule := sim.GPARAMRule{
 		TargetAID: ruleAID,
 		CertHash:  certHash,
 		Perm:      perm,
 		ApduRule:  0x01, // ALWAYS allow
-	})
+	}
+	if gpAramNoSCP {
+		err = sim.GPAramAddRuleRaw(reader, aramAID, rule)
+	} else {
+		cfg, err := buildGPConfig(reader)
+		if err != nil {
+			printError(err.Error())
+			return
+		}
+		err = sim.GPAramAddRule(reader, *cfg, aramAID, rule)
+	}
 	if err != nil {
 		printError(fmt.Sprintf("GP ARA-M add rule failed: %v", err))
 		return

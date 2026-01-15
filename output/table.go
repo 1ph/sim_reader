@@ -402,6 +402,87 @@ func PrintRawData(rawFiles map[string][]byte) {
 	t.Render()
 }
 
+// PrintAramRules prints parsed ARA-M access rules.
+func PrintAramRules(rules []sim.GPARAMParsedRule) {
+	if len(rules) == 0 {
+		PrintWarning("No ARA-M rules found")
+		return
+	}
+
+	fmt.Println()
+	t := newTable()
+	t.SetTitle("ARA-M ACCESS RULES")
+	t.AppendHeader(table.Row{"#", "AID", "DEVICE APP ID", "PACKAGE", "APDU", "NFC", "PERM"})
+	t.SetColumnConfigs([]table.ColumnConfig{
+		{Number: 1, Colors: colorLabel, WidthMin: 3},
+		{Number: 2, Colors: colorValue, WidthMin: 18},
+		{Number: 3, Colors: colorValue, WidthMin: 20},
+		{Number: 4, Colors: colorValue, WidthMin: 20},
+		{Number: 5, Colors: colorValue, WidthMin: 12},
+		{Number: 6, Colors: colorValue, WidthMin: 10},
+		{Number: 7, Colors: colorValue, WidthMin: 16},
+	})
+
+	for i, r := range rules {
+		aid := r.AID
+		if aid == "" {
+			aid = "-"
+		}
+		dev := r.DeviceAppID
+		if dev == "" {
+			dev = "-"
+		}
+		pkg := r.PackageName
+		if pkg == "" {
+			pkg = "-"
+		}
+		apdu := r.ApduRule
+		if apdu == "" {
+			apdu = "-"
+		}
+		nfc := r.NfcRule
+		if nfc == "" {
+			nfc = "-"
+		}
+		perm := r.Permissions
+		if perm == "" {
+			perm = "-"
+		}
+		t.AppendRow(table.Row{fmt.Sprintf("%d", i+1), aid, dev, pkg, apdu, nfc, perm})
+	}
+	t.Render()
+}
+
+// PrintProgrammableDrivers prints registered programmable drivers and requirements.
+func PrintProgrammableDrivers(drivers []sim.DriverInfo) {
+	fmt.Println()
+	t := newTable()
+	t.SetTitle("PROGRAMMABLE DRIVERS")
+	t.SetColumnConfigs([]table.ColumnConfig{
+		{Number: 1, Colors: colorLabel, WidthMin: 24},
+		{Number: 2, Colors: colorValue, WidthMin: 40},
+	})
+
+	if len(drivers) == 0 {
+		t.AppendRow(table.Row{"(none)", "-"})
+		t.Render()
+		return
+	}
+
+	sort.Slice(drivers, func(i, j int) bool {
+		return strings.ToLower(drivers[i].Name) < strings.ToLower(drivers[j].Name)
+	})
+
+	for _, d := range drivers {
+		required := "-"
+		if len(d.RequiredFields) > 0 {
+			required = strings.Join(d.RequiredFields, ", ")
+		}
+		t.AppendRow(table.Row{d.Name, required})
+	}
+	t.Render()
+}
+
 // PrintCardAnalysis prints card analysis results
 func PrintCardAnalysis(info *sim.CardInfo) {
 	// ATR Analysis

@@ -3,6 +3,7 @@ package sim
 import (
 	"encoding/hex"
 	"fmt"
+	"strings"
 	"sync"
 
 	"sim_reader/algorithms"
@@ -26,6 +27,29 @@ type ProgrammableDriver interface {
 	WritePINs(reader *card.Reader, pin1, puk1, pin2, puk2 string) error
 }
 
+// DriverInfo describes a programmable driver for listing purposes.
+type DriverInfo struct {
+	Name           string
+	RequiredFields []string
+}
+
+// RequiredFieldsProvider provides required config fields for a driver.
+type RequiredFieldsProvider interface {
+	RequiredConfigFields() []string
+}
+
+// DriverInfoProvider provides custom driver info entries (e.g., variants).
+type DriverInfoProvider interface {
+	DriverInfos() []DriverInfo
+}
+
+// ConfigProgrammer allows a driver to handle card-specific programming flows
+// that don't map to standard EF writes (e.g., bundled record formats).
+// Returned map keys should be lower-case field names (e.g., "iccid", "imsi", "ki").
+type ConfigProgrammer interface {
+	ProgramConfig(reader *card.Reader, config *SIMConfig) (map[string]bool, error)
+}
+
 var (
 	registeredDrivers []ProgrammableDriver
 	driversMu         sync.RWMutex
@@ -36,6 +60,64 @@ func RegisterDriver(driver ProgrammableDriver) {
 	driversMu.Lock()
 	defer driversMu.Unlock()
 	registeredDrivers = append(registeredDrivers, driver)
+}
+
+// ListProgrammableDrivers returns names of registered programmable drivers.
+func ListProgrammableDrivers() []string {
+	driversMu.RLock()
+	defer driversMu.RUnlock()
+	names := make([]string, 0, len(registeredDrivers))
+	for _, d := range registeredDrivers {
+		names = append(names, d.Name())
+	}
+	return names
+}
+
+// ListProgrammableDriverInfo returns driver info entries for printing.
+func ListProgrammableDriverInfo() []DriverInfo {
+	driversMu.RLock()
+	defer driversMu.RUnlock()
+	infos := make([]DriverInfo, 0, len(registeredDrivers))
+	for _, d := range registeredDrivers {
+		if provider, ok := d.(DriverInfoProvider); ok {
+			infos = append(infos, provider.DriverInfos()...)
+			continue
+		}
+		info := DriverInfo{Name: d.Name()}
+		if req, ok := d.(RequiredFieldsProvider); ok {
+			info.RequiredFields = req.RequiredConfigFields()
+		}
+		infos = append(infos, info)
+	}
+	return infos
+}
+
+func normalizeDriverName(name string) string {
+	name = strings.ToLower(strings.TrimSpace(name))
+	name = strings.ReplaceAll(name, "_", " ")
+	name = strings.ReplaceAll(name, "-", " ")
+	return strings.Join(strings.Fields(name), " ")
+}
+
+// FindDriverByName returns a driver by name (case-insensitive).
+func FindDriverByName(name string) ProgrammableDriver {
+	if strings.TrimSpace(name) == "" {
+		return nil
+	}
+	needle := normalizeDriverName(name)
+	driversMu.RLock()
+	defer driversMu.RUnlock()
+	for _, d := range registeredDrivers {
+		if normalizeDriverName(d.Name()) == needle {
+			return d
+		}
+	}
+	for _, d := range registeredDrivers {
+		if strings.Contains(normalizeDriverName(d.Name()), needle) {
+			return d
+		}
+	}
+	return nil
 }
 
 // FindDriver detects the driver for the current card

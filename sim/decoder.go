@@ -448,6 +448,12 @@ func DecodeDIR(data []byte) string {
 				aid += " (USIM)"
 			} else if strings.HasPrefix(aid, "A0000000871004") {
 				aid += " (ISIM)"
+			} else if strings.HasPrefix(aid, "A000000087100A") {
+				aid += " (HPSIM)"
+			} else if strings.HasPrefix(aid, "A000000087100B") {
+				aid += " (USIM-non-IMSI)"
+			} else if strings.HasPrefix(aid, "A00000015141434C00") {
+				aid += " (ARA-M)"
 			} else if strings.HasPrefix(aid, "A0000003431002") {
 				aid += " (CSIM)"
 			}

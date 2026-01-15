@@ -437,15 +437,18 @@ func identifyAID(aid []byte) string {
 
 	// Known AIDs
 	knownAIDs := map[string]string{
-		"A0000000871002": "USIM (3GPP)",
-		"A0000000871004": "ISIM (3GPP)",
-		"A000000087":     "3GPP",
-		"A0000000030000": "Visa",
-		"A0000000040000": "MasterCard",
-		"A00000006510":   "JCOP",
-		"D276000085":     "NFC Forum",
-		"D27600011800":   "TUAK (3GPP Auth)",
-		"D276000118":     "TUAK JavaCard",
+		"A0000000871002":     "USIM (3GPP)",
+		"A0000000871004":     "ISIM (3GPP)",
+		"A000000087100A":     "HPSIM (3GPP)",
+		"A000000087100B":     "USIM (non-IMSI SUPI)",
+		"A00000015141434C00": "ARA-M (Access Rule Applet)",
+		"A000000087":         "3GPP",
+		"A0000000030000":     "Visa",
+		"A0000000040000":     "MasterCard",
+		"A00000006510":       "JCOP",
+		"D276000085":         "NFC Forum",
+		"D27600011800":       "TUAK (3GPP Auth)",
+		"D276000118":         "TUAK JavaCard",
 	}
 
 	for prefix, name := range knownAIDs {
@@ -465,6 +468,10 @@ func identifyAID(aid []byte) string {
 			return "USIM"
 		case "1004":
 			return "ISIM"
+		case "100A":
+			return "HPSIM"
+		case "100B":
+			return "USIM (non-IMSI SUPI)"
 		case "1001":
 			return "GSM"
 		case "1003":
@@ -558,7 +565,7 @@ func IsProprietaryCard(atr string) bool {
 	// But since we only have ATR string here, we might need a dummy reader or change the signature
 	// For now, let's keep the prefixes here or move them to a central place.
 	// Actually, the goal is to MOVE them to drivers.
-	
+
 	// Let's check if any registered driver identifies this card
 	// Note: AnalyzeCard is called with a real reader, so we can use it there.
 	return strings.HasPrefix(strings.ToUpper(atr), "3B9596")

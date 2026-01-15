@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
+
 	"sim_reader/algorithms"
 	"sim_reader/card"
 )
@@ -450,17 +452,36 @@ func SaveConfig(filename string, config *SIMConfig) error {
 // ApplyConfig applies the configuration to the SIM card
 // If dryRun is true, programmable card operations will be simulated without writing
 // If force is true, programmable card operations will be forced on unrecognized cards
-func ApplyConfig(reader *card.Reader, config *SIMConfig, dryRun, force bool) error {
+// If forcedDriverName is set, it overrides driver autodetection
+func ApplyConfig(reader *card.Reader, config *SIMConfig, dryRun, force bool, forcedDriverName string) error {
 	var errors []string
+	handled := map[string]bool{}
 
 	// Detect programmable card driver once
 	drv := FindDriver(reader)
 	isProgrammable := drv != nil
+	forcedName := strings.TrimSpace(forcedDriverName)
+	if forcedName != "" {
+		forcedDrv := FindDriverByName(forcedName)
+		if forcedDrv == nil {
+			drivers := ListProgrammableDrivers()
+			if len(drivers) > 0 {
+				return fmt.Errorf("unknown programmable driver: %s (available: %s)", forcedName, strings.Join(drivers, ", "))
+			}
+			return fmt.Errorf("unknown programmable driver: %s", forcedName)
+		}
+		drv = forcedDrv
+		isProgrammable = true
+	}
 
 	// Show card type info if programmable fields are present
 	if config.RequiresProgrammableCard() {
 		if isProgrammable {
-			fmt.Printf("✓ Detected programmable card: %s\n", drv.Name())
+			if forcedName != "" {
+				fmt.Printf("⚠ Using forced programmable driver: %s\n", drv.Name())
+			} else {
+				fmt.Printf("✓ Detected programmable card: %s\n", drv.Name())
+			}
 		} else if force {
 			// Fallback to first registered driver if forced
 			driversMu.RLock()
@@ -473,16 +494,38 @@ func ApplyConfig(reader *card.Reader, config *SIMConfig, dryRun, force bool) err
 			}
 		} else {
 			errors = append(errors, "card is not recognized as programmable. Use --force to override (DANGEROUS!)")
+			skipped := describeProgrammableSkips(config)
+			if len(skipped) > 0 {
+				errors = append(errors, fmt.Sprintf("programmable fields skipped (no driver): %s", strings.Join(skipped, ", ")))
+				fmt.Printf("⚠ Skipped programmable fields (no driver): %s\n", strings.Join(skipped, ", "))
+			}
+			drivers := ListProgrammableDrivers()
+			if len(drivers) > 0 {
+				fmt.Printf("ℹ Registered programmable drivers: %s\n", strings.Join(drivers, ", "))
+			}
+		}
+	}
+
+	if drv != nil {
+		if programmer, ok := drv.(ConfigProgrammer); ok {
+			handledFields, err := programmer.ProgramConfig(reader, config)
+			if err != nil {
+				errors = append(errors, fmt.Sprintf("Programmable: %v", err))
+			} else {
+				for k := range handledFields {
+					handled[strings.ToLower(k)] = true
+				}
+			}
 		}
 	}
 
 	// Apply programmable card operations first
-	if err := applyProgrammableFields(reader, config, drv, dryRun, force); err != nil {
+	if err := applyProgrammableFields(reader, config, drv, dryRun, force, handled); err != nil {
 		errors = append(errors, fmt.Sprintf("Programmable: %v", err))
 	}
 
 	// Write IMSI
-	if config.IMSI != "" {
+	if config.IMSI != "" && !handled["imsi"] {
 		if err := WriteIMSI(reader, config.IMSI); err != nil {
 			errors = append(errors, fmt.Sprintf("IMSI: %v", err))
 		} else {
@@ -491,7 +534,7 @@ func ApplyConfig(reader *card.Reader, config *SIMConfig, dryRun, force bool) err
 	}
 
 	// Write SPN
-	if config.SPN != "" {
+	if config.SPN != "" && !handled["spn"] {
 		if err := WriteSPN(reader, config.SPN, 0x00); err != nil {
 			errors = append(errors, fmt.Sprintf("SPN: %v", err))
 		} else {
@@ -530,7 +573,7 @@ func ApplyConfig(reader *card.Reader, config *SIMConfig, dryRun, force bool) err
 	}
 
 	// Write HPLMN
-	if len(config.HPLMN) > 0 {
+	if len(config.HPLMN) > 0 && !handled["hplmn"] {
 		entries := make([]HPLMNEntry, 0, len(config.HPLMN))
 		for _, h := range config.HPLMN {
 			actStr := ""
@@ -555,7 +598,7 @@ func ApplyConfig(reader *card.Reader, config *SIMConfig, dryRun, force bool) err
 	}
 
 	// Write Operator PLMN
-	if len(config.OPLMN) > 0 {
+	if len(config.OPLMN) > 0 && !handled["oplmn"] {
 		entries := make([]HPLMNEntry, 0, len(config.OPLMN))
 		for _, h := range config.OPLMN {
 			actStr := ""
@@ -580,7 +623,7 @@ func ApplyConfig(reader *card.Reader, config *SIMConfig, dryRun, force bool) err
 	}
 
 	// Write User Controlled PLMN
-	if len(config.UserPLMN) > 0 {
+	if len(config.UserPLMN) > 0 && !handled["user_plmn"] {
 		entries := make([]HPLMNEntry, 0, len(config.UserPLMN))
 		for _, h := range config.UserPLMN {
 			actStr := ""
@@ -948,7 +991,7 @@ func plmnActToStrings(act uint16) []string {
 
 // applyProgrammableFields applies programmable card fields from SIMConfig
 // drv can be nil if no programmable card detected (operations will be skipped)
-func applyProgrammableFields(reader *card.Reader, config *SIMConfig, drv ProgrammableDriver, dryRun, force bool) error {
+func applyProgrammableFields(reader *card.Reader, config *SIMConfig, drv ProgrammableDriver, dryRun, force bool, handled map[string]bool) error {
 	// Skip if no programmable fields are set
 	if !config.HasProgrammableFields() && config.ICCID == "" && config.MSISDN == "" && config.ACCHex == "" {
 		return nil
@@ -963,7 +1006,7 @@ func applyProgrammableFields(reader *card.Reader, config *SIMConfig, drv Program
 	}
 
 	// Write Ki
-	if config.Ki != "" && drv != nil {
+	if config.Ki != "" && drv != nil && !handled["ki"] {
 		if dryRun {
 			fmt.Printf("[DRY RUN] Would write Ki: %s\n", config.Ki)
 		} else {
@@ -979,7 +1022,7 @@ func applyProgrammableFields(reader *card.Reader, config *SIMConfig, drv Program
 	}
 
 	// Write OPc (or compute from OP)
-	if config.OPc != "" && drv != nil {
+	if config.OPc != "" && drv != nil && !handled["opc"] {
 		if dryRun {
 			fmt.Printf("[DRY RUN] Would write OPc: %s\n", config.OPc)
 		} else {
@@ -992,7 +1035,7 @@ func applyProgrammableFields(reader *card.Reader, config *SIMConfig, drv Program
 			}
 			fmt.Println("✓ OPc written successfully")
 		}
-	} else if config.OP != "" && drv != nil {
+	} else if config.OP != "" && drv != nil && !handled["op"] && !handled["opc"] {
 		if dryRun {
 			fmt.Printf("[DRY RUN] Would compute and write OPc from OP: %s\n", config.OP)
 		} else {
@@ -1015,7 +1058,7 @@ func applyProgrammableFields(reader *card.Reader, config *SIMConfig, drv Program
 	}
 
 	// Write Milenage R and C constants
-	if (config.Ki != "" || config.OPc != "" || config.OP != "") && drv != nil {
+	if (config.Ki != "" || config.OPc != "" || config.OP != "") && drv != nil && !handled["milenage_rc"] {
 		if dryRun {
 			fmt.Println("[DRY RUN] Would write Milenage R and C constants")
 		} else {
@@ -1027,7 +1070,7 @@ func applyProgrammableFields(reader *card.Reader, config *SIMConfig, drv Program
 	}
 
 	// Set algorithm type
-	if config.Algorithm != "" && drv != nil {
+	if config.Algorithm != "" && drv != nil && !handled["algorithm"] {
 		if dryRun {
 			fmt.Printf("[DRY RUN] Would set algorithm type: %s\n", config.Algorithm)
 		} else {
@@ -1039,7 +1082,7 @@ func applyProgrammableFields(reader *card.Reader, config *SIMConfig, drv Program
 	}
 
 	// Write ICCID (requires programmable card)
-	if config.ICCID != "" && drv != nil {
+	if config.ICCID != "" && drv != nil && !handled["iccid"] {
 		if dryRun {
 			fmt.Printf("[DRY RUN] Would write ICCID: %s\n", config.ICCID)
 		} else {
@@ -1051,7 +1094,7 @@ func applyProgrammableFields(reader *card.Reader, config *SIMConfig, drv Program
 	}
 
 	// Write MSISDN
-	if config.MSISDN != "" {
+	if config.MSISDN != "" && !handled["msisdn"] {
 		if drv != nil {
 			// Use driver method for programmable cards
 			if dryRun {
@@ -1076,7 +1119,7 @@ func applyProgrammableFields(reader *card.Reader, config *SIMConfig, drv Program
 	}
 
 	// Write ACC
-	if config.ACCHex != "" && drv != nil {
+	if config.ACCHex != "" && drv != nil && !handled["acc"] {
 		if dryRun {
 			fmt.Printf("[DRY RUN] Would write ACC: %s\n", config.ACCHex)
 		} else {
@@ -1088,7 +1131,7 @@ func applyProgrammableFields(reader *card.Reader, config *SIMConfig, drv Program
 	}
 
 	// Write PIN/PUK codes
-	if (config.PIN1 != "" || config.PIN2 != "") && drv != nil {
+	if (config.PIN1 != "" || config.PIN2 != "") && drv != nil && !handled["pins"] {
 		if dryRun {
 			fmt.Println("[DRY RUN] Would write PIN/PUK codes")
 		} else {
@@ -1100,4 +1143,33 @@ func applyProgrammableFields(reader *card.Reader, config *SIMConfig, drv Program
 	}
 
 	return nil
+}
+
+func describeProgrammableSkips(config *SIMConfig) []string {
+	var skipped []string
+	if config.Ki != "" {
+		skipped = append(skipped, "Ki")
+	}
+	if config.OP != "" {
+		skipped = append(skipped, "OP")
+	}
+	if config.OPc != "" {
+		skipped = append(skipped, "OPc")
+	}
+	if config.ICCID != "" {
+		skipped = append(skipped, "ICCID")
+	}
+	if config.ACCHex != "" {
+		skipped = append(skipped, "ACC")
+	}
+	if config.PIN1 != "" || config.PUK1 != "" {
+		skipped = append(skipped, "PIN1/PUK1")
+	}
+	if config.PIN2 != "" || config.PUK2 != "" {
+		skipped = append(skipped, "PIN2/PUK2")
+	}
+	if config.Algorithm != "" {
+		skipped = append(skipped, "Algorithm")
+	}
+	return skipped
 }
