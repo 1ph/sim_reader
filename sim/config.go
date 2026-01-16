@@ -47,8 +47,14 @@ type SIMConfig struct {
 	// User Controlled PLMN configuration (EF_PLMNwAcT, 0x6F60)
 	UserPLMN []HPLMNConfig `json:"user_plmn,omitempty"`
 
+	// GSM PLMN selector (EF_PLMNsel, 0x6F30 in DF.GSM)
+	PLMNSel []PLMNConfig `json:"plmn_sel,omitempty"`
+
 	// Forbidden PLMNs (read-only, use clear_fplmn to clear)
 	FPLMN []string `json:"fplmn,omitempty"`
+
+	// SMSC address in human-readable format (e.g., +79876543210).
+	SMSC string `json:"smsc,omitempty"`
 
 	// ISIM parameters
 	ISIM *ISIMConfig `json:"isim,omitempty"`
@@ -330,6 +336,12 @@ type HPLMNConfig struct {
 	ACT []string `json:"act"` // e.g., ["eutran", "utran", "gsm"]
 }
 
+// PLMNConfig represents a PLMN entry without access technology flags
+type PLMNConfig struct {
+	MCC string `json:"mcc"`
+	MNC string `json:"mnc"`
+}
+
 // ISIMConfig represents ISIM-specific configuration
 type ISIMConfig struct {
 	IMPI   string   `json:"impi,omitempty"`
@@ -590,7 +602,7 @@ func ApplyConfig(reader *card.Reader, config *SIMConfig, dryRun, force bool, for
 				ACT: act,
 			})
 		}
-		if err := WriteHPLMNList(reader, entries); err != nil {
+		if err := WriteHPLMNListDual(reader, entries); err != nil {
 			errors = append(errors, fmt.Sprintf("HPLMN: %v", err))
 		} else {
 			fmt.Printf("✓ HPLMN written (%d entries)\n", len(entries))
@@ -615,7 +627,7 @@ func ApplyConfig(reader *card.Reader, config *SIMConfig, dryRun, force bool, for
 				ACT: act,
 			})
 		}
-		if err := WriteOPLMNList(reader, entries); err != nil {
+		if err := WriteOPLMNListDual(reader, entries); err != nil {
 			errors = append(errors, fmt.Sprintf("OPLMN: %v", err))
 		} else {
 			fmt.Printf("✓ OPLMN written (%d entries)\n", len(entries))
@@ -640,10 +652,35 @@ func ApplyConfig(reader *card.Reader, config *SIMConfig, dryRun, force bool, for
 				ACT: act,
 			})
 		}
-		if err := WriteUserPLMNList(reader, entries); err != nil {
+		if err := WriteUserPLMNListDual(reader, entries); err != nil {
 			errors = append(errors, fmt.Sprintf("User PLMN: %v", err))
 		} else {
 			fmt.Printf("✓ User PLMN written (%d entries)\n", len(entries))
+		}
+	}
+
+	// Write GSM PLMN selector (PLMNsel)
+	if len(config.PLMNSel) > 0 && !handled["plmn_sel"] {
+		entries := make([]PLMNEntry, 0, len(config.PLMNSel))
+		for _, p := range config.PLMNSel {
+			entries = append(entries, PLMNEntry{
+				MCC: p.MCC,
+				MNC: p.MNC,
+			})
+		}
+		if err := WritePLMNselList(reader, entries); err != nil {
+			errors = append(errors, fmt.Sprintf("PLMNsel: %v", err))
+		} else {
+			fmt.Printf("✓ PLMNsel written (%d entries)\n", len(entries))
+		}
+	}
+
+	// Write SMS parameters (record 1)
+	if config.SMSC != "" && !handled["smsp"] {
+		if err := WriteSMSPRecord1SMSC(reader, config.SMSC); err != nil {
+			errors = append(errors, fmt.Sprintf("SMSC: %v", err))
+		} else {
+			fmt.Println("✓ SMSC written to SMSP record 1")
 		}
 	}
 

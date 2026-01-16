@@ -145,8 +145,14 @@ func ShowProgrammableCardInfo(reader *card.Reader) string {
 var (
 	FileSIMMSISDN  = []byte{0x7F, 0x10, 0x6F, 0x40}
 	FileUSIMMSISDN = []byte{0x7F, 0xF0, 0x6F, 0x40}
+	FileSIMSMSP    = []byte{0x7F, 0x10, 0x6F, 0x42}
+	FileUSIMSMSP   = []byte{0x7F, 0xF0, 0x6F, 0x42}
 	FileSIMACC     = []byte{0x7F, 0x10, 0x6F, 0x78}
 	FileUSIMACC    = []byte{0x7F, 0xF0, 0x6F, 0x78}
+	FileSIMPLMNsel = []byte{0x7F, 0x20, 0x6F, 0x30}
+	FileSIMPLMNwAcT = []byte{0x7F, 0x20, 0x6F, 0x60}
+	FileSIMOPLMNwAcT = []byte{0x7F, 0x20, 0x6F, 0x61}
+	FileSIMHPLMNwAcT = []byte{0x7F, 0x20, 0x6F, 0x62}
 )
 
 // WriteKi writes the Subscriber Key (Ki) to a programmable card
@@ -241,30 +247,20 @@ func WritePINs(reader *card.Reader, drv ProgrammableDriver, pin1, puk1, pin2, pu
 
 // WriteMSISDNGeneric is a default implementation for writing MSISDN
 func WriteMSISDNGeneric(reader *card.Reader, msisdn string) error {
-	var filePath []byte
+	primary := FileUSIMMSISDN
+	fallback := FileSIMMSISDN
 	if UseGSMCommands {
-		filePath = FileSIMMSISDN
+		primary = FileSIMMSISDN
+		fallback = FileUSIMMSISDN
+	}
+
+	if err := writeMSISDNByPath(reader, primary, msisdn); err == nil {
+		return nil
+	} else if errFallback := writeMSISDNByPath(reader, fallback, msisdn); errFallback == nil {
+		return nil
 	} else {
-		filePath = FileUSIMMSISDN
+		return fmt.Errorf("failed to write MSISDN (primary: %v; fallback: %v)", err, errFallback)
 	}
-
-	// Get file info to determine record length
-	fileInfo, err := reader.GetFileInfo(filePath)
-	if err != nil {
-		return fmt.Errorf("failed to get MSISDN file info: %w", err)
-	}
-	recordLength := int(fileInfo.RecordLength)
-
-	// Encode MSISDN
-	encodedMSISDN := EncodeISDN(msisdn, recordLength)
-
-	if _, err := reader.SelectByPath(filePath); err != nil {
-		return fmt.Errorf("failed to select MSISDN file: %w", err)
-	}
-	if _, err := reader.UpdateRecord(1, encodedMSISDN); err != nil {
-		return fmt.Errorf("failed to write MSISDN: %w", err)
-	}
-	return nil
 }
 
 // WriteACCGeneric is a default implementation for writing ACC

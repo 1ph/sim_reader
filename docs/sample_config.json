@@ -22,6 +22,11 @@
     {"mcc": "250", "mnc": "01", "act": ["eutran", "utran", "gsm"]},
     {"mcc": "250", "mnc": "02", "act": ["eutran", "gsm"]}
   ],
+  "plmn_sel": [
+    {"mcc": "250", "mnc": "01"},
+    {"mcc": "250", "mnc": "02"}
+  ],
+  "smsc": "+79498808999",
   "isim": {
     "impi": "250880000000000@ims.mnc088.mcc250.3gppnetwork.org",
     "impu": [

@@ -458,8 +458,10 @@ The `--json` flag exports all readable card parameters. Edit and re-import with 
 | `hplmn` | []object | Yes | Home PLMN with Access Technology |
 | `oplmn` | []object | Yes | Operator PLMN list |
 | `user_plmn` | []object | Yes | User Controlled PLMN list |
+| `plmn_sel` | []object | Yes | GSM PLMN selector (EF.PLMNsel in DF.GSM) |
 | `fplmn` | []string | No | Forbidden PLMNs (use `clear_fplmn` to clear) |
 | `clear_fplmn` | bool | Yes | Clear Forbidden PLMN list on write |
+| `smsc` | string | Yes | SMSC address (human-readable, e.g., +79876543210) |
 | `isim` | object | Yes | ISIM parameters (IMPI, IMPU, Domain, PCSCF) |
 | `services` | object | Yes | Service flags (VoLTE, VoWiFi, GBA, etc.) |
 | `ki`, `opc`, `op` | string | Yes | Cryptographic keys for programmable cards (see [WRITING.md](docs/WRITING.md)) |
